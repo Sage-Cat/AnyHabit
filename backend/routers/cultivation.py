@@ -390,7 +390,12 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         .all()
     )
     analyses = [_compact(_analyse(db, current_user, h, history_days=14)) for h in habits]
-    by_priority = sorted(analyses, key=lambda a: (a["priority"] is None, a["priority"] or 0, a["id"]))
+    def priority_key(item: dict) -> tuple:
+        priority = item["priority"]
+        numeric = isinstance(priority, (int, float)) and not isinstance(priority, bool)
+        return (not numeric, priority if numeric else 0, item["id"])
+
+    by_priority = sorted(analyses, key=priority_key)
     warnings = []
     for item in analyses:
         rec = item["recommendation"]

@@ -98,7 +98,9 @@ def check_number(label: str, value, *, integer: bool = False, low: float | None 
                  high: float | None = None, low_exclusive: bool = False) -> float:
     """A finite number within bounds, or a PassportError naming the field."""
     kind = "ціле число" if integer else "число"
-    if isinstance(value, bool):
+    # Strings are refused even when they look numeric: later code sorts and
+    # compares these values, and "2" next to 1 would break every overview.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PassportError(f"{label}: очікується {kind}")
     try:
         number = float(value)
@@ -115,7 +117,9 @@ def check_number(label: str, value, *, integer: bool = False, low: float | None 
 
 def check_date(label: str, value) -> date:
     try:
-        day = date.fromisoformat(str(value))
+        if not isinstance(value, str):
+            raise ValueError
+        day = date.fromisoformat(value)
     except ValueError:
         raise PassportError(f"{label}: очікується дата РРРР-ММ-ДД, отримано «{value}»") from None
     if day < MIN_DATE:
