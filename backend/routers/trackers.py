@@ -336,7 +336,7 @@ def reset_tracker(
     tracker = require_tracker_access(db, current_user.id, tracker_id)
 
     reset_at = utcnow()
-    content = note.strip() or "Logged a relapse. Timer was reset to zero."
+    content = note.strip() or "Зафіксовано зрив. Таймер скинуто до нуля."
 
     db.add(
         models.JournalEntry(

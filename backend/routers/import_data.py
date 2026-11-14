@@ -36,7 +36,9 @@ router = APIRouter(prefix="/import", tags=["import"])
 legacy_router = APIRouter(prefix="/export", tags=["import"])
 
 MAX_UPLOAD_BYTES = int(1024 * 1024 * 25)
-REPLACE_CONFIRMATION = "REPLACE MY DATA"
+REPLACE_CONFIRMATION = "ЗАМІНИТИ МОЇ ДАНІ"
+# The upstream English phrase stays valid so existing API clients keep working.
+REPLACE_CONFIRMATIONS = {REPLACE_CONFIRMATION, "REPLACE MY DATA"}
 
 VALID_TYPES = {"quit", "build", "boolean"}
 VALID_PERIODS = {"day", "week", "month", "year"}
@@ -101,12 +103,12 @@ def _tracker_key(name: str, category: str) -> tuple[str, str]:
 def _validated_tracker_fields(raw: dict, warnings: list[str]) -> dict | None:
     name = _clean_str(raw.get("name"), limit=120)
     if not name:
-        warnings.append("Skipped a tracker with no name.")
+        warnings.append("Пропущено звичку без назви.")
         return None
 
     tracker_type = _clean_str(raw.get("type"), "build", limit=20).lower()
     if tracker_type not in VALID_TYPES:
-        warnings.append(f"Skipped '{name}': unknown tracker type '{tracker_type}'.")
+        warnings.append(f"Пропущено «{name}»: невідомий тип звички «{tracker_type}».")
         return None
 
     units_per = _clean_str(raw.get("units_per"), "day", limit=10).lower()
@@ -149,7 +151,7 @@ def _apply_import(
     declared_format = payload.get("format")
     is_recognised = declared_format == "anyhabit-backup" or payload.get("export_type") == "backup"
     if declared_format and not is_recognised:
-        warnings.append(f"File declares format '{declared_format}'; importing it as a best-effort attempt.")
+        warnings.append(f"Файл має формат «{declared_format}»; імпорт виконується без гарантій.")
 
     raw_trackers = payload.get("trackers")
     if not isinstance(raw_trackers, list):
@@ -190,7 +192,7 @@ def _apply_import(
 
     for raw_tracker in raw_trackers:
         if not isinstance(raw_tracker, dict):
-            warnings.append("Skipped a malformed tracker entry.")
+            warnings.append("Пропущено пошкоджений запис звички.")
             continue
 
         fields = _validated_tracker_fields(raw_tracker, warnings)
@@ -243,7 +245,7 @@ def _apply_import(
                 continue
             timestamp = _parse_timestamp(raw_log.get("timestamp"))
             if timestamp is None:
-                warnings.append(f"Skipped a log on '{fields['name']}' with an unreadable timestamp.")
+                warnings.append(f"Пропущено запис у «{fields['name']}» з нечитабельним часом.")
                 continue
             if _stamp_key(timestamp) in existing_log_stamps:
                 continue
@@ -266,7 +268,7 @@ def _apply_import(
                 continue
             timestamp = _parse_timestamp(raw_journal.get("timestamp"))
             if timestamp is None:
-                warnings.append(f"Skipped a journal entry on '{fields['name']}' with an unreadable timestamp.")
+                warnings.append(f"Пропущено нотатку щоденника в «{fields['name']}» з нечитабельним часом.")
                 continue
             if _stamp_key(timestamp) in existing_journal_stamps:
                 continue
@@ -319,7 +321,7 @@ async def import_data(
     if mode not in {"merge", "replace"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode має бути 'merge' або 'replace'")
 
-    if mode == "replace" and not dry_run and confirm.strip() != REPLACE_CONFIRMATION:
+    if mode == "replace" and not dry_run and confirm.strip() not in REPLACE_CONFIRMATIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Режим заміни видаляє наявні звички. Підтвердьте значенням «{REPLACE_CONFIRMATION}».",
