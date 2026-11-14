@@ -236,9 +236,9 @@ def main() -> int:
 
     check("no habits: mortal", rank_name({}, 0) == "Смертний")
     habits = {1: stage_versions(("formation", 0))}
-    check("formation: disciple 1", rank_name(habits, 0) == "Послушник 1 рівня")
+    check("formation: adept 1", rank_name(habits, 0) == "Адепт 1 рівня")
     habits = {1: stage_versions(("formation", 0), ("stabilization", 30))}
-    check("stabilization: disciple 2", rank_name(habits, 30) == "Послушник 2 рівня")
+    check("stabilization: adept 2", rank_name(habits, 30) == "Адепт 2 рівня")
     habits = {
         1: stage_versions(("formation", 0), ("integrated", 90)),
         2: stage_versions(("integrated", 200)),
@@ -255,13 +255,14 @@ def main() -> int:
     after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
     check("recovery keeps rank within grace", within["name"] == "Маг 1 рангу" and within["warnings"])
     check(
-        "rank drops after grace, peak remembered", after["name"] == "Напівмаг" and after["peak_name"] == "Маг 1 рангу"
+        "rank drops after grace, peak remembered",
+        after["name"] == "Адепт 3 рівня" and after["peak_name"] == "Маг 1 рангу",
     )
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
-    check("same-day correction: last version wins", rank_name(same_day, 5) == "Послушник 2 рівня")
+    check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт 2 рівня")
     check(
         "recovery without integration does not count",
-        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Послушник 1 рівня",
+        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Адепт 1 рівня",
     )
 
     print("\n[4b] Review regressions")
@@ -533,7 +534,7 @@ def main() -> int:
 
         overview = client.get("/cultivation/overview").json()
         check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
-        check("overview carries the rank", overview["rank"]["name"] == "Послушник 2 рівня", overview["rank"]["name"])
+        check("overview carries the rank", overview["rank"]["name"] == "Адепт 2 рівня", overview["rank"]["name"])
 
         exported = client.get("/export/?data_type=all&format=json").json()
         cult = exported.get("cultivation", {})
