@@ -533,7 +533,7 @@ function HabitDetailPage() {
               <span className="text-xs text-sky-700">(змінити етап можна нижче, у розділі «Керування»)</span>
             </p>
           )}
-          {habit.kind === 'sleep' && (
+          {habit.kind === 'sleep' && !habit.archived && (
             <button type="button" onClick={() => setIsSleepOpen(true)} className={`${BUTTON_PRIMARY} mt-3 inline-flex items-center`}>
               <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
             </button>
@@ -558,86 +558,93 @@ function HabitDetailPage() {
 
         <Section title="Паспорт" testId="passport-block">
           <Passport habit={habit} />
-          <EditPassport key={habit.versions?.length} habit={habit} onSaved={load} />
+          {!habit.archived && <EditPassport key={habit.versions?.length} habit={habit} onSaved={load} />}
           <h3 className="mt-5 text-sm font-semibold text-stone-800">Історія версій</h3>
           <VersionHistory versions={habit.versions} />
         </Section>
 
         <Section title="Керування" testId="manage-block">
+          {habit.archived && (
+            <p className="mb-4 text-sm text-gray-500">Звичка в архіві: щоб вносити дані чи змінювати паспорт, спершу поверніть її.</p>
+          )}
           <div className="grid gap-6 lg:grid-cols-2">
-            <ActionForm
-              testId="mark-form"
-              title="Позначити день вручну"
-              submitLabel="Зберегти позначку"
-              onSubmit={() =>
-                run(
-                  () => markDayApi(habit.id, { date: mark.date, status: mark.status, ...(markNeedsReason ? { reason: mark.reason.trim() } : {}) }),
-                  mark.status === 'clear' ? 'Позначку знято' : 'День позначено'
-                )
-              }
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Дата">
-                  <input type="date" aria-label="Дата позначки" value={mark.date} onChange={(e) => setMark({ ...mark, date: e.target.value })} className={INPUT_CLASS} required />
-                </Field>
-                <Field label="Статус">
-                  <select aria-label="Статус позначки" value={mark.status} onChange={(e) => setMark({ ...mark, status: e.target.value })} className={INPUT_CLASS}>
-                    <option value="success">Успіх</option>
-                    <option value="minimum">Мінімум</option>
-                    <option value="fail">Порушення</option>
-                    <option value="exception">Виняток</option>
-                    <option value="clear">Зняти позначку</option>
-                  </select>
-                </Field>
-              </div>
-              {markNeedsReason && (
-                <Field label="Причина">
-                  <input type="text" aria-label="Причина позначки" value={mark.reason} onChange={(e) => setMark({ ...mark, reason: e.target.value })} className={INPUT_CLASS} required />
-                </Field>
-              )}
-            </ActionForm>
-
-            <div className="space-y-3" data-testid="mode-block">
-              <h3 className="text-sm font-semibold text-stone-800">Режим мінімуму</h3>
-              {habit.mode ? (
+            {!habit.archived && (
+              <>
                 <ActionForm
-                  title={`Діє з ${formatDay(habit.mode.start_date)}${habit.mode.reason ? ` — ${habit.mode.reason}` : ''}`}
-                  submitLabel="Завершити режим мінімуму"
-                  onSubmit={() => run(() => endModeApi(habit.id, modeReason.trim() ? { reason: modeReason.trim() } : {}), 'Режим мінімуму завершено')}
+                  testId="mark-form"
+                  title="Позначити день вручну"
+                  submitLabel="Зберегти позначку"
+                  onSubmit={() =>
+                    run(
+                      () => markDayApi(habit.id, { date: mark.date, status: mark.status, ...(markNeedsReason ? { reason: mark.reason.trim() } : {}) }),
+                      mark.status === 'clear' ? 'Позначку знято' : 'День позначено'
+                    )
+                  }
                 >
-                  <input type="text" aria-label="Причина завершення режиму" placeholder="Причина (необов'язково)" value={modeReason} onChange={(e) => setModeReason(e.target.value)} className={INPUT_CLASS} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Дата">
+                      <input type="date" aria-label="Дата позначки" value={mark.date} onChange={(e) => setMark({ ...mark, date: e.target.value })} className={INPUT_CLASS} required />
+                    </Field>
+                    <Field label="Статус">
+                      <select aria-label="Статус позначки" value={mark.status} onChange={(e) => setMark({ ...mark, status: e.target.value })} className={INPUT_CLASS}>
+                        <option value="success">Успіх</option>
+                        <option value="minimum">Мінімум</option>
+                        <option value="fail">Порушення</option>
+                        <option value="exception">Виняток</option>
+                        <option value="clear">Зняти позначку</option>
+                      </select>
+                    </Field>
+                  </div>
+                  {markNeedsReason && (
+                    <Field label="Причина">
+                      <input type="text" aria-label="Причина позначки" value={mark.reason} onChange={(e) => setMark({ ...mark, reason: e.target.value })} className={INPUT_CLASS} required />
+                    </Field>
+                  )}
                 </ActionForm>
-              ) : (
-                <ActionForm
-                  title="Вимогою на час режиму стає мінімум"
-                  submitLabel="Увімкнути режим мінімуму"
-                  onSubmit={() => run(() => startModeApi(habit.id, { reason: modeReason.trim(), ...(modeDate ? { start_date: modeDate } : {}) }), 'Режим мінімуму увімкнено')}
-                >
-                  <input type="text" aria-label="Причина режиму мінімуму" placeholder="Причина" value={modeReason} onChange={(e) => setModeReason(e.target.value)} className={INPUT_CLASS} required />
-                  <input type="date" aria-label="Початок режиму" value={modeDate} onChange={(e) => setModeDate(e.target.value)} className={INPUT_CLASS} />
-                </ActionForm>
-              )}
-            </div>
 
-            <ActionForm
-              testId="stage-form"
-              title="Змінити етап"
-              submitLabel="Змінити етап"
-              onSubmit={() =>
-                run(
-                  () => changeStageApi(habit.id, { stage: stageForm.stage, reason: stageForm.reason.trim(), ...(stageForm.effective_from ? { effective_from: stageForm.effective_from } : {}) }),
-                  'Етап змінено'
-                ).then(() => setStageForm((c) => ({ ...c, reason: '' })))
-              }
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <select aria-label="Новий етап" value={stageForm.stage} onChange={(e) => setStageForm({ ...stageForm, stage: e.target.value })} className={INPUT_CLASS}>
-                  {STAGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <input type="date" aria-label="Етап діє з" value={stageForm.effective_from} onChange={(e) => setStageForm({ ...stageForm, effective_from: e.target.value })} className={INPUT_CLASS} />
-              </div>
-              <input type="text" aria-label="Причина зміни етапу" placeholder="Причина" value={stageForm.reason} onChange={(e) => setStageForm({ ...stageForm, reason: e.target.value })} className={INPUT_CLASS} required />
-            </ActionForm>
+                <div className="space-y-3" data-testid="mode-block">
+                  <h3 className="text-sm font-semibold text-stone-800">Режим мінімуму</h3>
+                  {habit.mode ? (
+                    <ActionForm
+                      title={`Діє з ${formatDay(habit.mode.start_date)}${habit.mode.reason ? ` — ${habit.mode.reason}` : ''}`}
+                      submitLabel="Завершити режим мінімуму"
+                      onSubmit={() => run(() => endModeApi(habit.id, modeReason.trim() ? { reason: modeReason.trim() } : {}), 'Режим мінімуму завершено')}
+                    >
+                      <input type="text" aria-label="Причина завершення режиму" placeholder="Причина (необов'язково)" value={modeReason} onChange={(e) => setModeReason(e.target.value)} className={INPUT_CLASS} />
+                    </ActionForm>
+                  ) : (
+                    <ActionForm
+                      title="Вимогою на час режиму стає мінімум"
+                      submitLabel="Увімкнути режим мінімуму"
+                      onSubmit={() => run(() => startModeApi(habit.id, { reason: modeReason.trim(), ...(modeDate ? { start_date: modeDate } : {}) }), 'Режим мінімуму увімкнено')}
+                    >
+                      <input type="text" aria-label="Причина режиму мінімуму" placeholder="Причина" value={modeReason} onChange={(e) => setModeReason(e.target.value)} className={INPUT_CLASS} required />
+                      <input type="date" aria-label="Початок режиму" value={modeDate} onChange={(e) => setModeDate(e.target.value)} className={INPUT_CLASS} />
+                    </ActionForm>
+                  )}
+                </div>
+
+                <ActionForm
+                  testId="stage-form"
+                  title="Змінити етап"
+                  submitLabel="Змінити етап"
+                  onSubmit={() =>
+                    run(
+                      () => changeStageApi(habit.id, { stage: stageForm.stage, reason: stageForm.reason.trim(), ...(stageForm.effective_from ? { effective_from: stageForm.effective_from } : {}) }),
+                      'Етап змінено'
+                    ).then(() => setStageForm((c) => ({ ...c, reason: '' })))
+                  }
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <select aria-label="Новий етап" value={stageForm.stage} onChange={(e) => setStageForm({ ...stageForm, stage: e.target.value })} className={INPUT_CLASS}>
+                      {STAGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <input type="date" aria-label="Етап діє з" value={stageForm.effective_from} onChange={(e) => setStageForm({ ...stageForm, effective_from: e.target.value })} className={INPUT_CLASS} />
+                  </div>
+                  <input type="text" aria-label="Причина зміни етапу" placeholder="Причина" value={stageForm.reason} onChange={(e) => setStageForm({ ...stageForm, reason: e.target.value })} className={INPUT_CLASS} required />
+                </ActionForm>
+              </>
+            )}
 
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-stone-800">Архів</h3>
