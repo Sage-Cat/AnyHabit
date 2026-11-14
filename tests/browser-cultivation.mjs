@@ -202,6 +202,57 @@ try {
     check(`${path} has no horizontal overflow at 390px`, overflow <= 0, String(overflow));
   }
 
+  console.log('\n[8] Stage change, minimum mode, archive');
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
+  const header = page.locator('[data-testid="habit-title"]').locator('xpath=..');
+  await page.getByLabel('Новий етап').selectOption('stabilization');
+  await page.getByLabel('Причина зміни етапу').fill('Перевірка етапу');
+  await page.getByRole('button', { name: 'Змінити етап', exact: true }).click();
+  await page.waitForSelector('text=Етап змінено', { timeout: 10000 });
+  await header.locator('text=Стабілізація').waitFor({ timeout: 10000 });
+  check('stage change shows the new stage', true);
+  check(
+    'stage change is recorded as a passport version',
+    (await page.locator('[data-testid="version-history"]').innerText()).includes('Перевірка етапу')
+  );
+
+  const modeBlock = page.locator('[data-testid="mode-block"]');
+  await page.getByLabel('Причина режиму мінімуму').fill('Хвороба');
+  await modeBlock.getByRole('button', { name: 'Увімкнути режим мінімуму' }).click();
+  await page.waitForSelector('text=Режим мінімуму увімкнено', { timeout: 10000 });
+  await header.locator('text=режим мінімуму').waitFor({ timeout: 10000 });
+  check('minimum mode badge appears', true);
+  check('active mode shows its reason', (await modeBlock.innerText()).includes('Хвороба'));
+  await modeBlock.getByRole('button', { name: 'Завершити режим мінімуму' }).click();
+  await page.waitForSelector('text=Режим мінімуму завершено', { timeout: 10000 });
+  await modeBlock.getByRole('button', { name: 'Увімкнути режим мінімуму' }).waitFor({ timeout: 10000 });
+  // The end date is inclusive, so today itself still counts under the minimum.
+  check('minimum mode can be ended', !(await modeBlock.innerText()).includes('Діє з'));
+
+  await page.getByRole('button', { name: 'Архівувати звичку' }).click();
+  await page.getByRole('button', { name: 'Архівувати', exact: true }).click();
+  await page.waitForURL('**/practice', { timeout: 10000 });
+  await page.waitForSelector('text=Звичку архівовано', { timeout: 10000 });
+  await page.waitForSelector('[data-testid="rank-name"]');
+  check(
+    'archived habit leaves the active list',
+    (await page.locator('[data-testid="habit-card"]', { hasText: habitName }).count()) === 0
+  );
+  await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
+  await header.locator('text=в архіві').waitFor({ timeout: 10000 });
+  check('archived habit page is marked', true);
+  check(
+    'archived habit hides write actions',
+    (await page
+      .locator('[data-testid="mark-form"], [data-testid="mode-block"], [data-testid="stage-form"]')
+      .count()) === 0
+  );
+  await page.getByRole('button', { name: 'Повернути з архіву' }).click();
+  await page.waitForSelector('text=Звичку повернено з архіву', { timeout: 10000 });
+  await page.locator('[data-testid="mark-form"]').waitFor({ timeout: 10000 });
+  check('unarchived habit is writable again', (await header.locator('text=в архіві').count()) === 0);
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);
