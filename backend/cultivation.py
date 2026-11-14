@@ -94,8 +94,15 @@ MIN_DATE = date(2000, 1, 1)
 RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable"}
 
 
-def check_number(label: str, value, *, integer: bool = False, low: float | None = None,
-                 high: float | None = None, low_exclusive: bool = False) -> float:
+def check_number(
+    label: str,
+    value,
+    *,
+    integer: bool = False,
+    low: float | None = None,
+    high: float | None = None,
+    low_exclusive: bool = False,
+) -> float:
     """A finite number within bounds, or a PassportError naming the field."""
     kind = "ціле число" if integer else "число"
     # Strings are refused even when they look numeric: later code sorts and
@@ -137,8 +144,9 @@ def _check_level(label: str, level) -> None:
     bounds = {}
     for bound in ("min_sleep_h", "max_sleep_h"):
         if level.get(bound) is not None:
-            bounds[bound] = check_number(f"{label}.{bound}", level[bound], low=0, low_exclusive=True,
-                                         high=MAX_VALID_SLEEP_HOURS)
+            bounds[bound] = check_number(
+                f"{label}.{bound}", level[bound], low=0, low_exclusive=True, high=MAX_VALID_SLEEP_HOURS
+            )
     if len(bounds) == 2 and bounds["min_sleep_h"] > bounds["max_sleep_h"]:
         raise PassportError(f"{label}: мінімальна тривалість більша за максимальну")
     if level.get("min_amount") is not None:
@@ -393,8 +401,16 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
     return True
 
 
-def classify(kind: str, day: date, obs: Observation | None, spec: dict | None, mark: dict | None,
-             degraded: bool, today: date, tracked: bool = True) -> Day:
+def classify(
+    kind: str,
+    day: date,
+    obs: Observation | None,
+    spec: dict | None,
+    mark: dict | None,
+    degraded: bool,
+    today: date,
+    tracked: bool = True,
+) -> Day:
     obs = obs or Observation()
     result = Day(day, "no_data", degraded=degraded, amount=obs.amount, events=obs.events)
 
@@ -466,8 +482,16 @@ def mode_on(modes: list[dict], day: date) -> dict | None:
     return None
 
 
-def build_days(kind: str, versions: list[dict], observations: dict[date, Observation], marks: dict[date, dict],
-               modes: list[dict], until: date, today: date | None = None, tracked: bool = True) -> list[Day]:
+def build_days(
+    kind: str,
+    versions: list[dict],
+    observations: dict[date, Observation],
+    marks: dict[date, dict],
+    modes: list[dict],
+    until: date,
+    today: date | None = None,
+    tracked: bool = True,
+) -> list[Day]:
     """Day states up to ``until``; ``today`` (default ``until``) is the still-open day.
 
     ``tracked`` is False when no tracker feeds the habit: then nothing can be
@@ -484,8 +508,16 @@ def build_days(kind: str, versions: list[dict], observations: dict[date, Observa
     days, current = [], min(starts)
     while current <= until:
         days.append(
-            classify(kind, current, observations.get(current), spec_for(versions, current), marks.get(current),
-                     mode_on(modes, current) is not None, today, tracked)
+            classify(
+                kind,
+                current,
+                observations.get(current),
+                spec_for(versions, current),
+                marks.get(current),
+                mode_on(modes, current) is not None,
+                today,
+                tracked,
+            )
         )
         current += timedelta(days=1)
     return days
@@ -673,42 +705,65 @@ def integration_check(spec: dict, days: list[Day], episodes: list[Episode], toda
 
     observed_ok = stats["observed_days"] >= int(cfg["min_observed_days"])
     criteria.append(
-        _criterion("observed_days", "Достатньо спостережень", "met" if observed_ok else "not_met",
-                   int(cfg["min_observed_days"]), stats["observed_days"])
+        _criterion(
+            "observed_days",
+            "Достатньо спостережень",
+            "met" if observed_ok else "not_met",
+            int(cfg["min_observed_days"]),
+            stats["observed_days"],
+        )
     )
 
     rate_value = stats["success_rate"]
-    rate_status = "insufficient" if rate_value is None else ("met" if rate_value >= float(cfg["min_success_rate"]) else "not_met")
+    rate_status = (
+        "insufficient" if rate_value is None else ("met" if rate_value >= float(cfg["min_success_rate"]) else "not_met")
+    )
     criteria.append(
-        _criterion("success_rate", f"Успішних днів за {window} дн.", rate_status,
-                   float(cfg["min_success_rate"]), rate_value)
+        _criterion(
+            "success_rate", f"Успішних днів за {window} дн.", rate_status, float(cfg["min_success_rate"]), rate_value
+        )
     )
 
-    window_episodes = [e for e in episodes if e.start >= since or e.confirmed is None or (e.confirmed and e.confirmed >= since)]
+    window_episodes = [
+        e for e in episodes if e.start >= since or e.confirmed is None or (e.confirmed and e.confirmed >= since)
+    ]
     longest = max((e.elapsed(today) for e in window_episodes), default=0)
     criteria.append(
-        _criterion("long_deviation", "Немає тривалих відхилень",
-                   "met" if longest <= int(cfg["max_deviation_days"]) else "not_met",
-                   int(cfg["max_deviation_days"]), longest)
+        _criterion(
+            "long_deviation",
+            "Немає тривалих відхилень",
+            "met" if longest <= int(cfg["max_deviation_days"]) else "not_met",
+            int(cfg["max_deviation_days"]),
+            longest,
+        )
     )
 
     allowed = int(cfg["max_recovery_days"])
     judged = [e for e in window_episodes if e.first_ok or (today - e.start).days > allowed]
     if not judged:
         criteria.append(
-            _criterion("recovery", f"Повернення протягом {allowed} дн. після збою", "untested", allowed, None,
-                       "За період не було збоїв — здатність відновлюватися не перевірена.")
+            _criterion(
+                "recovery",
+                f"Повернення протягом {allowed} дн. після збою",
+                "untested",
+                allowed,
+                None,
+                "За період не було збоїв — здатність відновлюватися не перевірена.",
+            )
         )
     else:
         worst = max(e.days_to_first_ok if e.first_ok else (today - e.start).days for e in judged)
         criteria.append(
-            _criterion("recovery", f"Повернення протягом {allowed} дн. після збою",
-                       "met" if worst <= allowed else "not_met", allowed, worst)
+            _criterion(
+                "recovery",
+                f"Повернення протягом {allowed} дн. після збою",
+                "met" if worst <= allowed else "not_met",
+                allowed,
+                worst,
+            )
         )
 
-    criteria.append(
-        _criterion("health", "Немає шкоди здоров'ю й іншим звичкам", "manual", note="Оцінюєте ви.")
-    )
+    criteria.append(_criterion("health", "Немає шкоди здоров'ю й іншим звичкам", "manual", note="Оцінюєте ви."))
     automatic = [c for c in criteria if c["status"] != "manual"]
     return {
         "window_days": window,
@@ -730,10 +785,13 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
             and stats["success_rate"] is not None
             and stats["success_rate"] >= float(cfg["min_success_rate"])
         ):
-            return {"to": "stabilization", "reason": (
-                f"За {cfg['window_days']} дн. успішних днів {stats['success_rate']:.0%} "
-                f"(поріг {float(cfg['min_success_rate']):.0%})."
-            )}
+            return {
+                "to": "stabilization",
+                "reason": (
+                    f"За {cfg['window_days']} дн. успішних днів {stats['success_rate']:.0%} "
+                    f"(поріг {float(cfg['min_success_rate']):.0%})."
+                ),
+            }
         return None
     if stage in ("stabilization", "recovery"):
         check = integration_check(spec, days, episodes, today)
@@ -747,9 +805,10 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
         if ongoing and (today - ongoing.start).days > int(cfg["max_deviation_days"]):
             return {"to": "recovery", "reason": f"Відхилення триває {(today - ongoing.start).days} дн."}
         if stats["success_rate"] is not None and stats["success_rate"] < float(cfg["min_success_rate"]):
-            return {"to": "recovery", "reason": (
-                f"За {cfg['window_days']} дн. успішних днів лише {stats['success_rate']:.0%}."
-            )}
+            return {
+                "to": "recovery",
+                "reason": (f"За {cfg['window_days']} дн. успішних днів лише {stats['success_rate']:.0%}."),
+            }
     return None
 
 
@@ -862,20 +921,34 @@ def rank_progress(req: dict, states: list[HabitRankState]) -> list[dict]:
     if req.get("active"):
         parts.append({"label": "Звичка в роботі", "done": any(s.stage in ACTIVE_STAGES for s in states)})
     if req.get("stabilizing"):
-        parts.append({"label": "Звичка у стабілізації", "done": any(s.stage == "stabilization" or s.counted for s in states)})
+        parts.append(
+            {"label": "Звичка у стабілізації", "done": any(s.stage == "stabilization" or s.counted for s in states)}
+        )
     if "integrated" in req:
         have = sum(s.counted for s in states)
-        parts.append({"label": "Інтегровані звички", "have": have, "need": int(req["integrated"]),
-                      "done": have >= int(req["integrated"])})
+        parts.append(
+            {
+                "label": "Інтегровані звички",
+                "have": have,
+                "need": int(req["integrated"]),
+                "done": have >= int(req["integrated"]),
+            }
+        )
     if req.get("durable"):
         count, days = req["durable"]
         have = sum(s.counted and s.held_days >= int(days) for s in states)
-        parts.append({"label": f"Утримуються ≥ {days} дн.", "have": have, "need": int(count), "done": have >= int(count)})
+        parts.append(
+            {"label": f"Утримуються ≥ {days} дн.", "have": have, "need": int(count), "done": have >= int(count)}
+        )
     return parts
 
 
-def compute_rank(habit_versions: dict[int, list[dict]], until: date, ranks: list[dict] | None = None,
-                 grace_days: int = RECOVERY_GRACE_DAYS) -> dict:
+def compute_rank(
+    habit_versions: dict[int, list[dict]],
+    until: date,
+    ranks: list[dict] | None = None,
+    grace_days: int = RECOVERY_GRACE_DAYS,
+) -> dict:
     ranks = ranks or DEFAULT_RANKS
     daily = {hid: simulate_stages(hid, versions, until, grace_days) for hid, versions in habit_versions.items()}
     first = min((min(days) for days in daily.values() if days), default=until)
@@ -884,8 +957,15 @@ def compute_rank(habit_versions: dict[int, list[dict]], until: date, ranks: list
     while current <= until:
         index = rank_index(ranks, [days[current] for days in daily.values() if current in days])
         if index != previous:
-            history.append({"date": current.isoformat(), "from": previous, "to": index,
-                            "from_name": ranks[previous]["name"], "to_name": ranks[index]["name"]})
+            history.append(
+                {
+                    "date": current.isoformat(),
+                    "from": previous,
+                    "to": index,
+                    "from_name": ranks[previous]["name"],
+                    "to_name": ranks[index]["name"],
+                }
+            )
             previous = index
         peak = max(peak, index)
         current += timedelta(days=1)
@@ -910,7 +990,9 @@ def compute_rank(habit_versions: dict[int, list[dict]], until: date, ranks: list
         "name": ranks[index]["name"],
         "peak_index": peak,
         "peak_name": ranks[peak]["name"],
-        "next": None if nxt is None else {
+        "next": None
+        if nxt is None
+        else {
             "index": index + 1,
             "name": nxt["name"],
             "requirement": rank_requirement_text(nxt["req"]),
@@ -918,13 +1000,23 @@ def compute_rank(habit_versions: dict[int, list[dict]], until: date, ranks: list
             "confirmed": nxt.get("confirmed", False),
         },
         "ladder": [
-            {"index": i, "name": r["name"], "requirement": rank_requirement_text(r["req"]),
-             "confirmed": r.get("confirmed", False)}
+            {
+                "index": i,
+                "name": r["name"],
+                "requirement": rank_requirement_text(r["req"]),
+                "confirmed": r.get("confirmed", False),
+            }
             for i, r in enumerate(ranks)
         ],
         "habits": [
-            {"habit_id": s.habit_id, "name": s.name, "stage": s.stage, "counted": s.counted,
-             "held_days": s.held_days, "recovery_days": s.recovery_days}
+            {
+                "habit_id": s.habit_id,
+                "name": s.name,
+                "stage": s.stage,
+                "counted": s.counted,
+                "held_days": s.held_days,
+                "recovery_days": s.recovery_days,
+            }
             for s in states
         ],
         "history": history,

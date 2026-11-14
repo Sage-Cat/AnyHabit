@@ -30,4 +30,3 @@ export function buildLevel(kind, state, { nulls = false } = {}) {
 }
 
 export const hasLevelValue = (kind, state) => levelKeys(kind).some((key) => state[key] !== '' && state[key] != null);
-

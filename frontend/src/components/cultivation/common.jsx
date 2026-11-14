@@ -34,7 +34,10 @@ export function DayStatusPill({ day }) {
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-700" data-testid="today-status">
-      <span className={`h-2.5 w-2.5 rounded-full ${DAY_STATUS_STYLES[day.status] || 'bg-stone-200'}`} aria-hidden="true" />
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${DAY_STATUS_STYLES[day.status] || 'bg-stone-200'}`}
+        aria-hidden="true"
+      />
       {day.status_label || DAY_STATUS_LABELS[day.status] || day.status}
     </span>
   );

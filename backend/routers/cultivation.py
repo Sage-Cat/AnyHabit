@@ -138,14 +138,18 @@ def _get_habit(db: Session, user: models.User, habit_id: int) -> models.Cultivat
 def _writable_habit(db: Session, user: models.User, habit_id: int) -> models.CultivatedHabit:
     habit = _get_habit(db, user, habit_id)
     if habit.archived_at is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичку архівовано: спершу поверніть її з архіву")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Звичку архівовано: спершу поверніть її з архіву"
+        )
     return habit
 
 
 def _check_day(label: str, value: date, today: date) -> None:
     if value < cv.MIN_DATE:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=f"{label}: дата раніша за {cv.MIN_DATE.isoformat()}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{label}: дата раніша за {cv.MIN_DATE.isoformat()}",
+        )
     if value > today:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label}: дата ще не настала")
 
@@ -292,8 +296,15 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
     tracker = _tracker_info(db, habit)
     unit = (tracker or {}).get("unit", "")
     modes = _modes(db, habit)
-    days = cv.build_days(habit.kind, versions, _observations(db, habit, user), _marks(db, habit), modes, today,
-                         tracked=tracker is not None)
+    days = cv.build_days(
+        habit.kind,
+        versions,
+        _observations(db, habit, user),
+        _marks(db, habit),
+        modes,
+        today,
+        tracked=tracker is not None,
+    )
     episodes = cv.find_episodes(days, versions)
     rules = cv.section(spec, "rules", cv.DEFAULT_RULES)
     today_spec = cv.spec_for(versions, today) or spec
@@ -318,27 +329,38 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
             "date": today.isoformat(),
             "requirement": cv.level_text(habit.kind, (today_spec or {}).get("level"), unit),
             "minimum": cv.level_text(habit.kind, (today_spec or {}).get("minimum"), unit)
-            if (today_spec or {}).get("minimum") else None,
+            if (today_spec or {}).get("minimum")
+            else None,
             "degraded": degraded_today,
             "day": today_day.as_dict() if today_day else None,
         },
-        "next_subgoal": None if not subgoals else {
+        "next_subgoal": None
+        if not subgoals
+        else {
             **subgoals[0],
             "requirement": cv.level_text(habit.kind, (subgoals[0] or {}).get("level"), unit),
         },
-        "mode": None if active_mode is None else {
+        "mode": None
+        if active_mode is None
+        else {
             **active_mode,
             "start_date": active_mode["start_date"].isoformat(),
             "end_date": None,
         },
         "modes": [
-            {**m, "start_date": m["start_date"].isoformat(), "end_date": m["end_date"].isoformat() if m["end_date"] else None}
+            {
+                **m,
+                "start_date": m["start_date"].isoformat(),
+                "end_date": m["end_date"].isoformat() if m["end_date"] else None,
+            }
             for m in modes
         ],
         "rates": {
             "7": cv.rate(days, 7, today),
             "30": cv.rate(days, 30, today),
-            "integration": cv.rate(days, int(cv.section(spec, "integration", cv.DEFAULT_INTEGRATION)["window_days"]), today),
+            "integration": cv.rate(
+                days, int(cv.section(spec, "integration", cv.DEFAULT_INTEGRATION)["window_days"]), today
+            ),
         },
         "recovery": cv.recovery_summary(episodes, days, today, int(rules["recovery_ok_days"])),
         "episodes": [e.as_dict(today) for e in episodes[-30:]],
@@ -350,13 +372,31 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
 
 
 def _compact(analysis: dict) -> dict:
-    keep = ("id", "kind", "tracker", "name", "stage", "stage_label", "today", "next_subgoal", "mode",
-            "recommendation", "integration")
+    keep = (
+        "id",
+        "kind",
+        "tracker",
+        "name",
+        "stage",
+        "stage_label",
+        "today",
+        "next_subgoal",
+        "mode",
+        "recommendation",
+        "integration",
+    )
     out = {key: analysis[key] for key in keep}
     out["success_rate_30"] = analysis["rates"]["30"]["success_rate"]
     out["recovery"] = {
         key: analysis["recovery"][key]
-        for key in ("current_deviation", "last_recovery", "first_ok_median", "confirmed_median", "in_term_share", "tested")
+        for key in (
+            "current_deviation",
+            "last_recovery",
+            "first_ok_median",
+            "confirmed_median",
+            "in_term_share",
+            "tested",
+        )
     }
     out["priority"] = analysis["passport"].get("priority")
     out["days"] = analysis["days"][-14:]
@@ -390,6 +430,7 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         .all()
     )
     analyses = [_compact(_analyse(db, current_user, h, history_days=14)) for h in habits]
+
     def priority_key(item: dict) -> tuple:
         priority = item["priority"]
         numeric = isinstance(priority, (int, float)) and not isinstance(priority, bool)
@@ -400,7 +441,9 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
     for item in analyses:
         rec = item["recommendation"]
         if item["stage"] == "integrated" and rec and rec["to"] == "recovery":
-            warnings.append({"habit_id": item["id"], "message": f"«{item['name']}»: стійкість погіршується. {rec['reason']}"})
+            warnings.append(
+                {"habit_id": item["id"], "message": f"«{item['name']}»: стійкість погіршується. {rec['reason']}"}
+            )
     return {
         "date": _today(current_user).isoformat(),
         "timezone": current_user.timezone or "UTC",
@@ -512,9 +555,16 @@ def habit_days(
     habit = _get_habit(db, current_user, habit_id)
     today = _today(current_user)
     versions = _versions(db, habit)
-    days = cv.build_days(habit.kind, versions, _observations(db, habit, current_user), _marks(db, habit),
-                         _modes(db, habit), min(end or today, today), today=today,
-                         tracked=_tracker_info(db, habit) is not None)
+    days = cv.build_days(
+        habit.kind,
+        versions,
+        _observations(db, habit, current_user),
+        _marks(db, habit),
+        _modes(db, habit),
+        min(end or today, today),
+        today=today,
+        tracked=_tracker_info(db, habit) is not None,
+    )
     return [d.as_dict() for d in days if (start is None or d.date >= start)]
 
 
@@ -525,12 +575,20 @@ def _analyse_or_rollback(db: Session, user: models.User, habit: models.Cultivate
         return _analyse(db, user, habit)
     except (cv.PassportError, ValueError, TypeError, KeyError) as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=f"Паспорт не вдається застосувати: {exc}") from None
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Паспорт не вдається застосувати: {exc}"
+        ) from None
 
 
-def _add_version(db: Session, habit: models.CultivatedHabit, user: models.User, spec: dict, reason: str,
-                 effective_from: Optional[date], author: str) -> dict:
+def _add_version(
+    db: Session,
+    habit: models.CultivatedHabit,
+    user: models.User,
+    spec: dict,
+    reason: str,
+    effective_from: Optional[date],
+    author: str,
+) -> dict:
     try:
         cv.validate_spec(habit.kind, spec)
     except cv.PassportError as exc:
@@ -676,7 +734,9 @@ def end_mode(
     end = payload.end_date or _today(current_user)
     _check_day("end_date", end, _today(current_user))
     if end < date.fromisoformat(row.start_date):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Дата завершення раніша за початок")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Дата завершення раніша за початок"
+        )
     row.end_date = end.isoformat()
     row.end_reason = payload.reason.strip()
     row.ended_at = utcnow()
@@ -707,10 +767,13 @@ def log_sleep(
     # Elapsed time in UTC: the same tzinfo on both ends would subtract wall clocks.
     hours = (ensure_utc(wake) - ensure_utc(bedtime)).total_seconds() / 3600
     if bedtime.astimezone(tz).date() < cv.MIN_DATE:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=f"Дата раніша за {cv.MIN_DATE.isoformat()}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Дата раніша за {cv.MIN_DATE.isoformat()}"
+        )
     if not 0 < hours <= 24:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Підйом має бути пізніше засинання (до 24 год)")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Підйом має бути пізніше засинання (до 24 год)"
+        )
     if wake > utcnow() + timedelta(minutes=10):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Час підйому ще не настав")
     log = create_log(
@@ -731,8 +794,12 @@ def log_sleep(
 
 
 @router.post("/habits/{habit_id}/archive")
-def archive_habit(habit_id: int, request: Request, current_user: models.User = Depends(get_current_user),
-                  db: Session = Depends(get_db)):
+def archive_habit(
+    habit_id: int,
+    request: Request,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     _require_write(request)
     habit = _get_habit(db, current_user, habit_id)
     habit.archived_at = habit.archived_at or utcnow()
@@ -741,8 +808,12 @@ def archive_habit(habit_id: int, request: Request, current_user: models.User = D
 
 
 @router.post("/habits/{habit_id}/unarchive")
-def unarchive_habit(habit_id: int, request: Request, current_user: models.User = Depends(get_current_user),
-                    db: Session = Depends(get_db)):
+def unarchive_habit(
+    habit_id: int,
+    request: Request,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     _require_write(request)
     habit = _get_habit(db, current_user, habit_id)
     habit.archived_at = None
@@ -769,7 +840,9 @@ def update_profile(
     db: Session = Depends(get_db),
 ):
     if _author(request) == "api":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Систему рангів змінює лише користувач у вебінтерфейсі")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Систему рангів змінює лише користувач у вебінтерфейсі"
+        )
     ranks = None
     if payload.ranks is not None:
         try:
@@ -790,7 +863,11 @@ def update_profile(
 
 def export_cultivation(db: Session, user: models.User) -> dict:
     """Full cultivation history for backups and the JSON export."""
-    habits = db.query(models.CultivatedHabit).filter(models.CultivatedHabit.user_id == user.id).order_by(models.CultivatedHabit.id)
+    habits = (
+        db.query(models.CultivatedHabit)
+        .filter(models.CultivatedHabit.user_id == user.id)
+        .order_by(models.CultivatedHabit.id)
+    )
     profile = db.query(models.CultivationProfile).filter(models.CultivationProfile.user_id == user.id).first()
     out = {"habits": [], "profile": None}
     for habit in habits:
@@ -810,13 +887,21 @@ def export_cultivation(db: Session, user: models.User) -> dict:
                 "archived_at": habit.archived_at.isoformat() if habit.archived_at else None,
                 "versions": [_version_out(v) for v in _versions(db, habit)],
                 "marks": [
-                    {"date": m.date, "status": m.status, "reason": m.reason, "author": m.author,
-                     "created_at": ensure_utc(m.created_at).isoformat() if m.created_at else None}
+                    {
+                        "date": m.date,
+                        "status": m.status,
+                        "reason": m.reason,
+                        "author": m.author,
+                        "created_at": ensure_utc(m.created_at).isoformat() if m.created_at else None,
+                    }
                     for m in marks
                 ],
                 "modes": [
-                    {**m, "start_date": m["start_date"].isoformat(),
-                     "end_date": m["end_date"].isoformat() if m["end_date"] else None}
+                    {
+                        **m,
+                        "start_date": m["start_date"].isoformat(),
+                        "end_date": m["end_date"].isoformat() if m["end_date"] else None,
+                    }
                     for m in _modes(db, habit)
                 ],
             }

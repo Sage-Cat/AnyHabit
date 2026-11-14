@@ -86,21 +86,32 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
           <Field label="Тип">
             <select aria-label="Тип" value={form.kind} onChange={set('kind')} className={INPUT_CLASS}>
               {KIND_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </Field>
           <Field label="Етап">
             <select aria-label="Етап" value={form.stage} onChange={set('stage')} className={INPUT_CLASS}>
               {STAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </Field>
         </div>
 
         <Field label="Назва">
-          <input type="text" aria-label="Назва" value={form.name} onChange={set('name')} className={INPUT_CLASS} required />
+          <input
+            type="text"
+            aria-label="Назва"
+            value={form.name}
+            onChange={set('name')}
+            className={INPUT_CLASS}
+            required
+          />
         </Field>
 
         <fieldset className="space-y-3">
@@ -108,7 +119,14 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
           <LevelFields kind={form.kind} value={form.level} onChange={(level) => setForm((c) => ({ ...c, level }))} />
           {form.kind === 'build' && (
             <Field label="Одиниця виміру">
-              <input type="text" aria-label="Одиниця виміру" value={form.unit} onChange={set('unit')} className={INPUT_CLASS} placeholder="сторінок" />
+              <input
+                type="text"
+                aria-label="Одиниця виміру"
+                value={form.unit}
+                onChange={set('unit')}
+                className={INPUT_CLASS}
+                placeholder="сторінок"
+              />
             </Field>
           )}
         </fieldset>
@@ -136,16 +154,36 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Пріоритет" hint="Менше число — вище в списку">
-            <input type="number" min="0" step="1" aria-label="Пріоритет" value={form.priority} onChange={set('priority')} className={INPUT_CLASS} />
+            <input
+              type="number"
+              min="0"
+              step="1"
+              aria-label="Пріоритет"
+              value={form.priority}
+              onChange={set('priority')}
+              className={INPUT_CLASS}
+            />
           </Field>
           <Field label="Причина / нотатка до першої версії">
-            <input type="text" aria-label="Причина" value={form.reason} onChange={set('reason')} className={INPUT_CLASS} />
+            <input
+              type="text"
+              aria-label="Причина"
+              value={form.reason}
+              onChange={set('reason')}
+              className={INPUT_CLASS}
+            />
           </Field>
         </div>
 
-        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-rose-600">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={close} className={BUTTON_SECONDARY}>Скасувати</button>
+          <button type="button" onClick={close} className={BUTTON_SECONDARY}>
+            Скасувати
+          </button>
           <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
             {isSaving ? 'Збереження…' : 'Створити'}
           </button>

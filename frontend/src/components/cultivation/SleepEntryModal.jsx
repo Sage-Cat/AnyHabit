@@ -41,7 +41,9 @@ function SleepEntryModal({ habit, timezone, onClose, onSaved }) {
       if (form.state.trim()) payload.state = form.state.trim();
       if (form.note.trim()) payload.note = form.note.trim();
       const result = await logSleepApi(habit.id, payload);
-      const hours = Number.isFinite(Number(result.hours)) ? ` (${Number(result.hours).toLocaleString('uk-UA', { maximumFractionDigits: 1 })} год)` : '';
+      const hours = Number.isFinite(Number(result.hours))
+        ? ` (${Number(result.hours).toLocaleString('uk-UA', { maximumFractionDigits: 1 })} год)`
+        : '';
       notify.success(`Сон записано${hours}: ${result.day?.status_label || 'без оцінки'}`);
       onSaved?.(result);
       onClose();
@@ -57,24 +59,57 @@ function SleepEntryModal({ habit, timezone, onClose, onSaved }) {
       <form onSubmit={submit} className="space-y-4" id="sleep-entry-form">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Заснув(ла)">
-            <input type="datetime-local" aria-label="Час засинання" value={form.bedtime} onChange={update('bedtime')} className={INPUT_CLASS} required />
+            <input
+              type="datetime-local"
+              aria-label="Час засинання"
+              value={form.bedtime}
+              onChange={update('bedtime')}
+              className={INPUT_CLASS}
+              required
+            />
           </Field>
           <Field label="Прокинувся(лась)">
-            <input type="datetime-local" aria-label="Час пробудження" value={form.wake} onChange={update('wake')} className={INPUT_CLASS} required />
+            <input
+              type="datetime-local"
+              aria-label="Час пробудження"
+              value={form.wake}
+              onChange={update('wake')}
+              className={INPUT_CLASS}
+              required
+            />
           </Field>
         </div>
         <Field label="Причина відхилення" hint="Необов'язково">
-          <input type="text" aria-label="Причина відхилення" value={form.reason} onChange={update('reason')} className={INPUT_CLASS} />
+          <input
+            type="text"
+            aria-label="Причина відхилення"
+            value={form.reason}
+            onChange={update('reason')}
+            className={INPUT_CLASS}
+          />
         </Field>
         <Field label="Стан наступного дня" hint="Необов'язково, кілька слів">
-          <input type="text" aria-label="Стан наступного дня" value={form.state} onChange={update('state')} className={INPUT_CLASS} maxLength={120} />
+          <input
+            type="text"
+            aria-label="Стан наступного дня"
+            value={form.state}
+            onChange={update('state')}
+            className={INPUT_CLASS}
+            maxLength={120}
+          />
         </Field>
         <Field label="Нотатка">
           <textarea aria-label="Нотатка" value={form.note} onChange={update('note')} rows={2} className={INPUT_CLASS} />
         </Field>
-        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-rose-600">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className={BUTTON_SECONDARY}>Скасувати</button>
+          <button type="button" onClick={onClose} className={BUTTON_SECONDARY}>
+            Скасувати
+          </button>
           <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
             {isSaving ? 'Збереження…' : 'Записати сон'}
           </button>

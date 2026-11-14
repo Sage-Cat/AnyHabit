@@ -69,8 +69,11 @@ def main() -> int:
         for bed in ("22:30", "23:30", "22:00")
     ]
     check("upper sleep bound respected", statuses == ["success", "success", "fail"], str(statuses))
-    check("level text", cv.level_text("sleep", bounded["level"]) == "підйом до 08:00, сон 7–9 год",
-          cv.level_text("sleep", bounded["level"]))
+    check(
+        "level text",
+        cv.level_text("sleep", bounded["level"]) == "підйом до 08:00, сон 7–9 год",
+        cv.level_text("sleep", bounded["level"]),
+    )
     try:
         cv.validate_spec("sleep", cv.merge_patch(bounded, {"level": {"max_sleep_h": 6}}))
         check("min > max rejected", False)
@@ -79,12 +82,19 @@ def main() -> int:
 
     nap = night(d, "14:00", "15:00", log_id=2)
     day = sleep_days([nap, night(d, "23:30", "07:00")], d)[0][-1]
-    check("longest sleep is the night, naps counted", (day.status, day.naps) == ("success", 1), str((day.status, day.naps)))
+    check(
+        "longest sleep is the night, naps counted",
+        (day.status, day.naps) == ("success", 1),
+        str((day.status, day.naps)),
+    )
     tap = cv.Night(3, datetime.combine(d, cv.parse_hhmm("05:43"), TZ), datetime.combine(d, cv.parse_hhmm("05:43"), TZ))
     day = sleep_days([tap], d)[0][-1]
     check("accidental zero-length record is neutral", (day.status, day.met) == ("no_data", None), str(day.status))
-    huge = cv.Night(4, datetime.combine(d - timedelta(days=1), cv.parse_hhmm("06:00"), TZ),
-                    datetime.combine(d, cv.parse_hhmm("07:00"), TZ))
+    huge = cv.Night(
+        4,
+        datetime.combine(d - timedelta(days=1), cv.parse_hhmm("06:00"), TZ),
+        datetime.combine(d, cv.parse_hhmm("07:00"), TZ),
+    )
     check("implausible 25 h record is flagged", sleep_days([huge], d)[0][-1].status == "invalid")
 
     marks = {d: {"status": "exception", "reason": "illness"}}
@@ -99,10 +109,16 @@ def main() -> int:
 
     stricter = {**SPEC, "level": {"wake_by": "07:30", "min_sleep_h": 7}}
     vers = versions((D0, SPEC), (D0 + timedelta(days=2), stricter))
-    days, _ = sleep_days([night(D0 + timedelta(days=1), "00:00", "07:45"),
-                          night(D0 + timedelta(days=2), "00:00", "07:45")], D0 + timedelta(days=2), vers=vers)
-    check("criteria apply from their effective date", [x.status for x in days[1:]] == ["success", "minimum"],
-          str([x.status for x in days]))
+    days, _ = sleep_days(
+        [night(D0 + timedelta(days=1), "00:00", "07:45"), night(D0 + timedelta(days=2), "00:00", "07:45")],
+        D0 + timedelta(days=2),
+        vers=vers,
+    )
+    check(
+        "criteria apply from their effective date",
+        [x.status for x in days[1:]] == ["success", "minimum"],
+        str([x.status for x in days]),
+    )
 
     entry = night(d, "01:00", "08:30")
     normal = sleep_days([entry], d)[0][-1]
@@ -115,32 +131,52 @@ def main() -> int:
     days = cv.build_days("build", versions((D0, build_spec)), obs, {}, [], d)
     check("build habit: threshold met", days[-1].status == "success" and days[0].status == "no_data")
     quit_spec = {"name": "No phone", "stage": "formation", "start_date": D0.isoformat()}
-    days = cv.build_days("quit", versions((D0, quit_spec)), {d: cv.Observation(events=1)}, {}, [], d + timedelta(days=1))
-    check("quit habit: relapse fails, past days succeed, today open",
-          [x.status for x in days] == ["success", "fail", "no_data"], str([x.status for x in days]))
+    days = cv.build_days(
+        "quit", versions((D0, quit_spec)), {d: cv.Observation(events=1)}, {}, [], d + timedelta(days=1)
+    )
+    check(
+        "quit habit: relapse fails, past days succeed, today open",
+        [x.status for x in days] == ["success", "fail", "no_data"],
+        str([x.status for x in days]),
+    )
 
     print("\n[2] Deviations and recovery")
     mon = D0
-    nights = [night(mon, "04:00", "12:00", "Причина: робота"), night(mon + timedelta(1), "04:30", "12:30"),
-              night(mon + timedelta(2), "23:00", "07:00"), night(mon + timedelta(3), "23:00", "07:00")]
+    nights = [
+        night(mon, "04:00", "12:00", "Причина: робота"),
+        night(mon + timedelta(1), "04:30", "12:30"),
+        night(mon + timedelta(2), "23:00", "07:00"),
+        night(mon + timedelta(3), "23:00", "07:00"),
+    ]
     days, vers = sleep_days(nights, mon + timedelta(3))
     episodes = cv.find_episodes(days, vers)
     first = episodes[0] if episodes else None
-    check("Monday break, Wednesday back, confirmed Thursday",
-          len(episodes) == 1 and (first.fail_days, first.days_to_first_ok, first.days_to_confirmed) == (2, 2, 3),
-          str([e.as_dict(mon) for e in episodes]))
+    check(
+        "Monday break, Wednesday back, confirmed Thursday",
+        len(episodes) == 1 and (first.fail_days, first.days_to_first_ok, first.days_to_confirmed) == (2, 2, 3),
+        str([e.as_dict(mon) for e in episodes]),
+    )
     check("deviation reason captured", first is not None and first.reasons == ["робота"])
     summary = cv.recovery_summary(episodes, days, mon + timedelta(3), 2)
-    check("recovered within term", (summary["in_term"], summary["judged"]) == (1, 1) and summary["current_deviation"] is None)
+    check(
+        "recovered within term",
+        (summary["in_term"], summary["judged"]) == (1, 1) and summary["current_deviation"] is None,
+    )
 
-    nights = [night(D0, "04:00", "12:00"), night(D0 + timedelta(1), "23:00", "07:00"),
-              night(D0 + timedelta(2), "04:00", "12:00"),
-              night(D0 + timedelta(4), "23:00", "07:00"), night(D0 + timedelta(5), "23:00", "07:00")]
+    nights = [
+        night(D0, "04:00", "12:00"),
+        night(D0 + timedelta(1), "23:00", "07:00"),
+        night(D0 + timedelta(2), "04:00", "12:00"),
+        night(D0 + timedelta(4), "23:00", "07:00"),
+        night(D0 + timedelta(5), "23:00", "07:00"),
+    ]
     days, vers = sleep_days(nights, D0 + timedelta(5))
     e = cv.find_episodes(days, vers)[0]
-    check("no data is neutral and a relapse resets confirmation",
-          (e.fail_days, e.days_to_first_ok, e.days_to_confirmed) == (2, 1, 5),
-          str((e.fail_days, e.days_to_first_ok, e.days_to_confirmed)))
+    check(
+        "no data is neutral and a relapse resets confirmation",
+        (e.fail_days, e.days_to_first_ok, e.days_to_confirmed) == (2, 1, 5),
+        str((e.fail_days, e.days_to_first_ok, e.days_to_confirmed)),
+    )
 
     days, vers = sleep_days([night(D0 + timedelta(i), "23:00", "07:00") for i in range(5)], D0 + timedelta(4))
     summary = cv.recovery_summary(cv.find_episodes(days, vers), days, D0 + timedelta(4), 2)
@@ -148,20 +184,33 @@ def main() -> int:
 
     days, vers = sleep_days([night(D0 + timedelta(i), "04:00", "12:00") for i in range(4)], D0 + timedelta(3))
     summary = cv.recovery_summary(cv.find_episodes(days, vers), days, D0 + timedelta(3), 2)
-    check("ongoing deviation past the term counts as missed",
-          summary["current_deviation"]["fail_days"] == 4 and (summary["in_term"], summary["judged"]) == (0, 1))
+    check(
+        "ongoing deviation past the term counts as missed",
+        summary["current_deviation"]["fail_days"] == 4 and (summary["in_term"], summary["judged"]) == (0, 1),
+    )
 
     print("\n[3] Stage readiness")
-    spec = {**SPEC, "stage": "stabilization",
-            "integration": {"window_days": 14, "min_observed_days": 10, "min_success_rate": 0.8,
-                            "max_recovery_days": 2, "max_deviation_days": 7}}
+    spec = {
+        **SPEC,
+        "stage": "stabilization",
+        "integration": {
+            "window_days": 14,
+            "min_observed_days": 10,
+            "min_success_rate": 0.8,
+            "max_recovery_days": 2,
+            "max_deviation_days": 7,
+        },
+    }
     today = D0 + timedelta(days=13)
     perfect = [night(D0 + timedelta(i), "23:00", "07:00") for i in range(14)]
     days, vers = sleep_days(perfect, today, vers=versions((D0, spec)))
     check_result = cv.integration_check(spec, days, cv.find_episodes(days, vers), today)
     recovery = next(c for c in check_result["criteria"] if c["key"] == "recovery")
-    check("perfect run leaves recovery untested and not ready",
-          recovery["status"] == "untested" and not check_result["ready"], str(recovery))
+    check(
+        "perfect run leaves recovery untested and not ready",
+        recovery["status"] == "untested" and not check_result["ready"],
+        str(recovery),
+    )
     one_slip = perfect[:5] + [night(D0 + timedelta(5), "04:00", "12:00")] + perfect[6:]
     days, vers = sleep_days(one_slip, today, vers=versions((D0, spec)))
     episodes = cv.find_episodes(days, vers)
@@ -177,8 +226,10 @@ def main() -> int:
     print("\n[4] Ranks")
 
     def stage_versions(*stages):
-        return [{"id": i + 1, "effective_from": D0 + timedelta(days=on), "spec": {"name": "h", "stage": st}}
-                for i, (st, on) in enumerate(stages)]
+        return [
+            {"id": i + 1, "effective_from": D0 + timedelta(days=on), "spec": {"name": "h", "stage": st}}
+            for i, (st, on) in enumerate(stages)
+        ]
 
     def rank_name(habits: dict, on: int) -> str:
         return cv.compute_rank(habits, D0 + timedelta(days=on))["name"]
@@ -188,20 +239,30 @@ def main() -> int:
     check("formation: disciple 1", rank_name(habits, 0) == "Послушник 1 рівня")
     habits = {1: stage_versions(("formation", 0), ("stabilization", 30))}
     check("stabilization: disciple 2", rank_name(habits, 30) == "Послушник 2 рівня")
-    habits = {1: stage_versions(("formation", 0), ("integrated", 90)),
-              2: stage_versions(("integrated", 200)), 3: stage_versions(("integrated", 300))}
+    habits = {
+        1: stage_versions(("formation", 0), ("integrated", 90)),
+        2: stage_versions(("integrated", 200)),
+        3: stage_versions(("integrated", 300)),
+    }
     check("3 integrated habits: Magus rank 1", rank_name(habits, 300) == "Маг 1 рангу", rank_name(habits, 300))
     check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Смертний")
-    habits = {1: stage_versions(("integrated", 0), ("recovery", 20)), 2: stage_versions(("integrated", 1)),
-              3: stage_versions(("integrated", 2))}
+    habits = {
+        1: stage_versions(("integrated", 0), ("recovery", 20)),
+        2: stage_versions(("integrated", 1)),
+        3: stage_versions(("integrated", 2)),
+    }
     within = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS - 1))
     after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
     check("recovery keeps rank within grace", within["name"] == "Маг 1 рангу" and within["warnings"])
-    check("rank drops after grace, peak remembered", after["name"] == "Напівмаг" and after["peak_name"] == "Маг 1 рангу")
+    check(
+        "rank drops after grace, peak remembered", after["name"] == "Напівмаг" and after["peak_name"] == "Маг 1 рангу"
+    )
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Послушник 2 рівня")
-    check("recovery without integration does not count",
-          rank_name({1: stage_versions(("recovery", 0))}, 0) == "Послушник 1 рівня")
+    check(
+        "recovery without integration does not count",
+        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Послушник 1 рівня",
+    )
 
     print("\n[4b] Review regressions")
     dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
@@ -209,13 +270,19 @@ def main() -> int:
     wake = datetime.combine(D0 + timedelta(1), cv.parse_hhmm("07:00"), TZ)
     typo = cv.Night(2, wake - timedelta(hours=20.5), wake)
     day = sleep_days([night(D0 + timedelta(1), "23:00", "07:00"), typo], D0 + timedelta(1))[0][-1]
-    check("a mistyped long entry does not hide the real night",
-          day.status == "success" and abs(day.night.hours - 8) < 0.01, f"{day.status} {day.night.hours}")
+    check(
+        "a mistyped long entry does not hide the real night",
+        day.status == "success" and abs(day.night.hours - 8) < 0.01,
+        f"{day.status} {day.night.hours}",
+    )
 
     quit_spec = {"name": "Quit", "stage": "formation", "start_date": D0.isoformat(), "level": {}}
     untracked = cv.build_days("quit", versions((D0, quit_spec)), {}, {}, [], D0 + timedelta(5), tracked=False)
-    check("quit habit without a tracker invents no successes", {d.status for d in untracked} == {"no_data"},
-          str({d.status for d in untracked}))
+    check(
+        "quit habit without a tracker invents no successes",
+        {d.status for d in untracked} == {"no_data"},
+        str({d.status for d in untracked}),
+    )
     window = cv.build_days("quit", versions((D0, quit_spec)), {}, {}, [], D0 + timedelta(3), today=D0 + timedelta(10))
     check("a past range ends on a closed day", window[-1].status == "success", window[-1].status)
 
@@ -223,13 +290,18 @@ def main() -> int:
     pattern = [short, full, short, full, short, full, full]
     zigzag, zvers = sleep_days([night(D0 + timedelta(i), *pattern[i]) for i in range(7)], D0 + timedelta(6))
     episodes = cv.find_episodes(zigzag, zvers)
-    check("a zigzag deviation lasts until confirmed recovery",
-          len(episodes) == 1 and episodes[0].elapsed(D0 + timedelta(6)) == 6, str([e.as_dict(D0) for e in episodes]))
+    check(
+        "a zigzag deviation lasts until confirmed recovery",
+        len(episodes) == 1 and episodes[0].elapsed(D0 + timedelta(6)) == 6,
+        str([e.as_dict(D0) for e in episodes]),
+    )
     strict = {**SPEC, "integration": {"window_days": 7, "min_observed_days": 1, "max_deviation_days": 3}}
     crit = {c["key"]: c for c in cv.integration_check(strict, zigzag, episodes, D0 + timedelta(6))["criteria"]}
-    check("long zigzag deviation fails the integration criterion",
-          crit["long_deviation"]["status"] == "not_met" and crit["long_deviation"]["actual"] == 6,
-          str(crit["long_deviation"]))
+    check(
+        "long zigzag deviation fails the integration criterion",
+        crit["long_deviation"]["status"] == "not_met" and crit["long_deviation"]["actual"] == 6,
+        str(crit["long_deviation"]),
+    )
 
     bad_specs = {
         "start_date": {**SPEC, "start_date": "yesterday"},
@@ -247,9 +319,11 @@ def main() -> int:
             check(f"invalid passport rejected: {label}", False)
         except cv.PassportError:
             check(f"invalid passport rejected: {label}", True)
-    for label, ladder in {"integrated": [{"name": "A", "req": {"integrated": "abc"}}],
-                          "durable": [{"name": "A", "req": {"durable": [3]}}],
-                          "flag": [{"name": "A", "req": {"active": "yes"}}]}.items():
+    for label, ladder in {
+        "integrated": [{"name": "A", "req": {"integrated": "abc"}}],
+        "durable": [{"name": "A", "req": {"durable": [3]}}],
+        "flag": [{"name": "A", "req": {"active": "yes"}}],
+    }.items():
         try:
             cv.validate_ranks(ladder)
             check(f"invalid rank ladder rejected: {label}", False)
@@ -272,65 +346,104 @@ def main() -> int:
         client.post("/auth/login", json={"identifier": "owner@anyhabit.local", "password": "test-password"})
         client.patch("/auth/me", json={"timezone": "Europe/Kyiv"})
 
-        created = client.post("/cultivation/habits", json={
-            "kind": "sleep",
-            "spec": {"name": "Sleep", "stage": "formation",
-                     "level": {"wake_by": "08:00", "min_sleep_h": 7},
-                     "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
-                     "start_date": (datetime.now(TZ).date() - timedelta(days=3)).isoformat()},
-            "reason": "first habit",
-            "effective_from": (datetime.now(TZ).date() - timedelta(days=3)).isoformat(),
-        })
-        check("habit created with its own tracker", created.status_code == 201 and created.json()["tracker"] is not None,
-              created.text[:300])
+        created = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "sleep",
+                "spec": {
+                    "name": "Sleep",
+                    "stage": "formation",
+                    "level": {"wake_by": "08:00", "min_sleep_h": 7},
+                    "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
+                    "start_date": (datetime.now(TZ).date() - timedelta(days=3)).isoformat(),
+                },
+                "reason": "first habit",
+                "effective_from": (datetime.now(TZ).date() - timedelta(days=3)).isoformat(),
+            },
+        )
+        check(
+            "habit created with its own tracker",
+            created.status_code == 201 and created.json()["tracker"] is not None,
+            created.text[:300],
+        )
         habit = created.json()
         hid = habit["id"]
 
         local_today = datetime.now(TZ).date()
         yesterday = local_today - timedelta(days=1)
-        slept = client.post(f"/cultivation/habits/{hid}/sleep", json={
-            "bedtime": f"{(yesterday - timedelta(days=1)).isoformat()}T23:00:00",
-            "wake": f"{yesterday.isoformat()}T07:00:00",
-            "state": "бадьоро",
-        })
-        check("sleep entry recorded", slept.status_code == 201 and slept.json()["day"]["status"] == "success",
-              slept.text[:300])
+        slept = client.post(
+            f"/cultivation/habits/{hid}/sleep",
+            json={
+                "bedtime": f"{(yesterday - timedelta(days=1)).isoformat()}T23:00:00",
+                "wake": f"{yesterday.isoformat()}T07:00:00",
+                "state": "бадьоро",
+            },
+        )
+        check(
+            "sleep entry recorded",
+            slept.status_code == 201 and slept.json()["day"]["status"] == "success",
+            slept.text[:300],
+        )
         logs = client.get(f"/trackers/{habit['tracker']['id']}/logs/").json()
         check("night stored as a tracker log", len(logs) == 1 and abs(logs[0]["amount"] - 8) < 0.01, str(logs)[:200])
 
-        bad = client.post(f"/cultivation/habits/{hid}/sleep", json={
-            "bedtime": f"{yesterday.isoformat()}T08:00:00", "wake": f"{yesterday.isoformat()}T07:00:00"})
+        bad = client.post(
+            f"/cultivation/habits/{hid}/sleep",
+            json={"bedtime": f"{yesterday.isoformat()}T08:00:00", "wake": f"{yesterday.isoformat()}T07:00:00"},
+        )
         check("wake before bedtime rejected", bad.status_code == 422, bad.text[:200])
 
-        future = client.post(f"/cultivation/habits/{hid}/marks", json={
-            "date": (local_today + timedelta(days=2)).isoformat(), "status": "fail", "reason": "x"})
+        future = client.post(
+            f"/cultivation/habits/{hid}/marks",
+            json={"date": (local_today + timedelta(days=2)).isoformat(), "status": "fail", "reason": "x"},
+        )
         check("future marks rejected", future.status_code == 422)
-        marked = client.post(f"/cultivation/habits/{hid}/marks", json={
-            "date": local_today.isoformat(), "status": "exception", "reason": "поїздка"})
+        marked = client.post(
+            f"/cultivation/habits/{hid}/marks",
+            json={"date": local_today.isoformat(), "status": "exception", "reason": "поїздка"},
+        )
         check("day marked", marked.status_code == 201 and marked.json()["status"] == "exception", marked.text[:200])
 
-        changed = client.post(f"/cultivation/habits/{hid}/versions", json={
-            "patch": {"level": {"min_sleep_h": 7.5}}, "reason": "stricter"})
+        changed = client.post(
+            f"/cultivation/habits/{hid}/versions", json={"patch": {"level": {"min_sleep_h": 7.5}}, "reason": "stricter"}
+        )
         body = changed.json()
-        check("passport change keeps history", changed.status_code == 201 and len(body["versions"]) == 2,
-              changed.text[:200])
+        check(
+            "passport change keeps history",
+            changed.status_code == 201 and len(body["versions"]) == 2,
+            changed.text[:200],
+        )
         check("patched level applied", body["passport"]["level"] == {"wake_by": "08:00", "min_sleep_h": 7.5})
-        back = client.post(f"/cultivation/habits/{hid}/versions", json={
-            "patch": {"stage": "stabilization"}, "reason": "x", "effective_from": "2000-01-01"})
+        back = client.post(
+            f"/cultivation/habits/{hid}/versions",
+            json={"patch": {"stage": "stabilization"}, "reason": "x", "effective_from": "2000-01-01"},
+        )
         check("backdating before the last version refused", back.status_code == 422, back.text[:200])
 
         token = client.post("/developer/tokens", json={"name": "agent"}).json()["token"]
         agent = TestClient(app)
         headers = {"Authorization": f"Bearer {token}"}
-        refused = agent.post(f"/cultivation/habits/{hid}/stage", headers=headers,
-                             json={"stage": "stabilization", "reason": "agent thinks so"})
+        refused = agent.post(
+            f"/cultivation/habits/{hid}/stage",
+            headers=headers,
+            json={"stage": "stabilization", "reason": "agent thinks so"},
+        )
         check("agent cannot change the passport without user consent", refused.status_code == 409, refused.text[:200])
-        allowed = agent.post(f"/cultivation/habits/{hid}/stage", headers=headers,
-                             json={"stage": "stabilization", "reason": "user agreed", "confirmed_by_user": True})
-        check("agent change with consent is recorded as api",
-              allowed.status_code == 201 and allowed.json()["versions"][-1]["author"] == "api", allowed.text[:200])
-        agent_mark = agent.post(f"/cultivation/habits/{hid}/marks", headers=headers, json={
-            "date": yesterday.isoformat(), "status": "fail", "reason": "late work"})
+        allowed = agent.post(
+            f"/cultivation/habits/{hid}/stage",
+            headers=headers,
+            json={"stage": "stabilization", "reason": "user agreed", "confirmed_by_user": True},
+        )
+        check(
+            "agent change with consent is recorded as api",
+            allowed.status_code == 201 and allowed.json()["versions"][-1]["author"] == "api",
+            allowed.text[:200],
+        )
+        agent_mark = agent.post(
+            f"/cultivation/habits/{hid}/marks",
+            headers=headers,
+            json={"date": yesterday.isoformat(), "status": "fail", "reason": "late work"},
+        )
         check("agent can record facts", agent_mark.status_code == 201)
         profile = agent.put("/cultivation/profile", headers=headers, json={"recovery_grace_days": 1})
         check("agent cannot change the rank system", profile.status_code == 403)
@@ -341,44 +454,78 @@ def main() -> int:
         via_cookie.cookies.set(ACCESS_COOKIE_NAME, token)
         sneaky = via_cookie.post(f"/cultivation/habits/{hid}/stage", json={"stage": "formation", "reason": "cookie"})
         check("a token in the cookie still needs consent", sneaky.status_code == 409, sneaky.text[:200])
-        check("a token in the cookie cannot change ranks",
-              via_cookie.put("/cultivation/profile", json={"recovery_grace_days": 1}).status_code == 403)
+        check(
+            "a token in the cookie cannot change ranks",
+            via_cookie.put("/cultivation/profile", json={"recovery_grace_days": 1}).status_code == 403,
+        )
         read_token = client.post("/developer/tokens", json={"name": "reader", "scope": "read"}).json()["token"]
-        read_mark = agent.post(f"/cultivation/habits/{hid}/marks", headers={"Authorization": f"Bearer {read_token}"},
-                               json={"date": yesterday.isoformat(), "status": "success", "reason": "x"})
+        read_mark = agent.post(
+            f"/cultivation/habits/{hid}/marks",
+            headers={"Authorization": f"Bearer {read_token}"},
+            json={"date": yesterday.isoformat(), "status": "success", "reason": "x"},
+        )
         check("read-only token cannot write", read_mark.status_code == 403, read_mark.text[:200])
-        agent_mode = agent.post(f"/cultivation/habits/{hid}/modes/start", headers=headers,
-                                json={"reason": "agent", "start_date": (local_today - timedelta(days=3)).isoformat()})
+        agent_mode = agent.post(
+            f"/cultivation/habits/{hid}/modes/start",
+            headers=headers,
+            json={"reason": "agent", "start_date": (local_today - timedelta(days=3)).isoformat()},
+        )
         check("agent cannot start minimum mode without consent", agent_mode.status_code == 409, agent_mode.text[:200])
-        agent_mode = agent.post(f"/cultivation/habits/{hid}/modes/start", headers=headers,
-                                json={"reason": "user agreed", "confirmed_by_user": True})
-        check("agreed minimum mode records its author",
-              agent_mode.status_code == 201 and agent_mode.json()["mode"]["author"] == "api", agent_mode.text[:200])
+        agent_mode = agent.post(
+            f"/cultivation/habits/{hid}/modes/start",
+            headers=headers,
+            json={"reason": "user agreed", "confirmed_by_user": True},
+        )
+        check(
+            "agreed minimum mode records its author",
+            agent_mode.status_code == 201 and agent_mode.json()["mode"]["author"] == "api",
+            agent_mode.text[:200],
+        )
         agent.post(f"/cultivation/habits/{hid}/modes/end", headers=headers, json={"confirmed_by_user": True})
 
-        ahead = client.post(f"/cultivation/habits/{hid}/stage", json={
-            "stage": "integrated", "reason": "later", "effective_from": (local_today + timedelta(days=30)).isoformat()})
+        ahead = client.post(
+            f"/cultivation/habits/{hid}/stage",
+            json={
+                "stage": "integrated",
+                "reason": "later",
+                "effective_from": (local_today + timedelta(days=30)).isoformat(),
+            },
+        )
         check("future effective date refused", ahead.status_code == 422, ahead.text[:200])
-        ancient = client.post(f"/cultivation/habits/{hid}/marks", json={"date": "1900-01-01", "status": "fail", "reason": "x"})
+        ancient = client.post(
+            f"/cultivation/habits/{hid}/marks", json={"date": "1900-01-01", "status": "fail", "reason": "x"}
+        )
         check("ancient mark refused", ancient.status_code == 422, ancient.text[:200])
-        broken = client.post(f"/cultivation/habits/{hid}/versions", json={
-            "patch": {"integration": {"min_observed_days": "many"}}, "reason": "typo"})
+        broken = client.post(
+            f"/cultivation/habits/{hid}/versions",
+            json={"patch": {"integration": {"min_observed_days": "many"}}, "reason": "typo"},
+        )
         check("unreadable passport refused", broken.status_code == 422, broken.text[:200])
         check("overview still works after a refused passport", client.get("/cultivation/overview").status_code == 200)
 
-        dst_sleep = client.post(f"/cultivation/habits/{hid}/sleep", json={
-            "bedtime": "2026-10-24T23:00", "wake": "2026-10-25T07:00"})
-        check("sleep entry across DST stores elapsed hours",
-              dst_sleep.status_code == 201 and abs(dst_sleep.json()["hours"] - 9) < 0.01, dst_sleep.text[:200])
+        dst_sleep = client.post(
+            f"/cultivation/habits/{hid}/sleep", json={"bedtime": "2026-10-24T23:00", "wake": "2026-10-25T07:00"}
+        )
+        check(
+            "sleep entry across DST stores elapsed hours",
+            dst_sleep.status_code == 201 and abs(dst_sleep.json()["hours"] - 9) < 0.01,
+            dst_sleep.text[:200],
+        )
 
         client.post(f"/cultivation/habits/{hid}/archive")
-        archived_mark = client.post(f"/cultivation/habits/{hid}/marks", json={
-            "date": local_today.isoformat(), "status": "success", "reason": "x"})
+        archived_mark = client.post(
+            f"/cultivation/habits/{hid}/marks",
+            json={"date": local_today.isoformat(), "status": "success", "reason": "x"},
+        )
         check("archived habit refuses new marks", archived_mark.status_code == 409, archived_mark.text[:200])
         client.post(f"/cultivation/habits/{hid}/unarchive")
 
         started = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "сесія"})
-        check("degraded mode started", started.status_code == 201 and started.json()["mode"] is not None, started.text[:200])
+        check(
+            "degraded mode started",
+            started.status_code == 201 and started.json()["mode"] is not None,
+            started.text[:200],
+        )
         again = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "again"})
         check("only one active degraded mode", again.status_code == 409)
         ended = client.post(f"/cultivation/habits/{hid}/modes/end", json={"reason": "done"})
@@ -390,11 +537,16 @@ def main() -> int:
 
         exported = client.get("/export/?data_type=all&format=json").json()
         cult = exported.get("cultivation", {})
-        check("JSON export includes cultivation history",
-              len(cult.get("habits", [])) == 1 and len(cult["habits"][0]["versions"]) == 3, str(cult)[:300])
+        check(
+            "JSON export includes cultivation history",
+            len(cult.get("habits", [])) == 1 and len(cult["habits"][0]["versions"]) == 3,
+            str(cult)[:300],
+        )
 
         other = TestClient(app)
-        other.post("/auth/register", json={"username": "other", "email": "other@example.com", "password": "other-password"})
+        other.post(
+            "/auth/register", json={"username": "other", "email": "other@example.com", "password": "other-password"}
+        )
         check("another user cannot see the habit", other.get(f"/cultivation/habits/{hid}").status_code == 404)
 
         def restore(who, data, mode="merge"):
@@ -405,28 +557,48 @@ def main() -> int:
             return who.post("/import/", params=params, files=files)
 
         merged = restore(other, exported)
-        check("import restores cultivation into another account",
-              merged.status_code == 200 and merged.json()["cultivation_habits_created"] == 1, merged.text[:300])
+        check(
+            "import restores cultivation into another account",
+            merged.status_code == 200 and merged.json()["cultivation_habits_created"] == 1,
+            merged.text[:300],
+        )
         restored = other.get("/cultivation/habits").json()
-        check("restored habit is linked to its restored tracker",
-              len(restored) == 1 and restored[0]["tracker"] is not None, str(restored)[:300])
+        check(
+            "restored habit is linked to its restored tracker",
+            len(restored) == 1 and restored[0]["tracker"] is not None,
+            str(restored)[:300],
+        )
         again = restore(other, exported)
-        check("re-importing does not duplicate habits", again.json()["cultivation_habits_existing"] == 1, again.text[:300])
+        check(
+            "re-importing does not duplicate habits", again.json()["cultivation_habits_existing"] == 1, again.text[:300]
+        )
 
         replaced = restore(client, exported, mode="replace")
-        check("replace import restores cultivation", replaced.status_code == 200
-              and replaced.json()["cultivation_habits_created"] == 1, replaced.text[:300])
+        check(
+            "replace import restores cultivation",
+            replaced.status_code == 200 and replaced.json()["cultivation_habits_created"] == 1,
+            replaced.text[:300],
+        )
         mine = client.get("/cultivation/habits").json()
         check("replace keeps the habit usable", len(mine) == 1 and mine[0]["tracker"] is not None, str(mine)[:300])
 
-        legacy = {k: v for k, v in client.get("/export/?data_type=all&format=json").json().items() if k != "cultivation"}
+        legacy = {
+            k: v for k, v in client.get("/export/?data_type=all&format=json").json().items() if k != "cultivation"
+        }
         restore(client, legacy, mode="replace")
         relinked = client.get("/cultivation/habits").json()
-        check("replace with an older file relinks habits to restored trackers",
-              len(relinked) == 1 and relinked[0]["tracker"] is not None, str(relinked)[:300])
-        night_after = client.post(f"/cultivation/habits/{relinked[0]['id']}/sleep", json={
-            "bedtime": f"{(local_today - timedelta(days=2)).isoformat()}T23:30",
-            "wake": f"{(local_today - timedelta(days=1)).isoformat()}T07:00"})
+        check(
+            "replace with an older file relinks habits to restored trackers",
+            len(relinked) == 1 and relinked[0]["tracker"] is not None,
+            str(relinked)[:300],
+        )
+        night_after = client.post(
+            f"/cultivation/habits/{relinked[0]['id']}/sleep",
+            json={
+                "bedtime": f"{(local_today - timedelta(days=2)).isoformat()}T23:30",
+                "wake": f"{(local_today - timedelta(days=1)).isoformat()}T07:00",
+            },
+        )
         check("sleep can be logged after a replace import", night_after.status_code == 201, night_after.text[:200])
 
         def with_habit(**changes):
@@ -438,30 +610,48 @@ def main() -> int:
         crafted = with_habit()
         crafted["cultivation"]["habits"][0]["versions"][-1]["spec"]["name"] = "Crafted"
         crafted["cultivation"]["profile"] = {"ranks": [{"name": "God"}]}
-        token_import = via_token.post("/import/", headers=headers, params={"mode": "merge", "dry_run": "false"},
-                                      files={"file": ("b.json", json.dumps(crafted), "application/json")})
-        check("token import skips cultivation and ranks",
-              token_import.status_code == 200 and token_import.json()["cultivation_habits_created"] == 0
-              and client.get("/cultivation/rank").json()["ladder"][0]["name"] != "God", token_import.text[:300])
+        token_import = via_token.post(
+            "/import/",
+            headers=headers,
+            params={"mode": "merge", "dry_run": "false"},
+            files={"file": ("b.json", json.dumps(crafted), "application/json")},
+        )
+        check(
+            "token import skips cultivation and ranks",
+            token_import.status_code == 200
+            and token_import.json()["cultivation_habits_created"] == 0
+            and client.get("/cultivation/rank").json()["ladder"][0]["name"] != "God",
+            token_import.text[:300],
+        )
 
         stringy = with_habit()
         stringy["cultivation"]["habits"][0]["versions"][0]["spec"]["start_date"] = 20261101
         stringy["cultivation"]["habits"][0]["versions"][-1]["spec"]["name"] = "Stringy"
         third = TestClient(app)
-        third.post("/auth/register", json={"username": "third", "email": "third@example.com", "password": "third-password"})
+        third.post(
+            "/auth/register", json={"username": "third", "email": "third@example.com", "password": "third-password"}
+        )
         typed = restore(third, stringy)
-        check("import rejects mistyped passport fields",
-              typed.status_code == 200 and typed.json()["cultivation_habits_skipped"] == 1, typed.text[:300])
+        check(
+            "import rejects mistyped passport fields",
+            typed.status_code == 200 and typed.json()["cultivation_habits_skipped"] == 1,
+            typed.text[:300],
+        )
         check("overview survives a mistyped import", third.get("/cultivation/overview").status_code == 200)
-        mixed = client.post("/cultivation/habits", json={"kind": "boolean", "reason": "x", "spec": {
-            "name": "Stretch", "stage": "planned", "priority": "2"}})
+        mixed = client.post(
+            "/cultivation/habits",
+            json={"kind": "boolean", "reason": "x", "spec": {"name": "Stretch", "stage": "planned", "priority": "2"}},
+        )
         check("string priority refused", mixed.status_code == 422, mixed.text[:200])
 
         before = len(client.get("/cultivation/habits").json())
         broken_file = with_habit(kind="unknown")
         kept = restore(client, broken_file, mode="replace")
-        check("replace keeps habits when the file has a damaged one",
-              kept.status_code == 200 and len(client.get("/cultivation/habits").json()) == before, kept.text[:300])
+        check(
+            "replace keeps habits when the file has a damaged one",
+            kept.status_code == 200 and len(client.get("/cultivation/habits").json()) == before,
+            kept.text[:300],
+        )
         odd = json.loads(json.dumps(exported))
         odd["cultivation"] = {"habits": 5}
         check("malformed cultivation section is a warning, not an error", restore(third, odd).status_code == 200)
@@ -471,11 +661,19 @@ def main() -> int:
         lost = json.loads(json.dumps(exported))
         lost["trackers"][0]["type"] = "mystery"
         fourth = TestClient(app)
-        fourth.post("/auth/register", json={"username": "fourth", "email": "fourth@example.com", "password": "fourth-password"})
-        preview = fourth.post("/import/", params={"mode": "merge", "dry_run": "true"},
-                              files={"file": ("b.json", json.dumps(lost), "application/json")}).json()
-        check("preview warns that a habit loses its tracker",
-              any("трекер не знайдено" in w for w in preview["warnings"]), str(preview["warnings"]))
+        fourth.post(
+            "/auth/register", json={"username": "fourth", "email": "fourth@example.com", "password": "fourth-password"}
+        )
+        preview = fourth.post(
+            "/import/",
+            params={"mode": "merge", "dry_run": "true"},
+            files={"file": ("b.json", json.dumps(lost), "application/json")},
+        ).json()
+        check(
+            "preview warns that a habit loses its tracker",
+            any("трекер не знайдено" in w for w in preview["warnings"]),
+            str(preview["warnings"]),
+        )
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

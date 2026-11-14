@@ -14,9 +14,7 @@ function check(label, ok, detail = '') {
   }
 }
 
-const browser = await chromium.launch(
-  process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}
-);
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 const page = await context.newPage();
 
@@ -32,7 +30,7 @@ let habitId = null;
 try {
   console.log('\n[1] Sign in');
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByPlaceholder('Email або ім\'я користувача').fill('owner@anyhabit.local');
+  await page.getByPlaceholder("Email або ім'я користувача").fill('owner@anyhabit.local');
   await page.getByPlaceholder('••••••••').fill('e2e-password');
   await page.locator('form button[type="submit"]').click();
   await page.waitForSelector('text=Головна', { timeout: 10000 });
@@ -56,9 +54,15 @@ try {
   const card = page.locator('[data-testid="habit-card"]', { hasText: habitName });
   await card.waitFor({ timeout: 10000 });
   check('new habit shows up among active habits', true);
-  check('card shows the requirement', (await card.locator('[data-testid="today-requirement"]').innerText()).includes('23:59'));
+  check(
+    'card shows the requirement',
+    (await card.locator('[data-testid="today-requirement"]').innerText()).includes('23:59')
+  );
   check('card shows the stage badge', (await card.innerText()).includes('Формування'));
-  check('no data yet is reported as such', (await card.locator('[data-testid="today-status"]').innerText()).trim() === 'Немає даних');
+  check(
+    'no data yet is reported as such',
+    (await card.locator('[data-testid="today-status"]').innerText()).trim() === 'Немає даних'
+  );
 
   console.log('\n[3] Quick sleep entry');
   await card.getByRole('button', { name: 'Внести сон' }).click();
@@ -73,10 +77,21 @@ try {
   const { bedValue, wakeValueNow } = await page.evaluate(async () => {
     const overview = await (await fetch('/cultivation/overview', { credentials: 'include' })).json();
     const parts = Object.fromEntries(
-      new Intl.DateTimeFormat('en-GB', { timeZone: overview.timezone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-        .formatToParts(new Date()).map((p) => [p.type, p.value])
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: overview.timezone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+        .formatToParts(new Date())
+        .map((p) => [p.type, p.value])
     );
-    const wake = new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, Math.floor(+parts.minute / 5) * 5));
+    const wake = new Date(
+      Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, Math.floor(+parts.minute / 5) * 5)
+    );
     const bed = new Date(wake.getTime() - 8 * 3600 * 1000);
     const fmt = (d) => d.toISOString().slice(0, 16);
     return { bedValue: fmt(bed), wakeValueNow: fmt(wake) };
@@ -108,7 +123,9 @@ try {
   habitId = page.url().match(/\/practice\/(\d+)$/)[1];
   await page.waitForSelector('[data-testid="habit-title"]');
   check('habit page shows the title', (await page.locator('[data-testid="habit-title"]').innerText()) === habitName);
-  const detailPill = (await page.locator('[data-testid="today-block"] [data-testid="today-status"]').innerText()).trim();
+  const detailPill = (
+    await page.locator('[data-testid="today-block"] [data-testid="today-status"]').innerText()
+  ).trim();
   check('day status appears on the habit page', detailPill === statusLabel, detailPill);
   const dayCells = await page.locator('[data-testid="day-calendar"] button').count();
   check('calendar renders day cells', dayCells >= 1, String(dayCells));
@@ -136,7 +153,10 @@ try {
   check('untested/manual criteria are never shown as met', badLook === 0, String(badLook));
 
   check('passport view renders', (await page.locator('[data-testid="passport-view"]').innerText()).includes(habitName));
-  check('version history lists the first version', (await page.locator('[data-testid="version-history"] li').count()) >= 1);
+  check(
+    'version history lists the first version',
+    (await page.locator('[data-testid="version-history"] li').count()) >= 1
+  );
 
   console.log('\n[5] Manual mark and passport edit');
   await page.getByLabel('Статус позначки').selectOption('exception');
@@ -169,7 +189,10 @@ try {
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="home-cultivation-card"]', { timeout: 10000 });
   const homeText = await page.locator('[data-testid="home-cultivation-card"]').innerText();
-  check('home card shows rank and a sleep entry button', homeText.toLowerCase().includes('ранг') && homeText.includes('Внести сон'));
+  check(
+    'home card shows rank and a sleep entry button',
+    homeText.toLowerCase().includes('ранг') && homeText.includes('Внести сон')
+  );
 
   await page.setViewportSize({ width: 390, height: 800 });
   for (const path of ['/practice', `/practice/${habitId}`]) {

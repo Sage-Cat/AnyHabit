@@ -25,6 +25,14 @@ export function useStageChange(onChanged) {
     if (accepted) setPending({ habit, stage: rec.to, suggestedReason: rec.reason });
   };
 
-  return { pending, setPending, proposeRecommendation, notifyChanged: () => { setPending(null); notify.success('Етап змінено'); onChanged?.(); } };
+  return {
+    pending,
+    setPending,
+    proposeRecommendation,
+    notifyChanged: () => {
+      setPending(null);
+      notify.success('Етап змінено');
+      onChanged?.();
+    }
+  };
 }
-

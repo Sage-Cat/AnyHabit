@@ -16,15 +16,15 @@ function RankCard({ rank }) {
       <h2 className="mt-1 text-3xl font-bold tracking-tight text-stone-900" data-testid="rank-name">
         {rank.name}
       </h2>
-      {peakHigher && (
-        <p className="mt-1 text-sm text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>
-      )}
+      {peakHigher && <p className="mt-1 text-sm text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>}
 
       {rank.next && (
         <div className="mt-4 rounded-xl bg-stone-50 p-4">
           <p className="text-sm font-semibold text-stone-800">Далі: {rank.next.name}</p>
           {rank.next.requirement && <p className="mt-1 text-sm text-gray-600">{rank.next.requirement}</p>}
-          {rank.next.confirmed === false && <p className="mt-1 text-xs text-amber-700">Умова — пропозиція, ще не підтверджена вами</p>}
+          {rank.next.confirmed === false && (
+            <p className="mt-1 text-xs text-amber-700">Умова — пропозиція, ще не підтверджена вами</p>
+          )}
           {rank.next.progress?.length > 0 && (
             <ul className="mt-3 space-y-1.5">
               {rank.next.progress.map((item) => (
@@ -37,7 +37,9 @@ function RankCard({ rank }) {
                   <span className={item.done ? 'text-stone-700' : 'text-gray-600'}>
                     {item.label}
                     {item.have != null && item.need != null && (
-                      <span className="ml-1 text-gray-400">({item.have} з {item.need})</span>
+                      <span className="ml-1 text-gray-400">
+                        ({item.have} з {item.need})
+                      </span>
                     )}
                   </span>
                 </li>
@@ -51,7 +53,9 @@ function RankCard({ rank }) {
       {rank.warnings?.length > 0 && (
         <ul className="mt-3 space-y-1">
           {rank.warnings.map((warning) => (
-            <li key={warning} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{warning}</li>
+            <li key={warning} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {warning}
+            </li>
           ))}
         </ul>
       )}
@@ -83,12 +87,16 @@ function RankCard({ rank }) {
             >
               <span className="font-medium">{step.name}</span>
               {step.confirmed === false && (
-                <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${step.index === rank.index ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>
+                <span
+                  className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${step.index === rank.index ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}
+                >
                   пропозиція
                 </span>
               )}
               {step.requirement && (
-                <span className={`block text-xs ${step.index === rank.index ? 'text-stone-300' : 'text-gray-500'}`}>{step.requirement}</span>
+                <span className={`block text-xs ${step.index === rank.index ? 'text-stone-300' : 'text-gray-500'}`}>
+                  {step.requirement}
+                </span>
               )}
             </li>
           ))}
@@ -101,7 +109,8 @@ function RankCard({ rank }) {
           <ul className="mt-2 space-y-1 text-sm text-gray-600">
             {rank.history.map((entry) => (
               <li key={`${entry.date}-${entry.to_name}`}>
-                {formatDay(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}: {entry.from_name || '—'} → {entry.to_name}
+                {formatDay(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}: {entry.from_name || '—'} →{' '}
+                {entry.to_name}
               </li>
             ))}
           </ul>

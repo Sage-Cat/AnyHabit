@@ -47,9 +47,13 @@ function HabitCard({ habit, onEnterSleep, onApplyRecommendation }) {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-stone-50 p-3">
           <p className="text-[11px] uppercase tracking-wider text-gray-400">Сьогодні</p>
-          <p className="mt-0.5 text-sm font-medium text-stone-800" data-testid="today-requirement">{today?.requirement || '—'}</p>
+          <p className="mt-0.5 text-sm font-medium text-stone-800" data-testid="today-requirement">
+            {today?.requirement || '—'}
+          </p>
           {today?.minimum && <p className="text-xs text-gray-500">Мінімум: {today.minimum}</p>}
-          <div className="mt-1.5"><DayStatusPill day={today?.day} /></div>
+          <div className="mt-1.5">
+            <DayStatusPill day={today?.day} />
+          </div>
         </div>
         <div className="rounded-xl bg-stone-50 p-3">
           <p className="text-[11px] uppercase tracking-wider text-gray-400">Наступна підціль</p>
@@ -70,7 +74,14 @@ function HabitCard({ habit, onEnterSleep, onApplyRecommendation }) {
 
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric label="Успіх за 30 днів" value={formatPercent(habit.success_rate_30)} />
-        <Metric label="Поточне відхилення" value={recovery?.current_deviation ? `${recovery.current_deviation.ongoing_days ?? recovery.current_deviation.fail_days ?? '?'} дн.` : '—'} />
+        <Metric
+          label="Поточне відхилення"
+          value={
+            recovery?.current_deviation
+              ? `${recovery.current_deviation.ongoing_days ?? recovery.current_deviation.fail_days ?? '?'} дн.`
+              : '—'
+          }
+        />
         <Metric label="До першого ОК (медіана)" value={formatDays(recovery?.first_ok_median)} />
         <Metric label="До підтвердження (медіана)" value={formatDays(recovery?.confirmed_median)} />
         <Metric label="У строк" value={formatPercent(recovery?.in_term_share)} />

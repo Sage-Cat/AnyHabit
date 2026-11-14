@@ -10,13 +10,39 @@ function LevelFields({ kind, value, onChange, prefix = '' }) {
     return (
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Підйом не пізніше">
-          <input type="time" aria-label={label('Підйом не пізніше')} value={value.wake_by} onChange={set('wake_by')} className={INPUT_CLASS} />
+          <input
+            type="time"
+            aria-label={label('Підйом не пізніше')}
+            value={value.wake_by}
+            onChange={set('wake_by')}
+            className={INPUT_CLASS}
+          />
         </Field>
         <Field label="Сон від, год">
-          <input type="number" step="0.25" min="0" max="24" aria-label={label('Сон від, год')} value={value.min_sleep_h} onChange={set('min_sleep_h')} className={INPUT_CLASS} placeholder="7" />
+          <input
+            type="number"
+            step="0.25"
+            min="0"
+            max="24"
+            aria-label={label('Сон від, год')}
+            value={value.min_sleep_h}
+            onChange={set('min_sleep_h')}
+            className={INPUT_CLASS}
+            placeholder="7"
+          />
         </Field>
         <Field label="Сон до, год">
-          <input type="number" step="0.25" min="0" max="24" aria-label={label('Сон до, год')} value={value.max_sleep_h} onChange={set('max_sleep_h')} className={INPUT_CLASS} placeholder="9" />
+          <input
+            type="number"
+            step="0.25"
+            min="0"
+            max="24"
+            aria-label={label('Сон до, год')}
+            value={value.max_sleep_h}
+            onChange={set('max_sleep_h')}
+            className={INPUT_CLASS}
+            placeholder="9"
+          />
         </Field>
       </div>
     );
@@ -24,7 +50,15 @@ function LevelFields({ kind, value, onChange, prefix = '' }) {
   if (kind === 'build') {
     return (
       <Field label="Мінімальна кількість">
-        <input type="number" step="any" min="0" aria-label={label('Мінімальна кількість')} value={value.min_amount} onChange={set('min_amount')} className={INPUT_CLASS} />
+        <input
+          type="number"
+          step="any"
+          min="0"
+          aria-label={label('Мінімальна кількість')}
+          value={value.min_amount}
+          onChange={set('min_amount')}
+          className={INPUT_CLASS}
+        />
       </Field>
     );
   }

@@ -19,7 +19,6 @@ export const KIND_OPTIONS = [
 
 export const KIND_LABELS = Object.fromEntries(KIND_OPTIONS.map((kind) => [kind.value, kind.label]));
 
-
 // One colour per day status; the label always travels with it (title / text),
 // so colour is never the only carrier of meaning.
 export const DAY_STATUS_STYLES = {
@@ -55,8 +54,7 @@ export const CARD_CLASS = 'rounded-2xl border border-gray-100 bg-white p-5 shado
 export const formatPercent = (value) =>
   value === null || value === undefined ? '—' : `${formatNumber(value * 100, 0)}%`;
 
-export const formatDays = (value) =>
-  value === null || value === undefined ? '—' : `${formatNumber(value, 1)} дн.`;
+export const formatDays = (value) => (value === null || value === undefined ? '—' : `${formatNumber(value, 1)} дн.`);
 
 /**
  * Format a plain `YYYY-MM-DD` day. It is built from local parts on purpose:
