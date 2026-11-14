@@ -825,10 +825,9 @@ ACTIVE_STAGES = ("formation", "stabilization", "integrated", "recovery")
 # thresholds set by the user; the rest are proposals and can be overridden.
 DEFAULT_RANKS: list[dict] = [
     {"name": "Смертний", "req": {}, "confirmed": True},
-    {"name": "Послушник 1 рівня", "req": {"active": True}, "confirmed": True},
-    {"name": "Послушник 2 рівня", "req": {"stabilizing": True}, "confirmed": True},
-    {"name": "Послушник 3 рівня", "req": {"integrated": 1}, "confirmed": True},
-    {"name": "Напівмаг", "req": {"integrated": 2}, "confirmed": False},
+    {"name": "Адепт 1 рівня", "req": {"active": True}, "confirmed": True},
+    {"name": "Адепт 2 рівня", "req": {"stabilizing": True}, "confirmed": True},
+    {"name": "Адепт 3 рівня", "req": {"integrated": 1}, "confirmed": True},
     {"name": "Маг 1 рангу", "req": {"integrated": 3}, "confirmed": True},
     {"name": "Маг 2 рангу", "req": {"integrated": 5, "durable": [3, 180]}, "confirmed": False},
     {"name": "Маг 3 рангу", "req": {"integrated": 8, "durable": [5, 365]}, "confirmed": False},
