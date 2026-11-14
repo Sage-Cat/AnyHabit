@@ -428,6 +428,54 @@ def main() -> int:
             "bedtime": f"{(local_today - timedelta(days=2)).isoformat()}T23:30",
             "wake": f"{(local_today - timedelta(days=1)).isoformat()}T07:00"})
         check("sleep can be logged after a replace import", night_after.status_code == 201, night_after.text[:200])
+
+        def with_habit(**changes):
+            data = json.loads(json.dumps(exported))
+            data["cultivation"]["habits"][0].update(changes)
+            return data
+
+        via_token = TestClient(app)
+        crafted = with_habit()
+        crafted["cultivation"]["habits"][0]["versions"][-1]["spec"]["name"] = "Crafted"
+        crafted["cultivation"]["profile"] = {"ranks": [{"name": "God"}]}
+        token_import = via_token.post("/import/", headers=headers, params={"mode": "merge", "dry_run": "false"},
+                                      files={"file": ("b.json", json.dumps(crafted), "application/json")})
+        check("token import skips cultivation and ranks",
+              token_import.status_code == 200 and token_import.json()["cultivation_habits_created"] == 0
+              and client.get("/cultivation/rank").json()["ladder"][0]["name"] != "God", token_import.text[:300])
+
+        stringy = with_habit()
+        stringy["cultivation"]["habits"][0]["versions"][0]["spec"]["start_date"] = 20261101
+        stringy["cultivation"]["habits"][0]["versions"][-1]["spec"]["name"] = "Stringy"
+        third = TestClient(app)
+        third.post("/auth/register", json={"username": "third", "email": "third@example.com", "password": "third-password"})
+        typed = restore(third, stringy)
+        check("import rejects mistyped passport fields",
+              typed.status_code == 200 and typed.json()["cultivation_habits_skipped"] == 1, typed.text[:300])
+        check("overview survives a mistyped import", third.get("/cultivation/overview").status_code == 200)
+        mixed = client.post("/cultivation/habits", json={"kind": "boolean", "reason": "x", "spec": {
+            "name": "Stretch", "stage": "planned", "priority": "2"}})
+        check("string priority refused", mixed.status_code == 422, mixed.text[:200])
+
+        before = len(client.get("/cultivation/habits").json())
+        broken_file = with_habit(kind="unknown")
+        kept = restore(client, broken_file, mode="replace")
+        check("replace keeps habits when the file has a damaged one",
+              kept.status_code == 200 and len(client.get("/cultivation/habits").json()) == before, kept.text[:300])
+        odd = json.loads(json.dumps(exported))
+        odd["cultivation"] = {"habits": 5}
+        check("malformed cultivation section is a warning, not an error", restore(third, odd).status_code == 200)
+        odd["cultivation"] = {"habits": [{"kind": "sleep", "versions": 3}]}
+        check("malformed versions are skipped", restore(third, odd).json()["cultivation_habits_skipped"] == 1)
+
+        lost = json.loads(json.dumps(exported))
+        lost["trackers"][0]["type"] = "mystery"
+        fourth = TestClient(app)
+        fourth.post("/auth/register", json={"username": "fourth", "email": "fourth@example.com", "password": "fourth-password"})
+        preview = fourth.post("/import/", params={"mode": "merge", "dry_run": "true"},
+                              files={"file": ("b.json", json.dumps(lost), "application/json")}).json()
+        check("preview warns that a habit loses its tracker",
+              any("трекер не знайдено" in w for w in preview["warnings"]), str(preview["warnings"]))
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
