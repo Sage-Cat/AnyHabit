@@ -244,19 +244,26 @@ def main() -> int:
         2: stage_versions(("integrated", 200)),
         3: stage_versions(("integrated", 300)),
     }
-    check("3 integrated habits: Magus rank 1", rank_name(habits, 300) == "Маг першого рангу", rank_name(habits, 300))
+    check("3 integrated habits: Magus rank 2", rank_name(habits, 300) == "Маг другого рангу", rank_name(habits, 300))
+    two_stab = {1: stage_versions(("stabilization", 0)), 2: stage_versions(("stabilization", 0))}
+    check("two habits in stabilization: adept 3", rank_name(two_stab, 0) == "Адепт третього рівня")
+    one_each = {1: stage_versions(("integrated", 0)), 2: stage_versions(("stabilization", 0))}
+    check("one integrated and one stabilizing: Magus rank 1", rank_name(one_each, 0) == "Маг першого рангу")
+    lone = {1: stage_versions(("integrated", 0))}
+    check("ranks are climbed in order: a lone integrated habit", rank_name(lone, 0) == "Адепт другого рівня")
     check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Звичайна людина")
     habits = {
         1: stage_versions(("integrated", 0), ("recovery", 20)),
         2: stage_versions(("integrated", 1)),
         3: stage_versions(("integrated", 2)),
+        4: stage_versions(("integrated", 3)),
     }
     within = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS - 1))
     after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
-    check("recovery keeps rank within grace", within["name"] == "Маг першого рангу" and within["warnings"])
+    check("recovery keeps rank within grace", within["name"] == "Маг третього рангу" and within["warnings"])
     check(
         "rank drops after grace, peak remembered",
-        after["name"] == "Адепт третього рівня" and after["peak_name"] == "Маг першого рангу",
+        after["name"] == "Маг другого рангу" and after["peak_name"] == "Маг третього рангу",
     )
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
@@ -324,12 +331,17 @@ def main() -> int:
         "integrated": [{"name": "A", "req": {"integrated": "abc"}}],
         "durable": [{"name": "A", "req": {"durable": [3]}}],
         "flag": [{"name": "A", "req": {"active": "yes"}}],
+        "stabilizing count": [{"name": "A", "req": {"stabilizing": "two"}}],
     }.items():
         try:
             cv.validate_ranks(ladder)
             check(f"invalid rank ladder rejected: {label}", False)
         except cv.PassportError:
             check(f"invalid rank ladder rejected: {label}", True)
+    check(
+        "stabilizing accepts a count",
+        cv.validate_ranks([{"name": "A", "req": {"stabilizing": 2}}])[0]["req"] == {"stabilizing": 2},
+    )
     check("rank ladder gets req filled in", cv.validate_ranks([{"name": "A"}]) == [{"name": "A", "req": {}}])
 
     print("\n[5] API")
