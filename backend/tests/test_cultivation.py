@@ -1,0 +1,316 @@
+"""Habit cultivation: day states, recovery maths, stage readiness, ranks and the API.
+
+Run with:  python -m backend.tests.test_cultivation
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import tempfile
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("Europe/Kyiv")
+D0 = date(2026, 11, 2)  # a Monday
+
+SPEC = {
+    "name": "Sleep",
+    "stage": "formation",
+    "start_date": D0.isoformat(),
+    "level": {"wake_by": "08:00", "min_sleep_h": 7},
+    "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
+    "rules": {"confirm_days": 2, "recovery_ok_days": 2},
+}
+
+
+def main() -> int:
+    from backend import cultivation as cv
+
+    failures: list[str] = []
+
+    def check(label: str, condition: bool, detail: str = "") -> None:
+        if condition:
+            print(f"  PASS  {label}")
+        else:
+            failures.append(f"{label} {detail}".strip())
+            print(f"  FAIL  {label} {detail}")
+
+    def night(wake_day: date, bed: str, wake: str, note: str = "", log_id: int = 1) -> cv.Night:
+        bed_t, wake_t = cv.parse_hhmm(bed), cv.parse_hhmm(wake)
+        bed_day = wake_day - timedelta(days=1) if bed_t > wake_t else wake_day
+        return cv.Night(log_id, datetime.combine(bed_day, bed_t, TZ), datetime.combine(wake_day, wake_t, TZ), note)
+
+    def versions(*items):
+        return [{"id": i + 1, "effective_from": eff, "spec": spec} for i, (eff, spec) in enumerate(items)]
+
+    def sleep_days(nights, until, vers=None, marks=None, modes=None):
+        vers = vers or versions((D0, SPEC))
+        obs: dict = {}
+        for n in nights:
+            obs.setdefault(n.wake.date(), cv.Observation()).nights.append(n)
+        return cv.build_days("sleep", vers, obs, marks or {}, modes or [], until), vers
+
+    print("\n[1] Day states")
+    d = D0 + timedelta(days=1)
+    days, _ = sleep_days([night(d, "23:00", "07:00")], d)
+    check("on time and long enough is success", days[-1].status == "success", days[-1].status)
+    check("a day without a record is no data, not a failure", days[0].status == "no_data", days[0].status)
+    check("late but within minimum", sleep_days([night(d, "01:00", "08:30")], d)[0][-1].status == "minimum")
+    check("below minimum is a failure", sleep_days([night(d, "04:00", "11:30")], d)[0][-1].status == "fail")
+    check("on time but too short fails", sleep_days([night(d, "02:30", "07:30")], d)[0][-1].status == "fail")
+
+    bounded = {**SPEC, "level": {"wake_by": "08:00", "min_sleep_h": 7, "max_sleep_h": 9}, "minimum": {}}
+    statuses = [
+        sleep_days([night(d, bed, "07:30")], d, vers=versions((D0, bounded)))[0][-1].status
+        for bed in ("22:30", "23:30", "22:00")
+    ]
+    check("upper sleep bound respected", statuses == ["success", "success", "fail"], str(statuses))
+    check("level text", cv.level_text("sleep", bounded["level"]) == "підйом до 08:00, сон 7–9 год",
+          cv.level_text("sleep", bounded["level"]))
+    try:
+        cv.validate_spec("sleep", cv.merge_patch(bounded, {"level": {"max_sleep_h": 6}}))
+        check("min > max rejected", False)
+    except cv.PassportError:
+        check("min > max rejected", True)
+
+    nap = night(d, "14:00", "15:00", log_id=2)
+    day = sleep_days([nap, night(d, "23:30", "07:00")], d)[0][-1]
+    check("longest sleep is the night, naps counted", (day.status, day.naps) == ("success", 1), str((day.status, day.naps)))
+    tap = cv.Night(3, datetime.combine(d, cv.parse_hhmm("05:43"), TZ), datetime.combine(d, cv.parse_hhmm("05:43"), TZ))
+    day = sleep_days([tap], d)[0][-1]
+    check("accidental zero-length record is neutral", (day.status, day.met) == ("no_data", None), str(day.status))
+    huge = cv.Night(4, datetime.combine(d - timedelta(days=1), cv.parse_hhmm("06:00"), TZ),
+                    datetime.combine(d, cv.parse_hhmm("07:00"), TZ))
+    check("implausible 25 h record is flagged", sleep_days([huge], d)[0][-1].status == "invalid")
+
+    marks = {d: {"status": "exception", "reason": "illness"}}
+    day = sleep_days([night(d, "04:00", "12:00")], d, marks=marks)[0][-1]
+    check("manual exception overrides", (day.status, day.met) == ("exception", None), day.status)
+    marks = {d: {"status": "fail", "reason": "late, time unknown"}}
+    check("manual failure without a record", sleep_days([], d, marks=marks)[0][-1].status == "fail")
+
+    unrated = {**SPEC, "level": {"wake_by": None, "min_sleep_h": None}}
+    day = sleep_days([night(d, "01:00", "10:00")], d, vers=versions((D0, unrated)))[0][-1]
+    check("no criterion means unrated", (day.status, day.met) == ("unrated", None), day.status)
+
+    stricter = {**SPEC, "level": {"wake_by": "07:30", "min_sleep_h": 7}}
+    vers = versions((D0, SPEC), (D0 + timedelta(days=2), stricter))
+    days, _ = sleep_days([night(D0 + timedelta(days=1), "00:00", "07:45"),
+                          night(D0 + timedelta(days=2), "00:00", "07:45")], D0 + timedelta(days=2), vers=vers)
+    check("criteria apply from their effective date", [x.status for x in days[1:]] == ["success", "minimum"],
+          str([x.status for x in days]))
+
+    entry = night(d, "01:00", "08:30")
+    normal = sleep_days([entry], d)[0][-1]
+    degraded = sleep_days([entry], d, modes=[{"start_date": d, "end_date": None}])[0][-1]
+    check("minimum is neutral in normal mode", (normal.status, normal.met) == ("minimum", None))
+    check("minimum is met in degraded mode", (degraded.status, degraded.met) == ("minimum", True))
+
+    obs = {d: cv.Observation(amount=12, events=1)}
+    build_spec = {"name": "Read", "stage": "formation", "start_date": D0.isoformat(), "level": {"min_amount": 10}}
+    days = cv.build_days("build", versions((D0, build_spec)), obs, {}, [], d)
+    check("build habit: threshold met", days[-1].status == "success" and days[0].status == "no_data")
+    quit_spec = {"name": "No phone", "stage": "formation", "start_date": D0.isoformat()}
+    days = cv.build_days("quit", versions((D0, quit_spec)), {d: cv.Observation(events=1)}, {}, [], d + timedelta(days=1))
+    check("quit habit: relapse fails, past days succeed, today open",
+          [x.status for x in days] == ["success", "fail", "no_data"], str([x.status for x in days]))
+
+    print("\n[2] Deviations and recovery")
+    mon = D0
+    nights = [night(mon, "04:00", "12:00", "Причина: робота"), night(mon + timedelta(1), "04:30", "12:30"),
+              night(mon + timedelta(2), "23:00", "07:00"), night(mon + timedelta(3), "23:00", "07:00")]
+    days, vers = sleep_days(nights, mon + timedelta(3))
+    episodes = cv.find_episodes(days, vers)
+    first = episodes[0] if episodes else None
+    check("Monday break, Wednesday back, confirmed Thursday",
+          len(episodes) == 1 and (first.fail_days, first.days_to_first_ok, first.days_to_confirmed) == (2, 2, 3),
+          str([e.as_dict(mon) for e in episodes]))
+    check("deviation reason captured", first is not None and first.reasons == ["робота"])
+    summary = cv.recovery_summary(episodes, days, mon + timedelta(3), 2)
+    check("recovered within term", (summary["in_term"], summary["judged"]) == (1, 1) and summary["current_deviation"] is None)
+
+    nights = [night(D0, "04:00", "12:00"), night(D0 + timedelta(1), "23:00", "07:00"),
+              night(D0 + timedelta(2), "04:00", "12:00"),
+              night(D0 + timedelta(4), "23:00", "07:00"), night(D0 + timedelta(5), "23:00", "07:00")]
+    days, vers = sleep_days(nights, D0 + timedelta(5))
+    e = cv.find_episodes(days, vers)[0]
+    check("no data is neutral and a relapse resets confirmation",
+          (e.fail_days, e.days_to_first_ok, e.days_to_confirmed) == (2, 1, 5),
+          str((e.fail_days, e.days_to_first_ok, e.days_to_confirmed)))
+
+    days, vers = sleep_days([night(D0 + timedelta(i), "23:00", "07:00") for i in range(5)], D0 + timedelta(4))
+    summary = cv.recovery_summary(cv.find_episodes(days, vers), days, D0 + timedelta(4), 2)
+    check("recovery is untested without failures", not summary["tested"] and summary["in_term_share"] is None)
+
+    days, vers = sleep_days([night(D0 + timedelta(i), "04:00", "12:00") for i in range(4)], D0 + timedelta(3))
+    summary = cv.recovery_summary(cv.find_episodes(days, vers), days, D0 + timedelta(3), 2)
+    check("ongoing deviation past the term counts as missed",
+          summary["current_deviation"]["fail_days"] == 4 and (summary["in_term"], summary["judged"]) == (0, 1))
+
+    print("\n[3] Stage readiness")
+    spec = {**SPEC, "stage": "stabilization",
+            "integration": {"window_days": 14, "min_observed_days": 10, "min_success_rate": 0.8,
+                            "max_recovery_days": 2, "max_deviation_days": 7}}
+    today = D0 + timedelta(days=13)
+    perfect = [night(D0 + timedelta(i), "23:00", "07:00") for i in range(14)]
+    days, vers = sleep_days(perfect, today, vers=versions((D0, spec)))
+    check_result = cv.integration_check(spec, days, cv.find_episodes(days, vers), today)
+    recovery = next(c for c in check_result["criteria"] if c["key"] == "recovery")
+    check("perfect run leaves recovery untested and not ready",
+          recovery["status"] == "untested" and not check_result["ready"], str(recovery))
+    one_slip = perfect[:5] + [night(D0 + timedelta(5), "04:00", "12:00")] + perfect[6:]
+    days, vers = sleep_days(one_slip, today, vers=versions((D0, spec)))
+    episodes = cv.find_episodes(days, vers)
+    check_result = cv.integration_check(spec, days, episodes, today)
+    check("a quick recovery makes the habit ready", check_result["ready"], str(check_result["criteria"]))
+    rec = cv.recommendation(spec, days, episodes, today)
+    check("recommendation suggests integration", rec is not None and rec["to"] == "integrated", str(rec))
+    formation = {**SPEC, "stabilization": {"window_days": 14, "min_success_rate": 0.7, "min_observed_days": 10}}
+    days, vers = sleep_days(perfect, today, vers=versions((D0, formation)))
+    rec = cv.recommendation(formation, days, cv.find_episodes(days, vers), today)
+    check("formation → stabilization recommended", rec is not None and rec["to"] == "stabilization", str(rec))
+
+    print("\n[4] Ranks")
+
+    def stage_versions(*stages):
+        return [{"id": i + 1, "effective_from": D0 + timedelta(days=on), "spec": {"name": "h", "stage": st}}
+                for i, (st, on) in enumerate(stages)]
+
+    def rank_name(habits: dict, on: int) -> str:
+        return cv.compute_rank(habits, D0 + timedelta(days=on))["name"]
+
+    check("no habits: mortal", rank_name({}, 0) == "Смертний")
+    habits = {1: stage_versions(("formation", 0))}
+    check("formation: disciple 1", rank_name(habits, 0) == "Послушник 1 рівня")
+    habits = {1: stage_versions(("formation", 0), ("stabilization", 30))}
+    check("stabilization: disciple 2", rank_name(habits, 30) == "Послушник 2 рівня")
+    habits = {1: stage_versions(("formation", 0), ("integrated", 90)),
+              2: stage_versions(("integrated", 200)), 3: stage_versions(("integrated", 300))}
+    check("3 integrated habits: Magus rank 1", rank_name(habits, 300) == "Маг 1 рангу", rank_name(habits, 300))
+    check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Смертний")
+    habits = {1: stage_versions(("integrated", 0), ("recovery", 20)), 2: stage_versions(("integrated", 1)),
+              3: stage_versions(("integrated", 2))}
+    within = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS - 1))
+    after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
+    check("recovery keeps rank within grace", within["name"] == "Маг 1 рангу" and within["warnings"])
+    check("rank drops after grace, peak remembered", after["name"] == "Напівмаг" and after["peak_name"] == "Маг 1 рангу")
+    same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
+    check("same-day correction: last version wins", rank_name(same_day, 5) == "Послушник 2 рівня")
+    check("recovery without integration does not count",
+          rank_name({1: stage_versions(("recovery", 0))}, 0) == "Послушник 1 рівня")
+
+    print("\n[5] API")
+    workdir = Path(tempfile.mkdtemp(prefix="anyhabit-cultivation-"))
+    os.environ["ANYHABIT_DATA_DIR"] = str(workdir / "data")
+    os.environ["ANYHABIT_SECRET_KEY"] = "test-secret"
+    os.environ["ANYHABIT_COOKIE_SECURE"] = "false"
+    os.environ["ANYHABIT_BOOTSTRAP_PASSWORD"] = "test-password"
+    try:
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+
+        client = TestClient(app)
+        client.post("/auth/login", json={"identifier": "owner@anyhabit.local", "password": "test-password"})
+        client.patch("/auth/me", json={"timezone": "Europe/Kyiv"})
+
+        created = client.post("/cultivation/habits", json={
+            "kind": "sleep",
+            "spec": {"name": "Sleep", "stage": "formation",
+                     "level": {"wake_by": "08:00", "min_sleep_h": 7},
+                     "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
+                     "start_date": (datetime.now(TZ).date() - timedelta(days=3)).isoformat()},
+            "reason": "first habit",
+            "effective_from": (datetime.now(TZ).date() - timedelta(days=3)).isoformat(),
+        })
+        check("habit created with its own tracker", created.status_code == 201 and created.json()["tracker"] is not None,
+              created.text[:300])
+        habit = created.json()
+        hid = habit["id"]
+
+        local_today = datetime.now(TZ).date()
+        yesterday = local_today - timedelta(days=1)
+        slept = client.post(f"/cultivation/habits/{hid}/sleep", json={
+            "bedtime": f"{(yesterday - timedelta(days=1)).isoformat()}T23:00:00",
+            "wake": f"{yesterday.isoformat()}T07:00:00",
+            "state": "бадьоро",
+        })
+        check("sleep entry recorded", slept.status_code == 201 and slept.json()["day"]["status"] == "success",
+              slept.text[:300])
+        logs = client.get(f"/trackers/{habit['tracker']['id']}/logs/").json()
+        check("night stored as a tracker log", len(logs) == 1 and abs(logs[0]["amount"] - 8) < 0.01, str(logs)[:200])
+
+        bad = client.post(f"/cultivation/habits/{hid}/sleep", json={
+            "bedtime": f"{yesterday.isoformat()}T08:00:00", "wake": f"{yesterday.isoformat()}T07:00:00"})
+        check("wake before bedtime rejected", bad.status_code == 422, bad.text[:200])
+
+        future = client.post(f"/cultivation/habits/{hid}/marks", json={
+            "date": (local_today + timedelta(days=2)).isoformat(), "status": "fail", "reason": "x"})
+        check("future marks rejected", future.status_code == 422)
+        marked = client.post(f"/cultivation/habits/{hid}/marks", json={
+            "date": local_today.isoformat(), "status": "exception", "reason": "поїздка"})
+        check("day marked", marked.status_code == 201 and marked.json()["status"] == "exception", marked.text[:200])
+
+        changed = client.post(f"/cultivation/habits/{hid}/versions", json={
+            "patch": {"level": {"min_sleep_h": 7.5}}, "reason": "stricter"})
+        body = changed.json()
+        check("passport change keeps history", changed.status_code == 201 and len(body["versions"]) == 2,
+              changed.text[:200])
+        check("patched level applied", body["passport"]["level"] == {"wake_by": "08:00", "min_sleep_h": 7.5})
+        back = client.post(f"/cultivation/habits/{hid}/versions", json={
+            "patch": {"stage": "stabilization"}, "reason": "x", "effective_from": "2000-01-01"})
+        check("backdating before the last version refused", back.status_code == 422, back.text[:200])
+
+        token = client.post("/developer/tokens", json={"name": "agent"}).json()["token"]
+        agent = TestClient(app)
+        headers = {"Authorization": f"Bearer {token}"}
+        refused = agent.post(f"/cultivation/habits/{hid}/stage", headers=headers,
+                             json={"stage": "stabilization", "reason": "agent thinks so"})
+        check("agent cannot change the passport without user consent", refused.status_code == 409, refused.text[:200])
+        allowed = agent.post(f"/cultivation/habits/{hid}/stage", headers=headers,
+                             json={"stage": "stabilization", "reason": "user agreed", "confirmed_by_user": True})
+        check("agent change with consent is recorded as api",
+              allowed.status_code == 201 and allowed.json()["versions"][-1]["author"] == "api", allowed.text[:200])
+        agent_mark = agent.post(f"/cultivation/habits/{hid}/marks", headers=headers, json={
+            "date": yesterday.isoformat(), "status": "fail", "reason": "late work"})
+        check("agent can record facts", agent_mark.status_code == 201)
+        profile = agent.put("/cultivation/profile", headers=headers, json={"recovery_grace_days": 1})
+        check("agent cannot change the rank system", profile.status_code == 403)
+
+        started = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "сесія"})
+        check("degraded mode started", started.status_code == 201 and started.json()["mode"] is not None, started.text[:200])
+        again = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "again"})
+        check("only one active degraded mode", again.status_code == 409)
+        ended = client.post(f"/cultivation/habits/{hid}/modes/end", json={"reason": "done"})
+        check("degraded mode ended", ended.status_code == 200 and ended.json()["mode"] is None, ended.text[:200])
+
+        overview = client.get("/cultivation/overview").json()
+        check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
+        check("overview carries the rank", overview["rank"]["name"] == "Послушник 2 рівня", overview["rank"]["name"])
+
+        exported = client.get("/export/?data_type=all&format=json").json()
+        cult = exported.get("cultivation", {})
+        check("JSON export includes cultivation history",
+              len(cult.get("habits", [])) == 1 and len(cult["habits"][0]["versions"]) == 3, str(cult)[:300])
+
+        other = TestClient(app)
+        other.post("/auth/register", json={"username": "other", "email": "other@example.com", "password": "other-password"})
+        check("another user cannot see the habit", other.get(f"/cultivation/habits/{hid}").status_code == 404)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+    print()
+    if failures:
+        print(f"{len(failures)} CHECK(S) FAILED:")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+    print("ALL CULTIVATION CHECKS PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
