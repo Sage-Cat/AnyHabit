@@ -211,9 +211,10 @@ def validate_ranks(ranks) -> list[dict]:
         unknown = set(req) - RANK_REQ_KEYS
         if unknown:
             raise PassportError(f"Невідомі вимоги рангу: {', '.join(sorted(unknown))}")
-        for flag in ("active", "stabilizing"):
-            if flag in req and not isinstance(req[flag], bool):
-                raise PassportError(f"Ранг «{rank['name']}»: {flag} має бути true або false")
+        if "active" in req and not isinstance(req["active"], bool):
+            raise PassportError(f"Ранг «{rank['name']}»: active має бути true або false")
+        if "stabilizing" in req and not isinstance(req["stabilizing"], bool):
+            check_number(f"Ранг «{rank['name']}»: stabilizing", req["stabilizing"], integer=True, low=0, high=1000)
         if "integrated" in req:
             check_number(f"Ранг «{rank['name']}»: integrated", req["integrated"], integer=True, low=0, high=1000)
         if "durable" in req:
@@ -819,25 +820,27 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
 RECOVERY_GRACE_DAYS = 60
 ACTIVE_STAGES = ("formation", "stabilization", "integrated", "recovery")
 
-# active — some habit is being worked on; stabilizing — one is stabilizing or
-# integrated; integrated — number of integrated habits; durable — (count, days)
-# integrated habits held without a break that long.  ``confirmed`` marks the
-# thresholds set by the user; the rest are proposals and can be overridden.
+# active — some habit is being worked on; stabilizing — how many habits have
+# reached stabilization or beyond (true means one); integrated — number of
+# integrated habits; durable — (count, days) integrated habits held without a
+# break that long.  ``confirmed`` marks the thresholds set by the user; the rest
+# are proposals and can be overridden.  Ranks are climbed in order: a rank also
+# needs every condition below it.
 DEFAULT_RANKS: list[dict] = [
     {"name": "Звичайна людина", "req": {}, "confirmed": True},
     {"name": "Адепт першого рівня", "req": {"active": True}, "confirmed": True},
-    {"name": "Адепт другого рівня", "req": {"stabilizing": True}, "confirmed": True},
-    {"name": "Адепт третього рівня", "req": {"integrated": 1}, "confirmed": True},
-    {"name": "Маг першого рангу", "req": {"integrated": 3}, "confirmed": True},
-    {"name": "Маг другого рангу", "req": {"integrated": 5, "durable": [3, 180]}, "confirmed": False},
-    {"name": "Маг третього рангу", "req": {"integrated": 8, "durable": [5, 365]}, "confirmed": False},
-    {"name": "Маг Нової Зірки", "req": {"integrated": 12, "durable": [8, 730]}, "confirmed": False},
-    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 15, "durable": [10, 1095]}, "confirmed": False},
-    {"name": "Маг Прямого Колапсу", "req": {"integrated": 18, "durable": [12, 1460]}, "confirmed": False},
-    {"name": "Маг Законів", "req": {"integrated": 21, "durable": [15, 1825]}, "confirmed": False},
-    {"name": "Великий Маг Законів", "req": {"integrated": 25, "durable": [18, 2190]}, "confirmed": False},
-    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 30, "durable": [22, 2920]}, "confirmed": False},
-    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 35, "durable": [28, 3650]}, "confirmed": False},
+    {"name": "Адепт другого рівня", "req": {"stabilizing": 1}, "confirmed": True},
+    {"name": "Адепт третього рівня", "req": {"stabilizing": 2}, "confirmed": True},
+    {"name": "Маг першого рангу", "req": {"integrated": 1}, "confirmed": True},
+    {"name": "Маг другого рангу", "req": {"integrated": 2}, "confirmed": True},
+    {"name": "Маг третього рангу", "req": {"integrated": 4}, "confirmed": True},
+    {"name": "Маг Нової Зірки", "req": {"integrated": 8}, "confirmed": True},
+    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16}, "confirmed": True},
+    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32}, "confirmed": True},
+    {"name": "Маг Законів", "req": {"integrated": 64}, "confirmed": True},
+    {"name": "Великий Маг Законів", "req": {"integrated": 128}, "confirmed": True},
+    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256}, "confirmed": True},
+    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512}, "confirmed": True},
 ]
 
 
@@ -882,10 +885,18 @@ def simulate_stages(habit_id: int, versions: list[dict], until: date, grace_days
     return out
 
 
+def _stabilizing_need(req: dict) -> int:
+    return int(req.get("stabilizing") or 0)  # true counts as one
+
+
+def _stabilizing_have(states: list[HabitRankState]) -> int:
+    return sum(s.stage == "stabilization" or s.counted for s in states)
+
+
 def _rank_met(req: dict, states: list[HabitRankState]) -> bool:
     if req.get("active") and not any(s.stage in ACTIVE_STAGES for s in states):
         return False
-    if req.get("stabilizing") and not any(s.stage == "stabilization" or s.counted for s in states):
+    if _stabilizing_have(states) < _stabilizing_need(req):
         return False
     if sum(s.counted for s in states) < int(req.get("integrated", 0)):
         return False
@@ -911,8 +922,11 @@ def rank_requirement_text(req: dict) -> str:
     parts = []
     if req.get("active"):
         parts.append("є звичка в роботі")
-    if req.get("stabilizing"):
+    need = _stabilizing_need(req)
+    if need == 1:
         parts.append("звичка у стабілізації")
+    elif need > 1:
+        parts.append(f"звичок у стабілізації чи далі ≥ {need}")
     if "integrated" in req:
         parts.append(f"інтегрованих звичок ≥ {req['integrated']}")
     if req.get("durable"):
@@ -925,10 +939,12 @@ def rank_progress(req: dict, states: list[HabitRankState]) -> list[dict]:
     parts = []
     if req.get("active"):
         parts.append({"label": "Звичка в роботі", "done": any(s.stage in ACTIVE_STAGES for s in states)})
-    if req.get("stabilizing"):
-        parts.append(
-            {"label": "Звичка у стабілізації", "done": any(s.stage == "stabilization" or s.counted for s in states)}
-        )
+    need = _stabilizing_need(req)
+    if need == 1:
+        parts.append({"label": "Звичка у стабілізації", "done": _stabilizing_have(states) >= 1})
+    elif need > 1:
+        have = _stabilizing_have(states)
+        parts.append({"label": "Звички у стабілізації чи далі", "have": have, "need": need, "done": have >= need})
     if "integrated" in req:
         have = sum(s.counted for s in states)
         parts.append(
