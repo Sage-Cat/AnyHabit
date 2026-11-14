@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, Download, Home, Plus, Search, Settings, Upload, Users, X } from 'lucide-react';
+import { Archive, ChevronDown, Download, Home, Plus, Search, Settings, Sprout, Upload, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TRACKER_COLOR_HEX } from '../constants/tracker';
@@ -11,7 +11,7 @@ const TABS = [
   { id: 'groups', label: 'Групові' }
 ];
 
-function Sidebar({ isHomeActive }) {
+function Sidebar({ isHomeActive, isPracticeActive }) {
   const navigate = useNavigate();
   const {
     isSidebarOpen,
@@ -43,6 +43,13 @@ function Sidebar({ isHomeActive }) {
     setSelectedCategory(null);
     setIsSidebarOpen(false);
     navigate('/');
+  };
+
+  const openPractice = () => {
+    setSelectedTrackerId(null);
+    setSelectedCategory(null);
+    setIsSidebarOpen(false);
+    navigate('/practice');
   };
 
   const openCategory = (category) => {
@@ -122,12 +129,23 @@ function Sidebar({ isHomeActive }) {
       <button
         type="button"
         onClick={openHome}
-        className={`mb-6 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+        className={`mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
           isHomeActive ? 'bg-stone-100 text-stone-900' : 'text-gray-500 hover:bg-gray-100 hover:text-stone-800'
         }`}
       >
         <Home size={16} />
         <span>Головна</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={openPractice}
+        className={`mb-6 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+          isPracticeActive ? 'bg-stone-100 text-stone-900' : 'text-gray-500 hover:bg-gray-100 hover:text-stone-800'
+        }`}
+      >
+        <Sprout size={16} />
+        <span>Культивація</span>
       </button>
 
       <div className="mb-4 flex items-center justify-between">

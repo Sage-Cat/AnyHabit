@@ -42,6 +42,7 @@ import { normalizeCategory } from './widgets/helpers';
 import { createLogApi } from '../../services/trackerApi';
 import { useAppState } from '../../state/appState';
 import { pluralCount } from '../../utils/plural';
+import HomeCultivationCard from '../cultivation/HomeCultivationCard';
 import Modal from '../ui/Modal';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -415,6 +416,7 @@ function HomePage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 md:px-10 py-6" ref={gridContainerRef}>
+        <HomeCultivationCard />
         {isLoadingDashboard ? (
           <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Завантаження головної…</div>
         ) : dashboardLoadError ? (

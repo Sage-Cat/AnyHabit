@@ -5,6 +5,8 @@ import CommandPalette from './components/CommandPalette';
 import Sidebar from './components/Sidebar';
 import TrackerView from './components/TrackerView';
 import AuthScreen from './components/auth/AuthScreen';
+import HabitDetailPage from './components/cultivation/HabitDetailPage';
+import PracticePage from './components/cultivation/PracticePage';
 import HomePage from './components/home/HomePage';
 import ExportModal from './components/modals/ExportModal';
 import GroupManagementModal from './components/modals/GroupManagementModal';
@@ -25,6 +27,19 @@ function HomeRoute() {
   }, [setSelectedCategory, setSelectedTrackerId]);
 
   return <HomePage />;
+}
+
+// Cultivation pages live under /practice: a /cultivation SPA path would collide
+// with the backend API prefix of the same name in nginx and the Vite proxy.
+function PracticeRoute() {
+  const { setSelectedTrackerId, setSelectedCategory } = useAppState();
+
+  useEffect(() => {
+    setSelectedTrackerId(null);
+    setSelectedCategory(null);
+  }, [setSelectedCategory, setSelectedTrackerId]);
+
+  return <PracticePage />;
 }
 
 function CategoryRoute() {
@@ -111,11 +126,13 @@ function AppShell() {
         />
       )}
 
-      <Sidebar isHomeActive={isHomeActive} />
+      <Sidebar isHomeActive={isHomeActive} isPracticeActive={location.pathname.startsWith('/practice')} />
 
       <div className="app-main flex flex-1 flex-col overflow-hidden bg-[#fcfcfc]">
         <Routes>
           <Route path="/" element={<HomeRoute />} />
+          <Route path="/practice" element={<PracticeRoute />} />
+          <Route path="/practice/:habitId" element={<HabitDetailPage />} />
           <Route path="/category/:categoryName" element={<CategoryRoute />} />
           <Route path="/tracker/:trackerId" element={<TrackerRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />

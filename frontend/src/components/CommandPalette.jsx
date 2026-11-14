@@ -1,4 +1,4 @@
-import { Archive, Home, Layers, Plus, Search, Settings, Upload, Download, Users } from 'lucide-react';
+import { Archive, Home, Layers, Plus, Search, Settings, Sprout, Upload, Download, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../state/appState';
@@ -71,6 +71,16 @@ function CommandPalette() {
         hint: 'Головна',
         icon: Home,
         run: go('/', () => {
+          setSelectedTrackerId(null);
+          setSelectedCategory(null);
+        })
+      },
+      {
+        id: 'action-practice',
+        label: 'Відкрити культивацію',
+        hint: 'Культивація',
+        icon: Sprout,
+        run: go('/practice', () => {
           setSelectedTrackerId(null);
           setSelectedCategory(null);
         })
