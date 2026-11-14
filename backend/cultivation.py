@@ -17,9 +17,10 @@ Everything here is pure: the router loads rows and passes plain data in.
 from __future__ import annotations
 
 import copy
+import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 # ---------------------------------------------------------------------------
 # Vocabulary
@@ -73,7 +74,7 @@ class PassportError(ValueError):
 def parse_hhmm(value: str) -> time:
     try:
         return datetime.strptime(str(value), "%H:%M").time()
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise PassportError(f"Час має бути у форматі ГГ:ХХ, отримано «{value}»") from exc
 
 
@@ -88,42 +89,129 @@ def level_defined(kind: str, level: dict | None) -> bool:
     return True
 
 
+# Dates before this are typos, and would make every request walk decades of days.
+MIN_DATE = date(2000, 1, 1)
+RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable"}
+
+
+def check_number(label: str, value, *, integer: bool = False, low: float | None = None,
+                 high: float | None = None, low_exclusive: bool = False) -> float:
+    """A finite number within bounds, or a PassportError naming the field."""
+    kind = "ціле число" if integer else "число"
+    if isinstance(value, bool):
+        raise PassportError(f"{label}: очікується {kind}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise PassportError(f"{label}: очікується {kind}") from None
+    if not math.isfinite(number) or (integer and not number.is_integer()):
+        raise PassportError(f"{label}: очікується {kind}")
+    if low is not None and (number <= low if low_exclusive else number < low):
+        raise PassportError(f"{label}: має бути {'більше' if low_exclusive else 'не менше'} {low:g}")
+    if high is not None and number > high:
+        raise PassportError(f"{label}: має бути не більше {high:g}")
+    return int(number) if integer else number
+
+
+def check_date(label: str, value) -> date:
+    try:
+        day = date.fromisoformat(str(value))
+    except ValueError:
+        raise PassportError(f"{label}: очікується дата РРРР-ММ-ДД, отримано «{value}»") from None
+    if day < MIN_DATE:
+        raise PassportError(f"{label}: дата раніша за {MIN_DATE.isoformat()}")
+    return day
+
+
+def _check_level(label: str, level) -> None:
+    if level is None:
+        return
+    if not isinstance(level, dict):
+        raise PassportError(f"{label}: очікується об'єкт")
+    if level.get("wake_by") is not None:
+        parse_hhmm(level["wake_by"])
+    bounds = {}
+    for bound in ("min_sleep_h", "max_sleep_h"):
+        if level.get(bound) is not None:
+            bounds[bound] = check_number(f"{label}.{bound}", level[bound], low=0, low_exclusive=True,
+                                         high=MAX_VALID_SLEEP_HOURS)
+    if len(bounds) == 2 and bounds["min_sleep_h"] > bounds["max_sleep_h"]:
+        raise PassportError(f"{label}: мінімальна тривалість більша за максимальну")
+    if level.get("min_amount") is not None:
+        check_number(f"{label}.min_amount", level["min_amount"], low=0)
+
+
 def validate_spec(kind: str, spec: dict) -> None:
+    """Reject anything the calculations below could not read.
+
+    A passport that passed here must never make a later request fail, because
+    history is append-only: a broken version could not be taken back.
+    """
     if not isinstance(spec, dict):
         raise PassportError("Паспорт має бути об'єктом")
     if not str(spec.get("name") or "").strip():
         raise PassportError("Потрібна назва звички")
     if spec.get("stage") not in STAGES:
         raise PassportError(f"Етап має бути одним із: {', '.join(STAGES)}")
-    levels = [("level", spec.get("level")), ("minimum", spec.get("minimum"))]
-    levels += [(f"subgoals[{i}]", (sg or {}).get("level")) for i, sg in enumerate(spec.get("subgoals") or [])]
-    for label, level in levels:
-        level = level or {}
-        if level.get("wake_by") is not None:
-            parse_hhmm(level["wake_by"])
-        for bound in ("min_sleep_h", "max_sleep_h"):
-            value = level.get(bound)
-            if value is not None and not (0 < float(value) <= MAX_VALID_SLEEP_HOURS):
-                raise PassportError(f"{label}.{bound}: значення поза межами 0–{MAX_VALID_SLEEP_HOURS:g} год")
-        if None not in (level.get("min_sleep_h"), level.get("max_sleep_h")) and float(level["min_sleep_h"]) > float(
-            level["max_sleep_h"]
-        ):
-            raise PassportError(f"{label}: мінімальна тривалість більша за максимальну")
-        if level.get("min_amount") is not None and float(level["min_amount"]) < 0:
-            raise PassportError(f"{label}.min_amount не може бути від'ємним")
+    if spec.get("start_date") is not None:
+        check_date("start_date", spec["start_date"])
+    if spec.get("priority") is not None:
+        check_number("priority", spec["priority"])
+    _check_level("level", spec.get("level"))
+    _check_level("minimum", spec.get("minimum"))
+    subgoals = spec.get("subgoals")
+    if subgoals is not None and not isinstance(subgoals, list):
+        raise PassportError("subgoals: очікується список")
+    for i, subgoal in enumerate(subgoals or []):
+        if not isinstance(subgoal, dict):
+            raise PassportError(f"subgoals[{i}]: очікується об'єкт")
+        _check_level(f"subgoals[{i}].level", subgoal.get("level"))
+    for key in ("rules", "stabilization", "integration", "maintenance"):
+        if spec.get(key) is not None and not isinstance(spec[key], dict):
+            raise PassportError(f"{key}: очікується об'єкт")
     rules = section(spec, "rules", DEFAULT_RULES)
-    if int(rules["confirm_days"]) < 1 or int(rules["recovery_ok_days"]) < 0:
-        raise PassportError("rules: confirm_days ≥ 1, recovery_ok_days ≥ 0")
+    check_number("rules.confirm_days", rules["confirm_days"], integer=True, low=1, high=365)
+    check_number("rules.recovery_ok_days", rules["recovery_ok_days"], integer=True, low=1, high=365)
     for key, defaults in (
         ("stabilization", DEFAULT_STABILIZATION),
         ("integration", DEFAULT_INTEGRATION),
         ("maintenance", DEFAULT_MAINTENANCE),
     ):
         block = section(spec, key, defaults)
-        if not (0 < float(block["min_success_rate"]) <= 1):
-            raise PassportError(f"{key}.min_success_rate має бути в межах (0; 1]")
-        if int(block["window_days"]) < 1:
-            raise PassportError(f"{key}.window_days ≥ 1")
+        check_number(f"{key}.min_success_rate", block["min_success_rate"], low=0, low_exclusive=True, high=1)
+        check_number(f"{key}.window_days", block["window_days"], integer=True, low=1, high=3650)
+        for name in ("min_observed_days", "max_recovery_days", "max_deviation_days"):
+            if name in block:
+                check_number(f"{key}.{name}", block[name], integer=True, low=0, high=3650)
+
+
+def validate_ranks(ranks) -> list[dict]:
+    """Check a custom rank ladder and return it with every ``req`` present."""
+    if not isinstance(ranks, list) or not ranks:
+        raise PassportError("Порожній список рангів")
+    out = []
+    for i, rank in enumerate(ranks):
+        if not isinstance(rank, dict) or not str(rank.get("name") or "").strip():
+            raise PassportError(f"Ранг {i + 1}: потрібна назва")
+        req = rank.get("req") or {}
+        if not isinstance(req, dict):
+            raise PassportError(f"Ранг «{rank['name']}»: req має бути об'єктом")
+        unknown = set(req) - RANK_REQ_KEYS
+        if unknown:
+            raise PassportError(f"Невідомі вимоги рангу: {', '.join(sorted(unknown))}")
+        for flag in ("active", "stabilizing"):
+            if flag in req and not isinstance(req[flag], bool):
+                raise PassportError(f"Ранг «{rank['name']}»: {flag} має бути true або false")
+        if "integrated" in req:
+            check_number(f"Ранг «{rank['name']}»: integrated", req["integrated"], integer=True, low=0, high=1000)
+        if "durable" in req:
+            durable = req["durable"]
+            if not isinstance(durable, list) or len(durable) != 2:
+                raise PassportError(f"Ранг «{rank['name']}»: durable має бути [кількість, днів]")
+            check_number(f"Ранг «{rank['name']}»: durable[0]", durable[0], integer=True, low=0, high=1000)
+            check_number(f"Ранг «{rank['name']}»: durable[1]", durable[1], integer=True, low=1, high=36500)
+        out.append({**rank, "req": req})
+    return out
 
 
 def merge_patch(spec: dict, patch: dict) -> dict:
@@ -189,7 +277,9 @@ class Night:
 
     @property
     def hours(self) -> float:
-        return (self.wake - self.bedtime).total_seconds() / 3600
+        # Elapsed time, not wall-clock difference: a night across a DST switch
+        # is an hour longer or shorter than the clock suggests.
+        return (self.wake.astimezone(timezone.utc) - self.bedtime.astimezone(timezone.utc)).total_seconds() / 3600
 
 
 @dataclass
@@ -300,14 +390,16 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
 
 
 def classify(kind: str, day: date, obs: Observation | None, spec: dict | None, mark: dict | None,
-             degraded: bool, today: date) -> Day:
+             degraded: bool, today: date, tracked: bool = True) -> Day:
     obs = obs or Observation()
     result = Day(day, "no_data", degraded=degraded, amount=obs.amount, events=obs.events)
 
     if kind == "sleep":
         real = [n for n in obs.nights if n.hours >= MIN_NIGHT_HOURS]
         if real:
-            result.night = max(real, key=lambda n: n.hours)
+            # A mistyped 20-hour entry must not hide the real night next to it.
+            plausible = [n for n in real if n.hours <= MAX_VALID_SLEEP_HOURS]
+            result.night = max(plausible or real, key=lambda n: n.hours)
             result.naps = len(obs.nights) - 1
             result.reason = parse_note(result.night.note)["reason"]
         elif obs.nights:
@@ -341,7 +433,7 @@ def classify(kind: str, day: date, obs: Observation | None, spec: dict | None, m
         if kind == "quit":
             if obs.events:
                 result.status = "fail"
-            elif day < today:
+            elif day < today and tracked:
                 # Abstinence is the default state of a quit habit: a past day
                 # without a relapse is a success, today is still open.
                 result.status = "success"
@@ -371,7 +463,13 @@ def mode_on(modes: list[dict], day: date) -> dict | None:
 
 
 def build_days(kind: str, versions: list[dict], observations: dict[date, Observation], marks: dict[date, dict],
-               modes: list[dict], until: date) -> list[Day]:
+               modes: list[dict], until: date, today: date | None = None, tracked: bool = True) -> list[Day]:
+    """Day states up to ``until``; ``today`` (default ``until``) is the still-open day.
+
+    ``tracked`` is False when no tracker feeds the habit: then nothing can be
+    inferred, not even the abstinence of a quit habit.
+    """
+    today = today or until
     starts = [
         date.fromisoformat(v["spec"]["start_date"]) if v["spec"].get("start_date") else v["effective_from"]
         for v in versions
@@ -383,7 +481,7 @@ def build_days(kind: str, versions: list[dict], observations: dict[date, Observa
     while current <= until:
         days.append(
             classify(kind, current, observations.get(current), spec_for(versions, current), marks.get(current),
-                     mode_on(modes, current) is not None, until)
+                     mode_on(modes, current) is not None, today, tracked)
         )
         current += timedelta(days=1)
     return days
@@ -417,7 +515,8 @@ class Episode:
         return (self.confirmed - self.start).days if self.confirmed else None
 
     def elapsed(self, ref: date) -> int:
-        return ((self.first_ok or ref) - self.start).days
+        """How long the deviation lasted: until recovery was confirmed, or so far."""
+        return ((self.confirmed or ref) - self.start).days
 
     def as_dict(self, ref: date) -> dict:
         return {

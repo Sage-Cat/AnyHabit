@@ -243,6 +243,7 @@ class CultivationMode(Base):
     end_date = Column(String, nullable=True)
     reason = Column(Text, nullable=False)
     end_reason = Column(Text, default="")
+    author = Column(String, default="user")  # "user" (web UI) or "api" (token)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     ended_at = Column(DateTime(timezone=True), nullable=True)
 

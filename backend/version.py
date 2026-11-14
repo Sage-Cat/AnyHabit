@@ -11,4 +11,4 @@ APP_NAME = "AnyHabit"
 # Bumped whenever a migration is added to ``migrations.MIGRATIONS``.  Stored in
 # the database so a downgrade can be detected and reported instead of silently
 # corrupting data.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10

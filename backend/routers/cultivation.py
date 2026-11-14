@@ -14,14 +14,12 @@ from .. import cultivation as cv
 from .. import models, schemas
 from ..access import require_tracker_access
 from ..deps import get_current_user, get_db, get_period_context
-from ..security import looks_like_api_token
 from ..time_utils import PeriodContext, ensure_utc, resolve_timezone, utcnow
 from .logs import create_log
 
 router = APIRouter(prefix="/cultivation", tags=["cultivation"])
 
 KIND_TRACKER_TYPES = {"sleep": "build", "build": "build", "boolean": "boolean", "quit": "quit"}
-RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable"}
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +63,15 @@ class DayMarkCreate(BaseModel):
 class ModeStart(BaseModel):
     start_date: Optional[date] = None
     reason: str = Field(min_length=1, max_length=2000)
+    confirmed_by_user: bool = Field(
+        default=False, description="Required for API tokens: the minimum becomes the requirement"
+    )
 
 
 class ModeEnd(BaseModel):
     end_date: Optional[date] = None
     reason: str = Field(default="", max_length=2000)
+    confirmed_by_user: bool = False
 
 
 class SleepEntry(BaseModel):
@@ -91,10 +93,15 @@ class ProfileUpdate(BaseModel):
 
 
 def _author(request: Request) -> str:
-    header = request.headers.get("authorization", "")
-    if header.lower().startswith("bearer ") and looks_like_api_token(header[7:].strip()):
-        return "api"
-    return "user"
+    """Who acted: ``api`` for a personal access token (header or cookie), else ``user``."""
+    return "api" if getattr(request.state, "auth_via", None) == "api_token" else "user"
+
+
+def _require_write(request: Request) -> str:
+    author = _author(request)
+    if author == "api" and getattr(request.state, "token_scope", None) == "read":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Токен лише для читання")
+    return author
 
 
 def _require_user_confirmation(request: Request, confirmed: bool) -> str:
@@ -103,7 +110,7 @@ def _require_user_confirmation(request: Request, confirmed: bool) -> str:
     The web UI acts for the user directly; a script or AI agent using an API
     token must state that the user approved this exact change.
     """
-    author = _author(request)
+    author = _require_write(request)
     if author == "api" and not confirmed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -126,6 +133,21 @@ def _get_habit(db: Session, user: models.User, habit_id: int) -> models.Cultivat
     if habit is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Звичку не знайдено")
     return habit
+
+
+def _writable_habit(db: Session, user: models.User, habit_id: int) -> models.CultivatedHabit:
+    habit = _get_habit(db, user, habit_id)
+    if habit.archived_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичку архівовано: спершу поверніть її з архіву")
+    return habit
+
+
+def _check_day(label: str, value: date, today: date) -> None:
+    if value < cv.MIN_DATE:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"{label}: дата раніша за {cv.MIN_DATE.isoformat()}")
+    if value > today:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label}: дата ще не настала")
 
 
 def _versions(db: Session, habit: models.CultivatedHabit) -> list[dict]:
@@ -179,6 +201,7 @@ def _modes(db: Session, habit: models.CultivatedHabit) -> list[dict]:
             "end_date": date.fromisoformat(row.end_date) if row.end_date else None,
             "reason": row.reason,
             "end_reason": row.end_reason or "",
+            "author": row.author or "user",
         }
         for row in rows
     ]
@@ -213,13 +236,16 @@ def _observations(db: Session, habit: models.CultivatedHabit, user: models.User)
         .all()
     )
     for log in logs:
-        local = ensure_utc(log.timestamp).astimezone(tz)
+        wake_utc = ensure_utc(log.timestamp)
+        local = wake_utc.astimezone(tz)
         obs = out.setdefault(local.date(), cv.Observation())
         obs.events += 1
         obs.amount += float(log.amount or 0)
         obs.notes.append(log.note or "")
         if habit.kind == "sleep" and log.amount and log.amount > 0:
-            obs.nights.append(cv.Night(log.id, local - timedelta(hours=float(log.amount)), local, log.note or ""))
+            # Subtract in UTC: local wall-clock arithmetic is off by an hour across DST.
+            bedtime = (wake_utc - timedelta(hours=float(log.amount))).astimezone(tz)
+            obs.nights.append(cv.Night(log.id, bedtime, local, log.note or ""))
     return out
 
 
@@ -266,7 +292,8 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
     tracker = _tracker_info(db, habit)
     unit = (tracker or {}).get("unit", "")
     modes = _modes(db, habit)
-    days = cv.build_days(habit.kind, versions, _observations(db, habit, user), _marks(db, habit), modes, today)
+    days = cv.build_days(habit.kind, versions, _observations(db, habit, user), _marks(db, habit), modes, today,
+                         tracked=tracker is not None)
     episodes = cv.find_episodes(days, versions)
     rules = cv.section(spec, "rules", cv.DEFAULT_RULES)
     today_spec = cv.spec_for(versions, today) or spec
@@ -404,6 +431,8 @@ def create_habit(
     spec.setdefault("stage", "formation")
     today = _today(current_user)
     spec.setdefault("start_date", today.isoformat())
+    if payload.effective_from is not None:
+        _check_day("effective_from", payload.effective_from, today)
     try:
         cv.validate_spec(payload.kind, spec)
     except cv.PassportError as exc:
@@ -452,8 +481,9 @@ def create_habit(
             spec_json=json.dumps(spec, ensure_ascii=False),
         )
     )
+    analysis = _analyse_or_rollback(db, current_user, habit)
     db.commit()
-    return _analyse(db, current_user, habit)
+    return analysis
 
 
 @router.get("/habits/{habit_id}")
@@ -478,18 +508,34 @@ def habit_days(
     today = _today(current_user)
     versions = _versions(db, habit)
     days = cv.build_days(habit.kind, versions, _observations(db, habit, current_user), _marks(db, habit),
-                         _modes(db, habit), min(end or today, today))
+                         _modes(db, habit), min(end or today, today), today=today,
+                         tracked=_tracker_info(db, habit) is not None)
     return [d.as_dict() for d in days if (start is None or d.date >= start)]
 
 
+def _analyse_or_rollback(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict:
+    """Analyse pending changes before commit, so nothing unreadable is ever stored."""
+    db.flush()
+    try:
+        return _analyse(db, user, habit)
+    except (cv.PassportError, ValueError, TypeError, KeyError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Паспорт не вдається застосувати: {exc}") from None
+
+
 def _add_version(db: Session, habit: models.CultivatedHabit, user: models.User, spec: dict, reason: str,
-                 effective_from: Optional[date], author: str) -> None:
+                 effective_from: Optional[date], author: str) -> dict:
     try:
         cv.validate_spec(habit.kind, spec)
     except cv.PassportError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
     versions = _versions(db, habit)
-    effective = effective_from or _today(user)
+    today = _today(user)
+    effective = effective_from or today
+    # A future date would show the new stage now but count the old one in ranks,
+    # and could not be undone, because history only moves forward.
+    _check_day("effective_from", effective, today)
     if versions and effective < versions[-1]["effective_from"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -505,7 +551,9 @@ def _add_version(db: Session, habit: models.CultivatedHabit, user: models.User, 
             spec_json=json.dumps(spec, ensure_ascii=False),
         )
     )
+    analysis = _analyse_or_rollback(db, user, habit)
     db.commit()
+    return analysis
 
 
 @router.post("/habits/{habit_id}/versions", status_code=status.HTTP_201_CREATED)
@@ -518,13 +566,12 @@ def change_passport(
 ):
     """Record a new passport version.  Nothing is overwritten: the old one stays in history."""
     author = _require_user_confirmation(request, payload.confirmed_by_user)
-    habit = _get_habit(db, current_user, habit_id)
+    habit = _writable_habit(db, current_user, habit_id)
     if (payload.spec is None) == (payload.patch is None):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Передайте або spec, або patch")
     current = cv.latest_spec(_versions(db, habit)) or {}
     spec = payload.spec if payload.spec is not None else cv.merge_patch(current, payload.patch)
-    _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
-    return _analyse(db, current_user, habit)
+    return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
 
 
 @router.post("/habits/{habit_id}/stage", status_code=status.HTTP_201_CREATED)
@@ -536,13 +583,12 @@ def change_stage(
     db: Session = Depends(get_db),
 ):
     author = _require_user_confirmation(request, payload.confirmed_by_user)
-    habit = _get_habit(db, current_user, habit_id)
+    habit = _writable_habit(db, current_user, habit_id)
     current = cv.latest_spec(_versions(db, habit)) or {}
     if current.get("stage") == payload.stage:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичка вже на цьому етапі")
     spec = cv.merge_patch(current, {"stage": payload.stage})
-    _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
-    return _analyse(db, current_user, habit)
+    return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
 
 
 @router.post("/habits/{habit_id}/marks", status_code=status.HTTP_201_CREATED)
@@ -554,9 +600,11 @@ def mark_day(
     db: Session = Depends(get_db),
 ):
     """Record a manual verdict for one day (``clear`` removes the previous one)."""
-    habit = _get_habit(db, current_user, habit_id)
+    author = _require_write(request)
+    habit = _writable_habit(db, current_user, habit_id)
     if payload.date > _today(current_user):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Не можна позначати майбутні дні")
+    _check_day("date", payload.date, _today(current_user))
     if payload.status != "clear" and not payload.reason.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Вкажіть причину позначки")
     db.add(
@@ -565,7 +613,7 @@ def mark_day(
             date=payload.date.isoformat(),
             status=payload.status,
             reason=payload.reason.strip(),
-            author=_author(request),
+            author=author,
         )
     )
     db.commit()
@@ -577,18 +625,26 @@ def mark_day(
 def start_mode(
     habit_id: int,
     payload: ModeStart,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Enter controlled degradation: the minimum level becomes the requirement until it ends."""
-    habit = _get_habit(db, current_user, habit_id)
+    """Enter controlled degradation: the minimum level becomes the requirement until it ends.
+
+    That changes what counts as success, so an API token needs the user's consent.
+    """
+    author = _require_user_confirmation(request, payload.confirmed_by_user)
+    habit = _writable_habit(db, current_user, habit_id)
+    start = payload.start_date or _today(current_user)
+    _check_day("start_date", start, _today(current_user))
     if any(m["end_date"] is None for m in _modes(db, habit)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Режим мінімуму вже активний")
     db.add(
         models.CultivationMode(
             habit_id=habit.id,
-            start_date=(payload.start_date or _today(current_user)).isoformat(),
+            start_date=start.isoformat(),
             reason=payload.reason.strip(),
+            author=author,
         )
     )
     db.commit()
@@ -599,10 +655,12 @@ def start_mode(
 def end_mode(
     habit_id: int,
     payload: ModeEnd,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    habit = _get_habit(db, current_user, habit_id)
+    _require_user_confirmation(request, payload.confirmed_by_user)
+    habit = _writable_habit(db, current_user, habit_id)
     row = (
         db.query(models.CultivationMode)
         .filter(models.CultivationMode.habit_id == habit.id, models.CultivationMode.end_date.is_(None))
@@ -611,6 +669,7 @@ def end_mode(
     if row is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Режим мінімуму не активний")
     end = payload.end_date or _today(current_user)
+    _check_day("end_date", end, _today(current_user))
     if end < date.fromisoformat(row.start_date):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Дата завершення раніша за початок")
     row.end_date = end.isoformat()
@@ -624,12 +683,14 @@ def end_mode(
 def log_sleep(
     habit_id: int,
     payload: SleepEntry,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     context: PeriodContext = Depends(get_period_context),
     db: Session = Depends(get_db),
 ):
     """Record one night: stored as a tracker log (amount = hours, timestamp = wake-up)."""
-    habit = _get_habit(db, current_user, habit_id)
+    _require_write(request)
+    habit = _writable_habit(db, current_user, habit_id)
     if habit.kind != "sleep" or habit.tracker_id is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Це не звичка сну з трекером")
     tz = resolve_timezone(current_user.timezone)
@@ -638,7 +699,11 @@ def log_sleep(
         return value.replace(tzinfo=tz) if value.tzinfo is None else value
 
     bedtime, wake = aware(payload.bedtime), aware(payload.wake)
-    hours = (wake - bedtime).total_seconds() / 3600
+    # Elapsed time in UTC: the same tzinfo on both ends would subtract wall clocks.
+    hours = (ensure_utc(wake) - ensure_utc(bedtime)).total_seconds() / 3600
+    if bedtime.astimezone(tz).date() < cv.MIN_DATE:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Дата раніша за {cv.MIN_DATE.isoformat()}")
     if not 0 < hours <= 24:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Підйом має бути пізніше засинання (до 24 год)")
     if wake > utcnow() + timedelta(minutes=10):
@@ -661,7 +726,9 @@ def log_sleep(
 
 
 @router.post("/habits/{habit_id}/archive")
-def archive_habit(habit_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def archive_habit(habit_id: int, request: Request, current_user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    _require_write(request)
     habit = _get_habit(db, current_user, habit_id)
     habit.archived_at = habit.archived_at or utcnow()
     db.commit()
@@ -669,7 +736,9 @@ def archive_habit(habit_id: int, current_user: models.User = Depends(get_current
 
 
 @router.post("/habits/{habit_id}/unarchive")
-def unarchive_habit(habit_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def unarchive_habit(habit_id: int, request: Request, current_user: models.User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    _require_write(request)
     habit = _get_habit(db, current_user, habit_id)
     habit.archived_at = None
     db.commit()
@@ -696,22 +765,18 @@ def update_profile(
 ):
     if _author(request) == "api":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Систему рангів змінює лише користувач у вебінтерфейсі")
+    ranks = None
     if payload.ranks is not None:
-        if not payload.ranks:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Порожній список рангів")
-        for rank_def in payload.ranks:
-            if not str(rank_def.get("name") or "").strip() or not isinstance(rank_def.get("req", {}), dict):
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Кожен ранг потребує name і req")
-            unknown = set(rank_def.get("req", {})) - RANK_REQ_KEYS
-            if unknown:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                    detail=f"Невідомі вимоги рангу: {', '.join(sorted(unknown))}")
+        try:
+            ranks = cv.validate_ranks(payload.ranks)
+        except cv.PassportError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
     row = db.query(models.CultivationProfile).filter(models.CultivationProfile.user_id == current_user.id).first()
     if row is None:
         row = models.CultivationProfile(user_id=current_user.id)
         db.add(row)
     if "ranks" in payload.model_fields_set:
-        row.ranks_json = json.dumps(payload.ranks, ensure_ascii=False) if payload.ranks else ""
+        row.ranks_json = json.dumps(ranks, ensure_ascii=False) if ranks else ""
     if payload.recovery_grace_days is not None:
         row.recovery_grace_days = payload.recovery_grace_days
     db.commit()

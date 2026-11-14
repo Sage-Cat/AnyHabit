@@ -72,6 +72,12 @@ def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API-токен недійсний або відкликаний",
             )
+        # A token is accepted from the cookie too, so callers that need to
+        # know who acted must read this rather than the Authorization header.
+        request.state.auth_via = "api_token"
+        request.state.token_scope = (
+            db.query(models.ApiToken.scope).filter(models.ApiToken.token_hash == hash_api_token(presented)).scalar()
+        )
         return user
 
     payload = decode_access_token(presented)
@@ -87,6 +93,7 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == resolved_id).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Потрібно увійти")
+    request.state.auth_via = "session"
     return user
 
 

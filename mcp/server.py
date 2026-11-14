@@ -27,8 +27,8 @@ mcp = MCPServer(
         "statement on the returned data, keep facts apart from assumptions and "
         "say when there is not enough data. Record only what the user reported; "
         "never invent completions. A day without a record is 'no data', not a "
-        "failure. Passport, criteria and stage changes need the user's explicit "
-        "approval of that exact change (user_confirmed=true) and a reason; "
+        "failure. Passport, criteria, stage and minimum-mode changes need the "
+        "user's explicit approval of that exact change (user_confirmed=true) and a reason; "
         "history is appended, never rewritten. A habit is integrated only when "
         "the user decides so — integration checks are recommendations."
     ),
@@ -632,20 +632,29 @@ def mark_habit_day(habit_id: int, date: str, status: DayMarkStatus, reason: str 
 
 
 @mcp.tool()
-def start_minimum_mode(habit_id: int, reason: str, start_date: str | None = None) -> dict[str, Any]:
-    """Start controlled degradation: until it ends, the minimum level is the requirement."""
+def start_minimum_mode(
+    habit_id: int, reason: str, user_confirmed: bool, start_date: str | None = None
+) -> dict[str, Any]:
+    """Start controlled degradation: until it ends, the minimum level is the requirement.
+
+    This changes what counts as success, so it needs the user's explicit approval.
+    """
+    _require_user_confirmation(user_confirmed, "Starting minimum mode")
     return api.post(
         f"/cultivation/habits/{habit_id}/modes/start",
-        json_body=_without_none(reason=reason, start_date=start_date),
+        json_body=_without_none(reason=reason, start_date=start_date, confirmed_by_user=True),
     )
 
 
 @mcp.tool()
-def end_minimum_mode(habit_id: int, reason: str = "", end_date: str | None = None) -> dict[str, Any]:
-    """End the active minimum mode and return to the normal requirement."""
+def end_minimum_mode(
+    habit_id: int, user_confirmed: bool, reason: str = "", end_date: str | None = None
+) -> dict[str, Any]:
+    """End the active minimum mode and return to the normal requirement (needs the user's approval)."""
+    _require_user_confirmation(user_confirmed, "Ending minimum mode")
     return api.post(
         f"/cultivation/habits/{habit_id}/modes/end",
-        json_body=_without_none(reason=reason, end_date=end_date),
+        json_body=_without_none(reason=reason, end_date=end_date, confirmed_by_user=True),
     )
 
 

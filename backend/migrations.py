@@ -469,6 +469,12 @@ def _m_cultivation(connection: Connection) -> None:
             connection.execute(text(statement))
 
 
+def _m_cultivation_mode_author(connection: Connection) -> None:
+    """Record who started a minimum mode: it changes what counts as success."""
+    if _table_exists(connection, "cultivation_modes"):
+        _add_column_if_missing(connection, "cultivation_modes", "author", "VARCHAR DEFAULT 'user'")
+
+
 MIGRATIONS: list[tuple[str, callable]] = [
     ("0001_group_tables", _m_group_tables),
     ("0002_seed_bootstrap_user", _m_seed_bootstrap_user),
@@ -489,6 +495,7 @@ MIGRATIONS: list[tuple[str, callable]] = [
     ("0017_api_tokens", _m_api_tokens),
     ("0018_webhooks", _m_webhooks),
     ("0019_cultivation", _m_cultivation),
+    ("0020_cultivation_mode_author", _m_cultivation_mode_author),
 ]
 
 
