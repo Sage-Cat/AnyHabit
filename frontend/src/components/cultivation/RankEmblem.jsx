@@ -1,35 +1,48 @@
-import { Crown, Flame, Footprints, Leaf, Moon, Sparkles, Sprout, Star } from 'lucide-react';
-
-// One emblem per step of the default ladder: Смертний, Адепт 1–3, Маг 1–4.
+// Rank emblems: game-icons.net shapes (CC BY 3.0, see assets/ranks/CREDITS.md)
+// drawn as a white mask on a gradient tile, one per step of the default ladder.
 // A longer custom ladder reuses the last emblem.
-const EMBLEMS = [
-  { Icon: Footprints, tone: 'from-stone-300 to-stone-500' },
-  { Icon: Sprout, tone: 'from-lime-300 to-emerald-500' },
-  { Icon: Leaf, tone: 'from-emerald-400 to-teal-600' },
-  { Icon: Flame, tone: 'from-amber-400 to-orange-600' },
-  { Icon: Sparkles, tone: 'from-violet-400 to-fuchsia-600' },
-  { Icon: Star, tone: 'from-sky-400 to-indigo-600' },
-  { Icon: Moon, tone: 'from-indigo-400 to-purple-700' },
-  { Icon: Crown, tone: 'from-yellow-300 to-amber-600' }
+const ICONS = import.meta.glob('../../assets/ranks/*.svg', { eager: true, query: '?url', import: 'default' });
+const ICON_URLS = Object.keys(ICONS)
+  .sort()
+  .map((path) => ICONS[path]);
+
+const TONES = [
+  'from-stone-300 to-stone-500',
+  'from-lime-300 to-emerald-500',
+  'from-emerald-400 to-teal-600',
+  'from-teal-400 to-cyan-600',
+  'from-sky-400 to-blue-600',
+  'from-orange-400 to-red-600',
+  'from-violet-400 to-fuchsia-600',
+  'from-amber-300 to-orange-500',
+  'from-cyan-300 to-indigo-600',
+  'from-indigo-500 to-slate-900',
+  'from-blue-500 to-violet-800',
+  'from-rose-400 to-purple-700',
+  'from-purple-700 to-zinc-900',
+  'from-yellow-300 to-amber-600'
 ];
 
 const SIZES = {
-  xs: ['h-6 w-6 rounded-md', 13],
-  sm: ['h-8 w-8 rounded-lg', 16],
-  md: ['h-12 w-12 rounded-xl', 24],
-  lg: ['h-16 w-16 rounded-2xl', 32]
+  xs: 'h-7 w-7 rounded-md p-1',
+  sm: 'h-9 w-9 rounded-lg p-1.5',
+  md: 'h-12 w-12 rounded-xl p-2',
+  lg: 'h-16 w-16 rounded-2xl p-2.5'
 };
 
 function RankEmblem({ index, size = 'md', label, className = '' }) {
-  const safeIndex = Math.min(Math.max(Number(index) || 0, 0), EMBLEMS.length - 1);
-  const { Icon, tone } = EMBLEMS[safeIndex];
-  const [box, iconSize] = SIZES[size] || SIZES.md;
+  const safeIndex = Math.min(Math.max(Number(index) || 0, 0), ICON_URLS.length - 1);
+  const url = ICON_URLS[safeIndex];
+  const tone = TONES[Math.min(safeIndex, TONES.length - 1)];
+  const mask = `url("${url}") center / contain no-repeat`;
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center bg-linear-to-br text-white shadow-sm ${tone} ${box} ${className}`}
+      className={`inline-flex shrink-0 bg-linear-to-br shadow-sm ${tone} ${SIZES[size] || SIZES.md} ${className}`}
+      data-rank-emblem={safeIndex}
       {...(label ? { role: 'img', 'aria-label': label, title: label } : { 'aria-hidden': 'true' })}
     >
-      <Icon size={iconSize} strokeWidth={2} aria-hidden="true" />
+      {/* Inline colour: the dark theme repaints .bg-white. */}
+      <span className="block h-full w-full" style={{ backgroundColor: '#fff', mask, WebkitMask: mask }} />
     </span>
   );
 }
