@@ -2,6 +2,7 @@ import { Check, ChevronDown, Circle } from 'lucide-react';
 import { useState } from 'react';
 import { pluralCount } from '../../utils/plural';
 import { CARD_CLASS, formatDay } from './helpers';
+import RankEmblem from './RankEmblem';
 
 function RankCard({ rank }) {
   const [showLadder, setShowLadder] = useState(false);
@@ -12,10 +13,15 @@ function RankCard({ rank }) {
 
   return (
     <section className={CARD_CLASS} aria-label="Ранг" data-testid="rank-card">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ранг</p>
-      <h2 className="mt-1 text-3xl font-bold tracking-tight text-stone-900" data-testid="rank-name">
-        {rank.name}
-      </h2>
+      <div className="flex items-center gap-4">
+        <RankEmblem index={rank.index} size="lg" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ранг</p>
+          <h2 className="mt-1 text-3xl font-bold tracking-tight text-stone-900" data-testid="rank-name">
+            {rank.name}
+          </h2>
+        </div>
+      </div>
       {peakHigher && <p className="mt-1 text-sm text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>}
 
       {rank.next && (
@@ -81,23 +87,26 @@ function RankCard({ rank }) {
           {(rank.ladder || []).map((step) => (
             <li
               key={step.index}
-              className={`rounded-lg px-3 py-2 text-sm ${
+              className={`flex items-start gap-3 rounded-lg px-3 py-2 text-sm ${
                 step.index === rank.index ? 'bg-stone-900 text-white' : 'bg-stone-50 text-stone-700'
               }`}
             >
-              <span className="font-medium">{step.name}</span>
-              {step.confirmed === false && (
-                <span
-                  className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${step.index === rank.index ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}
-                >
-                  пропозиція
-                </span>
-              )}
-              {step.requirement && (
-                <span className={`block text-xs ${step.index === rank.index ? 'text-stone-300' : 'text-gray-500'}`}>
-                  {step.requirement}
-                </span>
-              )}
+              <RankEmblem index={step.index} size="sm" className={step.index > rank.index ? 'opacity-40' : ''} />
+              <span className="min-w-0">
+                <span className="font-medium">{step.name}</span>
+                {step.confirmed === false && (
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${step.index === rank.index ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}
+                  >
+                    пропозиція
+                  </span>
+                )}
+                {step.requirement && (
+                  <span className={`block text-xs ${step.index === rank.index ? 'text-stone-300' : 'text-gray-500'}`}>
+                    {step.requirement}
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ol>

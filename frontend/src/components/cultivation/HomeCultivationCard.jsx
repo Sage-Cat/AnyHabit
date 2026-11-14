@@ -1,13 +1,144 @@
-import { Moon, Sprout } from 'lucide-react';
+import { Check, Moon, Sprout } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { createBooleanLogApi } from '../../services/trackerApi';
+import { useAppState } from '../../state/appState';
+import RankEmblem from './RankEmblem';
 import SleepEntryModal from './SleepEntryModal';
 import { DayStatusPill, ModeBadge } from './common';
-import { BUTTON_PRIMARY, useCultivationOverview } from './helpers';
+import { BUTTON_SECONDARY, useCultivationOverview } from './helpers';
+
+const CARD = 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm';
+const LABEL = 'text-[11px] font-semibold uppercase tracking-wider text-gray-400';
+
+/** The cultivation rank on its own: emblem, name, the next step and the whole ladder at a glance. */
+function HomeRankCard({ rank }) {
+  if (!rank) return null;
+  return (
+    <section className={`${CARD} flex flex-col gap-3`} aria-label="Ранг культивації" data-testid="home-rank-card">
+      <div className="flex items-center gap-4">
+        <RankEmblem index={rank.index} size="lg" />
+        <div className="min-w-0">
+          <p className={LABEL}>Ранг культивації</p>
+          <p className="text-xl font-bold text-stone-900" data-testid="home-rank-name">
+            {rank.name}
+          </p>
+          {rank.peak_index > rank.index && rank.peak_name && (
+            <p className="text-xs text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>
+          )}
+        </div>
+      </div>
+      {rank.next ? (
+        <p className="text-sm text-gray-600">
+          <span className="font-medium text-stone-800">Далі — {rank.next.name}:</span> {rank.next.requirement}
+        </p>
+      ) : (
+        <p className="text-sm text-gray-500">Це найвищий ранг у списку.</p>
+      )}
+      {rank.ladder?.length > 0 && (
+        <ol className="flex flex-wrap items-center gap-1.5" aria-label="Шлях рангів">
+          {rank.ladder.map((step) => (
+            <li key={step.index} className={step.index > rank.index ? 'opacity-30' : ''}>
+              <RankEmblem
+                index={step.index}
+                size="xs"
+                label={step.name}
+                className={step.index === rank.index ? 'ring-2 ring-stone-900 ring-offset-1' : ''}
+              />
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/** Every active habit with today's state and the one action it needs. */
+function HomeTodayCard({ overview, onSleep, onChanged }) {
+  const { notify } = useAppState();
+  const [busyId, setBusyId] = useState(null);
+
+  const markDone = async (habit) => {
+    setBusyId(habit.id);
+    try {
+      await createBooleanLogApi(habit.tracker.id);
+      notify.success(`«${habit.name}» — виконано`);
+      await onChanged();
+    } catch (error) {
+      notify.error(error?.message || 'Не вдалося записати');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section className={CARD} aria-label="Звички сьогодні" data-testid="home-today-card">
+      <div className="flex items-center justify-between gap-3">
+        <p className={LABEL}>Сьогодні</p>
+        <Link to="/practice" className="text-sm font-medium text-stone-600 underline hover:text-stone-900">
+          Усі звички
+        </Link>
+      </div>
+      {overview.active.length === 0 ? (
+        <p className="mt-2 text-sm text-gray-500">Активних звичок немає.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-gray-100">
+          {overview.active.map((habit) => {
+            const day = habit.today?.day;
+            const done = day?.status === 'success';
+            const requirement = habit.today?.requirement;
+            return (
+              <li
+                key={habit.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
+                data-testid="home-habit"
+              >
+                <div className="min-w-0 flex-1 basis-48">
+                  <Link
+                    to={`/practice/${habit.id}`}
+                    className="flex flex-wrap items-center gap-2 text-sm font-medium text-stone-800 hover:underline"
+                  >
+                    {habit.name} {(habit.mode || habit.today?.degraded) && <ModeBadge />}
+                  </Link>
+                  {requirement && requirement !== 'виконати' && <p className="text-xs text-gray-500">{requirement}</p>}
+                </div>
+                <DayStatusPill day={day} />
+                {habit.kind === 'sleep' && (
+                  <button
+                    type="button"
+                    onClick={() => onSleep(habit)}
+                    className={`${BUTTON_SECONDARY} inline-flex items-center`}
+                  >
+                    <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
+                  </button>
+                )}
+                {habit.kind === 'boolean' && habit.tracker && !done && (
+                  <button
+                    type="button"
+                    disabled={busyId === habit.id}
+                    onClick={() => markDone(habit)}
+                    className={`${BUTTON_SECONDARY} inline-flex items-center`}
+                  >
+                    <Check size={14} className="mr-1.5" aria-hidden="true" />
+                    {busyId === habit.id ? 'Запис…' : 'Виконано'}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {overview.planned.length > 0 && (
+        <p className="mt-2 text-xs text-gray-400">Заплановано: {overview.planned.map((h) => h.name).join(', ')}</p>
+      )}
+    </section>
+  );
+}
 
 /**
- * Fixed compact card above the widget grid (not a grid widget). Stays quiet
- * when the overview cannot be loaded, so it never gets in the way of the home page.
+ * Fixed block above the widget grid (not grid widgets): the rank card and
+ * today's habits side by side. Stays quiet when the overview cannot be loaded,
+ * so it never gets in the way of the home page.
  */
 function HomeCultivationCard() {
   const { overview, isLoading, error, reload } = useCultivationOverview();
@@ -28,52 +159,17 @@ function HomeCultivationCard() {
     );
   }
 
-  const top = overview.active[0];
-  const sleepHabitActive = overview.active.find((habit) => habit.kind === 'sleep');
-
   return (
-    <section
-      className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-      data-testid="home-cultivation-card"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Культивація · ранг</p>
-          <p className="text-lg font-bold text-stone-900">{overview.rank?.name || '—'}</p>
-        </div>
-        {top && (
-          <div className="min-w-0 flex-1 basis-56">
-            <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-stone-800">
-              {top.name} {(top.mode || top.today?.degraded) && <ModeBadge />}
-            </p>
-            <p className="text-xs text-gray-500">{top.today?.requirement || '—'}</p>
-            <div className="mt-0.5">
-              <DayStatusPill day={top.today?.day} />
-            </div>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          {sleepHabitActive && (
-            <button
-              type="button"
-              onClick={() => setSleepHabit(sleepHabitActive)}
-              className={`${BUTTON_PRIMARY} inline-flex items-center`}
-            >
-              <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
-            </button>
-          )}
-          <Link to="/practice" className="text-sm font-medium text-stone-600 underline hover:text-stone-900">
-            Усі звички
-          </Link>
-        </div>
-      </div>
+    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="home-cultivation-card">
+      <HomeRankCard rank={overview.rank} />
+      <HomeTodayCard overview={overview} onSleep={setSleepHabit} onChanged={reload} />
       <SleepEntryModal
         habit={sleepHabit}
         timezone={overview.timezone}
         onClose={() => setSleepHabit(null)}
         onSaved={reload}
       />
-    </section>
+    </div>
   );
 }
 
