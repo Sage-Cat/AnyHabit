@@ -824,14 +824,20 @@ ACTIVE_STAGES = ("formation", "stabilization", "integrated", "recovery")
 # integrated habits held without a break that long.  ``confirmed`` marks the
 # thresholds set by the user; the rest are proposals and can be overridden.
 DEFAULT_RANKS: list[dict] = [
-    {"name": "Смертний", "req": {}, "confirmed": True},
-    {"name": "Адепт 1 рівня", "req": {"active": True}, "confirmed": True},
-    {"name": "Адепт 2 рівня", "req": {"stabilizing": True}, "confirmed": True},
-    {"name": "Адепт 3 рівня", "req": {"integrated": 1}, "confirmed": True},
-    {"name": "Маг 1 рангу", "req": {"integrated": 3}, "confirmed": True},
-    {"name": "Маг 2 рангу", "req": {"integrated": 5, "durable": [3, 180]}, "confirmed": False},
-    {"name": "Маг 3 рангу", "req": {"integrated": 8, "durable": [5, 365]}, "confirmed": False},
-    {"name": "Маг 4 рангу", "req": {"integrated": 12, "durable": [8, 730]}, "confirmed": False},
+    {"name": "Звичайна людина", "req": {}, "confirmed": True},
+    {"name": "Адепт першого рівня", "req": {"active": True}, "confirmed": True},
+    {"name": "Адепт другого рівня", "req": {"stabilizing": True}, "confirmed": True},
+    {"name": "Адепт третього рівня", "req": {"integrated": 1}, "confirmed": True},
+    {"name": "Маг першого рангу", "req": {"integrated": 3}, "confirmed": True},
+    {"name": "Маг другого рангу", "req": {"integrated": 5, "durable": [3, 180]}, "confirmed": False},
+    {"name": "Маг третього рангу", "req": {"integrated": 8, "durable": [5, 365]}, "confirmed": False},
+    {"name": "Маг Нової Зірки", "req": {"integrated": 12, "durable": [8, 730]}, "confirmed": False},
+    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 15, "durable": [10, 1095]}, "confirmed": False},
+    {"name": "Маг Прямого Колапсу", "req": {"integrated": 18, "durable": [12, 1460]}, "confirmed": False},
+    {"name": "Маг Законів", "req": {"integrated": 21, "durable": [15, 1825]}, "confirmed": False},
+    {"name": "Великий Маг Законів", "req": {"integrated": 25, "durable": [18, 2190]}, "confirmed": False},
+    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 30, "durable": [22, 2920]}, "confirmed": False},
+    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 35, "durable": [28, 3650]}, "confirmed": False},
 ]
 
 
