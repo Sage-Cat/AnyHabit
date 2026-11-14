@@ -40,6 +40,9 @@ If you want to contribute code, you'll need to set up the project locally. You c
 2. **Make your changes**. Keep your commits small and descriptive.
 3. **Check your code**:
    * For the frontend, ensure there are no linting errors by running `npm run lint`.
+   * Format the files you changed: `npm run format -- <files>` in `frontend/` for JS/JSX, and
+     `ruff format <files>` for Python (`pip install -r requirements-dev.txt`). Settings live in
+     `.prettierrc.json` and `ruff.toml`.
 4. **Push your branch** to your fork:
    `git push origin your-branch-name`
 5. **Open a Pull Request (PR)** against the `main` branch of the original AnyHabit repository.
