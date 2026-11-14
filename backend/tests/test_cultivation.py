@@ -234,18 +234,18 @@ def main() -> int:
     def rank_name(habits: dict, on: int) -> str:
         return cv.compute_rank(habits, D0 + timedelta(days=on))["name"]
 
-    check("no habits: mortal", rank_name({}, 0) == "Смертний")
+    check("no habits: mortal", rank_name({}, 0) == "Звичайна людина")
     habits = {1: stage_versions(("formation", 0))}
-    check("formation: adept 1", rank_name(habits, 0) == "Адепт 1 рівня")
+    check("formation: adept 1", rank_name(habits, 0) == "Адепт першого рівня")
     habits = {1: stage_versions(("formation", 0), ("stabilization", 30))}
-    check("stabilization: adept 2", rank_name(habits, 30) == "Адепт 2 рівня")
+    check("stabilization: adept 2", rank_name(habits, 30) == "Адепт другого рівня")
     habits = {
         1: stage_versions(("formation", 0), ("integrated", 90)),
         2: stage_versions(("integrated", 200)),
         3: stage_versions(("integrated", 300)),
     }
-    check("3 integrated habits: Magus rank 1", rank_name(habits, 300) == "Маг 1 рангу", rank_name(habits, 300))
-    check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Смертний")
+    check("3 integrated habits: Magus rank 1", rank_name(habits, 300) == "Маг першого рангу", rank_name(habits, 300))
+    check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Звичайна людина")
     habits = {
         1: stage_versions(("integrated", 0), ("recovery", 20)),
         2: stage_versions(("integrated", 1)),
@@ -253,16 +253,16 @@ def main() -> int:
     }
     within = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS - 1))
     after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
-    check("recovery keeps rank within grace", within["name"] == "Маг 1 рангу" and within["warnings"])
+    check("recovery keeps rank within grace", within["name"] == "Маг першого рангу" and within["warnings"])
     check(
         "rank drops after grace, peak remembered",
-        after["name"] == "Адепт 3 рівня" and after["peak_name"] == "Маг 1 рангу",
+        after["name"] == "Адепт третього рівня" and after["peak_name"] == "Маг першого рангу",
     )
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
-    check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт 2 рівня")
+    check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
     check(
         "recovery without integration does not count",
-        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Адепт 1 рівня",
+        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Адепт першого рівня",
     )
 
     print("\n[4b] Review regressions")
@@ -543,7 +543,7 @@ def main() -> int:
 
         overview = client.get("/cultivation/overview").json()
         check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
-        check("overview carries the rank", overview["rank"]["name"] == "Адепт 2 рівня", overview["rank"]["name"])
+        check("overview carries the rank", overview["rank"]["name"] == "Адепт другого рівня", overview["rank"]["name"])
 
         exported = client.get("/export/?data_type=all&format=json").json()
         cult = exported.get("cultivation", {})
