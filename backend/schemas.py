@@ -483,6 +483,10 @@ class ImportSummary(BaseModel):
     logs_created: int = 0
     journals_created: int = 0
     trackers_deleted: int = 0
+    cultivation_habits_created: int = 0
+    cultivation_habits_existing: int = 0
+    cultivation_habits_skipped: int = 0
+    cultivation_habits_deleted: int = 0
     warnings: list[str] = Field(default_factory=list)
     source_version: Optional[str] = None
     source_exported_at: Optional[str] = None

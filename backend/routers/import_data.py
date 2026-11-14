@@ -19,12 +19,13 @@ Two modes:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from .. import cultivation as cv
 from .. import models, schemas
 from ..deps import get_current_user, get_db
 from ..time_utils import ensure_utc, to_utc, utcnow
@@ -168,6 +169,16 @@ def _apply_import(
     )
 
     existing_trackers = db.query(models.Tracker).filter(models.Tracker.owner_id == user.id).all()
+    raw_cultivation = payload.get("cultivation")
+    if raw_cultivation is not None and not isinstance(raw_cultivation, dict):
+        warnings.append("Розділ культивації пошкоджений і пропущений.")
+        raw_cultivation = None
+    existing_habits = db.query(models.CultivatedHabit).filter(models.CultivatedHabit.user_id == user.id).all()
+    # Deleting trackers unlinks cultivated habits (ON DELETE SET NULL); remember
+    # what each was linked to, so a file without a cultivation section can
+    # link them to the restored trackers again.
+    tracker_keys = {t.id: _tracker_key(t.name or "", t.category or "") for t in existing_trackers}
+    relink = {h.id: tracker_keys[h.tracker_id] for h in existing_habits if h.tracker_id in tracker_keys}
 
     if mode == "replace":
         summary.trackers_deleted = len(existing_trackers)
@@ -184,12 +195,23 @@ def _apply_import(
             ).delete(synchronize_session=False)
             db.query(models.Tracker).filter(models.Tracker.id.in_(tracker_ids)).delete(synchronize_session=False)
             db.flush()
+        if raw_cultivation is not None:
+            # The file carries its own cultivation history, which replaces ours.
+            summary.cultivation_habits_deleted = len(existing_habits)
+            if not dry_run and existing_habits:
+                db.query(models.CultivatedHabit).filter(
+                    models.CultivatedHabit.id.in_([h.id for h in existing_habits])
+                ).delete(synchronize_session=False)
+                db.flush()
+            existing_habits = []
         existing_by_key: dict[tuple[str, str], models.Tracker] = {}
     else:
         existing_by_key = {
             _tracker_key(tracker.name or "", tracker.category or ""): tracker for tracker in existing_trackers
         }
 
+    imported_by_source: dict[str, models.Tracker | None] = {}
+    imported_by_name: dict[str, models.Tracker | None] = {}
     for raw_tracker in raw_trackers:
         if not isinstance(raw_tracker, dict):
             warnings.append("Пропущено пошкоджений запис звички.")
@@ -202,6 +224,7 @@ def _apply_import(
 
         key = _tracker_key(fields["name"], fields["category"])
         tracker = existing_by_key.get(key)
+        source_id = raw_tracker.get("id")
 
         if tracker is None:
             summary.trackers_created += 1
@@ -220,6 +243,9 @@ def _apply_import(
             # history is filled in, so a merge can never silently rewrite the
             # settings someone is actively using.
             summary.trackers_updated += 1
+        if source_id is not None:
+            imported_by_source[str(source_id)] = tracker
+        imported_by_name.setdefault(fields["name"].strip().lower(), tracker)
 
         # Timestamps already on file, so re-importing the same backup is a
         # no-op rather than a duplicate.  Computed for dry runs too, otherwise a
@@ -299,6 +325,19 @@ def _apply_import(
                 )
                 existing_journal_stamps.add(_stamp_key(timestamp))
 
+    if raw_cultivation is not None:
+        _import_cultivation(db, user, raw_cultivation, mode, dry_run, existing_habits,
+                            imported_by_source, imported_by_name, summary, warnings)
+    elif mode == "replace" and not dry_run:
+        for habit_id, key in relink.items():
+            tracker = existing_by_key.get(key)
+            if tracker is not None:
+                # An explicit UPDATE: the database already nulled the link, but
+                # the loaded object may still hold an id the new tracker reuses.
+                db.query(models.CultivatedHabit).filter(models.CultivatedHabit.id == habit_id).update(
+                    {"tracker_id": tracker.id}, synchronize_session=False
+                )
+
     if dry_run:
         db.rollback()
     else:
@@ -306,6 +345,160 @@ def _apply_import(
 
     summary.warnings = warnings[:50]
     return summary
+
+
+def _import_date(value: Any) -> date | None:
+    try:
+        day = date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return day if day >= cv.MIN_DATE else None
+
+
+def _import_cultivation(
+    db: Session,
+    user: models.User,
+    raw: dict,
+    mode: str,
+    dry_run: bool,
+    existing_habits: list[models.CultivatedHabit],
+    by_source: dict[str, models.Tracker | None],
+    by_name: dict[str, models.Tracker | None],
+    summary: schemas.ImportSummary,
+    warnings: list[str],
+) -> None:
+    """Restore passports, day marks, minimum modes and the rank ladder.
+
+    A habit is matched on kind + current name; a match is left alone in merge
+    mode, like an existing tracker.  Every passport version is validated, so a
+    damaged file cannot store history the app would then fail to read.
+    """
+    existing_names = set()
+    for habit in existing_habits:
+        latest = (
+            db.query(models.CultivationPassportVersion)
+            .filter(models.CultivationPassportVersion.habit_id == habit.id)
+            .order_by(models.CultivationPassportVersion.effective_from.desc(), models.CultivationPassportVersion.id.desc())
+            .first()
+        )
+        if latest is not None:
+            existing_names.add((habit.kind, str(json.loads(latest.spec_json).get("name", "")).strip().lower()))
+
+    for raw_habit in raw.get("habits") or []:
+        if not isinstance(raw_habit, dict):
+            warnings.append("Пропущено пошкоджену звичку культивації.")
+            summary.cultivation_habits_skipped += 1
+            continue
+        kind = raw_habit.get("kind")
+        raw_versions = [v for v in raw_habit.get("versions") or [] if isinstance(v, dict)]
+        versions = []
+        for raw_version in raw_versions:
+            effective = _import_date(raw_version.get("effective_from"))
+            spec = raw_version.get("spec")
+            try:
+                if effective is None:
+                    raise cv.PassportError("невідома дата чинності")
+                cv.validate_spec(kind, spec)
+            except cv.PassportError as exc:
+                versions = None
+                problem = str(exc)
+                break
+            versions.append((effective, raw_version, spec))
+        name = str((versions or [(None, None, {})])[-1][2].get("name", "")).strip() if versions else ""
+        if kind not in cv.HABIT_KINDS or not versions:
+            detail = problem if versions is None else "немає версій паспорта"
+            warnings.append(f"Пропущено звичку культивації «{name or '?'}»: {detail}.")
+            summary.cultivation_habits_skipped += 1
+            continue
+        if (kind, name.lower()) in existing_names:
+            summary.cultivation_habits_existing += 1
+            continue
+
+        tracker = None
+        if raw_habit.get("tracker_id") is not None:
+            tracker = by_source.get(str(raw_habit["tracker_id"]))
+        if tracker is None and raw_habit.get("tracker_name"):
+            tracker = by_name.get(str(raw_habit["tracker_name"]).strip().lower())
+        if tracker is None and not dry_run and raw_habit.get("tracker_id") is not None:
+            warnings.append(f"«{name}»: трекер не знайдено у файлі; звичку відновлено без трекера.")
+
+        summary.cultivation_habits_created += 1
+        existing_names.add((kind, name.lower()))
+        if dry_run:
+            continue
+
+        habit = models.CultivatedHabit(
+            user_id=user.id,
+            tracker_id=tracker.id if tracker is not None else None,
+            kind=kind,
+            archived_at=_parse_timestamp(raw_habit.get("archived_at")),
+        )
+        db.add(habit)
+        db.flush()
+        for effective, raw_version, spec in sorted(versions, key=lambda item: item[0]):
+            db.add(
+                models.CultivationPassportVersion(
+                    habit_id=habit.id,
+                    effective_from=effective.isoformat(),
+                    created_at=_parse_timestamp(raw_version.get("created_at")) or utcnow(),
+                    reason=_clean_str(raw_version.get("reason"), "Імпорт", limit=2000) or "Імпорт",
+                    author=raw_version.get("author") if raw_version.get("author") in ("user", "api") else "user",
+                    spec_json=json.dumps(spec, ensure_ascii=False),
+                )
+            )
+        for raw_mark in raw_habit.get("marks") or []:
+            day = _import_date((raw_mark or {}).get("date")) if isinstance(raw_mark, dict) else None
+            if day is None or raw_mark.get("status") not in cv.MARK_STATUSES:
+                continue
+            db.add(
+                models.CultivationDayMark(
+                    habit_id=habit.id,
+                    date=day.isoformat(),
+                    status=raw_mark["status"],
+                    reason=_clean_str(raw_mark.get("reason"), limit=2000),
+                    author=raw_mark.get("author") if raw_mark.get("author") in ("user", "api") else "user",
+                    created_at=_parse_timestamp(raw_mark.get("created_at")) or utcnow(),
+                )
+            )
+        for raw_mode in raw_habit.get("modes") or []:
+            start = _import_date((raw_mode or {}).get("start_date")) if isinstance(raw_mode, dict) else None
+            if start is None:
+                continue
+            end = _import_date(raw_mode.get("end_date")) if raw_mode.get("end_date") else None
+            db.add(
+                models.CultivationMode(
+                    habit_id=habit.id,
+                    start_date=start.isoformat(),
+                    end_date=end.isoformat() if end and end >= start else None,
+                    reason=_clean_str(raw_mode.get("reason"), "Імпорт", limit=2000) or "Імпорт",
+                    end_reason=_clean_str(raw_mode.get("end_reason"), limit=2000),
+                    author=raw_mode.get("author") if raw_mode.get("author") in ("user", "api") else "user",
+                )
+            )
+
+    raw_profile = raw.get("profile")
+    if isinstance(raw_profile, dict):
+        profile = db.query(models.CultivationProfile).filter(models.CultivationProfile.user_id == user.id).first()
+        if profile is not None and mode != "replace":
+            return  # merge keeps the ladder the user already has
+        ranks = raw_profile.get("ranks")
+        try:
+            ranks = cv.validate_ranks(ranks) if ranks else None
+        except cv.PassportError as exc:
+            warnings.append(f"Власну систему рангів пропущено: {exc}.")
+            ranks = None
+        grace = raw_profile.get("recovery_grace_days")
+        try:
+            grace = cv.check_number("recovery_grace_days", grace, integer=True, low=0, high=3650) if grace is not None else None
+        except cv.PassportError:
+            grace = None
+        if dry_run:
+            return
+        if profile is None:
+            profile = models.CultivationProfile(user_id=user.id)
+            db.add(profile)
+        profile.ranks_json = json.dumps(ranks, ensure_ascii=False) if ranks else ""
+        profile.recovery_grace_days = grace
 
 
 @legacy_router.post("/import/", response_model=schemas.ImportSummary, include_in_schema=False)

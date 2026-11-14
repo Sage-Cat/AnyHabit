@@ -176,6 +176,12 @@ function ImportModal() {
               <SummaryRow label="Збігів з наявними звичками" value={preview.trackers_updated} />
               <SummaryRow label="Додано записів" value={preview.logs_created} />
               <SummaryRow label="Додано записів щоденника" value={preview.journals_created} />
+              {preview.cultivation_habits_deleted > 0 && (
+                <SummaryRow label="Звичок культивації буде замінено" value={preview.cultivation_habits_deleted} tone="danger" />
+              )}
+              {(preview.cultivation_habits_created > 0 || preview.cultivation_habits_existing > 0) && (
+                <SummaryRow label="Звички культивації (нові / наявні)" value={`${preview.cultivation_habits_created} / ${preview.cultivation_habits_existing}`} />
+              )}
               {preview.trackers_skipped > 0 && (
                 <SummaryRow label="Пропущено записів" value={preview.trackers_skipped} tone="danger" />
               )}
