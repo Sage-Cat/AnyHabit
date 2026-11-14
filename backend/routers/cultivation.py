@@ -248,7 +248,8 @@ def _observations(db: Session, habit: models.CultivatedHabit, user: models.User)
         obs.notes.append(log.note or "")
         if habit.kind == "sleep" and log.amount and log.amount > 0:
             # Subtract in UTC: local wall-clock arithmetic is off by an hour across DST.
-            bedtime = (wake_utc - timedelta(hours=float(log.amount))).astimezone(tz)
+            # The amount is stored rounded to 0.01 h, so snap back to whole minutes.
+            bedtime = (wake_utc - timedelta(minutes=round(float(log.amount) * 60))).astimezone(tz)
             obs.nights.append(cv.Night(log.id, bedtime, local, log.note or ""))
     return out
 
