@@ -297,7 +297,7 @@ def main() -> int:
         "/auth/register", json={"username": "weak", "email": "weak@example.com", "password": "123"}
     )
     check("short password rejected", weak.status_code == 422, weak.text[:160])
-    check("rejection message is readable", "at least 8" in weak.text, weak.text[:160])
+    check("rejection message is readable", "щонайменше 8" in weak.text, weak.text[:160])
 
     dupe = client.post(
         "/auth/register",

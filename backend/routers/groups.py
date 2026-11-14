@@ -59,9 +59,9 @@ def _serialize_group(db: Session, group: models.Group, current_user_id: int) -> 
 def _require_visible_group(db: Session, group_id: int, current_user_id: int) -> models.Group:
     group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if group is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Групу не знайдено")
     if not can_view_group(db, current_user_id, group_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this group")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Немає доступу до цієї групи")
     return group
 
 
@@ -122,7 +122,7 @@ def join_group(
 ):
     group = db.query(models.Group).filter(models.Group.join_code == payload.join_code.strip().upper()).first()
     if group is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No group matches that join code")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Групи з таким кодом не знайдено")
 
     existing_membership = (
         db.query(models.GroupMember)
@@ -217,7 +217,7 @@ def remove_group_member(
     if user_id == group.owner_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The group owner cannot be removed. Delete the group instead.",
+            detail="Власника групи не можна вилучити. Видаліть групу.",
         )
 
     membership = (
@@ -226,7 +226,7 @@ def remove_group_member(
         .first()
     )
     if membership is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That person is not in this group")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ця людина не входить до групи")
 
     _detach_member(db, group_id, user_id)
     db.commit()
@@ -245,12 +245,12 @@ def leave_group(
     if group.owner_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You own this group. Delete it instead of leaving.",
+            detail="Ви власник групи. Видаліть її замість виходу.",
         )
 
     _detach_member(db, group_id, current_user.id)
     db.commit()
-    return {"message": f"You left {group.name}"}
+    return {"message": f"Ви вийшли з групи «{group.name}»"}
 
 
 @router.delete("/{group_id}")
@@ -283,4 +283,4 @@ def delete_group(
     db.delete(group)
     db.commit()
 
-    return {"message": f"Group '{group.name}' was deleted"}
+    return {"message": f"Групу «{group.name}» видалено"}

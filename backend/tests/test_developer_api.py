@@ -105,7 +105,7 @@ def main() -> int:
 
     bad = anon.get("/trackers/", headers={"Authorization": "Bearer ahb_not-a-real-token"})
     check("an unknown token is rejected", bad.status_code == 401, str(bad.status_code))
-    check("rejection names the cause", "API token" in bad.text, bad.text[:120])
+    check("rejection names the cause", "API-токен" in bad.text, bad.text[:120])
 
     created_via_token = anon.post(
         f"/trackers/{tracker['id']}/logs/",

@@ -61,7 +61,7 @@ def get_current_user(
         presented = request.cookies.get(ACCESS_COOKIE_NAME)
 
     if not presented:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Потрібно увійти")
 
     # Personal access tokens carry their own prefix, so they never reach the
     # JWT decoder and cannot produce a confusing "invalid token" error.
@@ -70,23 +70,23 @@ def get_current_user(
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="That API token is not valid, or has been revoked",
+                detail="API-токен недійсний або відкликаний",
             )
         return user
 
     payload = decode_access_token(presented)
     user_id = payload.get("sub")
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Потрібно увійти")
 
     try:
         resolved_id = int(user_id)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required") from None
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Потрібно увійти") from None
 
     user = db.query(models.User).filter(models.User.id == resolved_id).first()
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Потрібно увійти")
     return user
 
 

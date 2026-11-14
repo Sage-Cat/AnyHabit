@@ -21,10 +21,10 @@ def _get_owned_log(db: Session, tracker: models.Tracker, tracker_id: int, log_id
         .first()
     )
     if not log:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запис не знайдено")
 
     if tracker.owner_id != user_id and log.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only change your own logs")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Змінювати можна лише власні записи")
     return log
 
 
@@ -165,4 +165,4 @@ def delete_log(
         "log.deleted",
         {"log": removed, "tracker": {"id": tracker.id, "name": tracker.name}},
     )
-    return {"message": "Log deleted"}
+    return {"message": "Запис видалено"}

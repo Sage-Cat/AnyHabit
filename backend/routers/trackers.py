@@ -160,13 +160,13 @@ def _resolve_group_participants(
 ) -> tuple[models.Group, list[int]]:
     group = db.query(models.Group).filter(models.Group.id == int(group_id)).first()
     if group is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Групу не знайдено")
     if not can_view_group(db, current_user_id, group.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this group")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Немає доступу до цієї групи")
     if group.owner_id != current_user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the group owner can manage shared trackers",
+            detail="Спільними звичками керує лише власник групи",
         )
 
     allowed_ids = {
@@ -494,4 +494,4 @@ def delete_tracker(
     db.delete(tracker)
     db.commit()
 
-    return {"message": f"Tracker with ID {tracker_id} was deleted successfully"}
+    return {"message": f"Звичку {tracker_id} видалено"}

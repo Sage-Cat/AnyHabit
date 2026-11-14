@@ -30,9 +30,9 @@ def register(payload: schemas.UserCreate, response: Response, request: Request, 
     if existing_user is not None:
         # Naming which field collided is friendlier than a blanket rejection and
         # leaks nothing an attacker could not learn from the registration form.
-        conflict = "email address" if existing_user.email == payload.email else "username"
+        conflict = "Цю адресу пошти" if existing_user.email == payload.email else "Це ім'я користувача"
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"That {conflict} is already taken"
+            status_code=status.HTTP_409_CONFLICT, detail=f"{conflict} вже зайнято"
         )
 
     user = models.User(
@@ -60,7 +60,7 @@ def login(payload: schemas.UserLogin, response: Response, request: Request, db: 
     if locked_for:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many failed sign-in attempts. Try again in {locked_for} seconds.",
+            detail=f"Забагато невдалих спроб входу. Спробуйте знову через {locked_for} с.",
             headers={"Retry-After": str(locked_for)},
         )
 
@@ -72,10 +72,10 @@ def login(payload: schemas.UserLogin, response: Response, request: Request, db: 
 
     if user is None or not verify_password(payload.password, user.password_hash):
         login_throttle.record_failure(key)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неправильне ім'я користувача або пароль")
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Акаунт вимкнено")
 
     login_throttle.reset(key)
     token = create_access_token({"sub": str(user.id)})
@@ -103,7 +103,7 @@ def update_preferences(
         if not is_valid_timezone(payload.timezone):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{payload.timezone}' is not a recognised timezone",
+                detail=f"«{payload.timezone}» — невідомий часовий пояс",
             )
         current_user.timezone = payload.timezone
 
@@ -113,7 +113,7 @@ def update_preferences(
     if payload.username is not None:
         username = payload.username.strip()
         if not username:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username is required")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Потрібне ім'я користувача")
 
         clash = (
             db.query(models.User)
@@ -121,7 +121,7 @@ def update_preferences(
             .first()
         )
         if clash is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already taken")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Це ім'я користувача вже зайнято")
         current_user.username = username
 
     db.commit()
@@ -138,11 +138,11 @@ def change_password(
     db: Session = Depends(get_db),
 ):
     if not verify_password(payload.current_password, current_user.password_hash):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your current password is incorrect")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Поточний пароль неправильний")
 
     if payload.current_password == payload.new_password:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="The new password must differ from the current one"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Новий пароль має відрізнятися від поточного"
         )
 
     current_user.password_hash = hash_password(payload.new_password)
@@ -152,7 +152,7 @@ def change_password(
     # credentials rather than silently outliving them.
     token = create_access_token({"sub": str(current_user.id)})
     set_auth_cookie(response, token, request)
-    return {"message": "Password updated"}
+    return {"message": "Пароль оновлено"}
 
 
 @router.delete("/me")
@@ -171,7 +171,7 @@ def delete_account(
     if confirm_username.strip() != current_user.username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Type your username exactly to confirm account deletion",
+            detail="Для підтвердження видалення введіть точне ім'я користувача",
         )
 
     user_id = current_user.id
@@ -217,10 +217,10 @@ def delete_account(
     db.commit()
 
     clear_auth_cookie(response, request)
-    return {"message": "Account deleted"}
+    return {"message": "Акаунт видалено"}
 
 
 @router.post("/logout")
 def logout(response: Response, request: Request):
     clear_auth_cookie(response, request)
-    return {"message": "Logged out"}
+    return {"message": "Ви вийшли"}

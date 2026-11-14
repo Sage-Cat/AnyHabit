@@ -20,12 +20,12 @@ def _get_own_entry(db: Session, tracker_id: int, journal_id: int, user_id: int) 
         .first()
     )
     if entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Journal entry not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запис щоденника не знайдено")
 
     # Journals stay private to their author even on a shared tracker.
     if entry.user_id != user_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="You can only change your own journal entries"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Змінювати можна лише власні записи щоденника"
         )
     return entry
 
@@ -119,4 +119,4 @@ def delete_journal_entry(
 
     db.delete(db_journal)
     db.commit()
-    return {"message": f"Journal with ID {journal_id} was deleted successfully"}
+    return {"message": f"Запис щоденника {journal_id} видалено"}

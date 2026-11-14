@@ -73,6 +73,40 @@ app.add_middleware(
 )
 
 
+# Ukrainian wording for the validation errors users actually hit; anything
+# else falls back to Pydantic's own message.
+_VALIDATION_MESSAGES = {
+    "missing": "обов'язкове поле",
+    "string_too_short": "закоротке значення (мінімум {min_length})",
+    "string_too_long": "задовге значення (максимум {max_length})",
+    "greater_than": "має бути більше за {gt}",
+    "greater_than_equal": "має бути не менше {ge}",
+    "less_than": "має бути менше за {lt}",
+    "less_than_equal": "має бути не більше {le}",
+    "int_parsing": "має бути цілим числом",
+    "float_parsing": "має бути числом",
+    "bool_parsing": "має бути так/ні",
+    "date_parsing": "некоректна дата",
+    "date_from_datetime_parsing": "некоректна дата",
+    "datetime_parsing": "некоректні дата й час",
+    "datetime_from_date_parsing": "некоректні дата й час",
+    "literal_error": "має бути одним із: {expected}",
+    "json_invalid": "некоректний JSON",
+    "dict_type": "має бути об'єктом",
+    "list_type": "має бути списком",
+}
+
+
+def _validation_message(error: dict) -> str:
+    template = _VALIDATION_MESSAGES.get(error.get("type", ""))
+    if template is not None:
+        try:
+            return template.format(**(error.get("ctx") or {}))
+        except (KeyError, IndexError, ValueError):
+            pass
+    return error.get("msg", "Некоректне значення").removeprefix("Value error, ")
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_request: Request, exc: RequestValidationError):
     """Turn Pydantic's nested error payload into one readable sentence.
@@ -83,8 +117,7 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
     messages = []
     for error in exc.errors():
         field = ".".join(str(part) for part in error.get("loc", ()) if part not in {"body", "query", "path"})
-        message = error.get("msg", "Invalid value")
-        message = message.removeprefix("Value error, ")
+        message = _validation_message(error)
         messages.append(f"{field}: {message}" if field else message)
 
     return JSONResponse(
@@ -92,14 +125,14 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
         # jsonable_encoder because Pydantic puts the original exception object
         # in each error's "ctx", which json.dumps cannot serialise.
         content=jsonable_encoder(
-            {"detail": "; ".join(messages) or "Invalid request", "errors": exc.errors()}
+            {"detail": "; ".join(messages) or "Некоректний запит", "errors": exc.errors()}
         ),
     )
 
 
 @app.get("/", tags=["system"])
 def read_root():
-    return {"message": f"Welcome to {APP_NAME}! The Server is running.", "version": APP_VERSION}
+    return {"message": f"Вітаємо в {APP_NAME}! Сервер працює.", "version": APP_VERSION}
 
 
 @app.get("/health", response_model=schemas.SystemInfo, tags=["system"])

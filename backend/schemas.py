@@ -21,9 +21,9 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def _validate_password(value: str) -> str:
     if len(value) < MIN_PASSWORD_LENGTH:
-        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
+        raise ValueError(f"Пароль має містити щонайменше {MIN_PASSWORD_LENGTH} символів")
     if len(value) > MAX_PASSWORD_LENGTH:
-        raise ValueError(f"Password must be at most {MAX_PASSWORD_LENGTH} characters long")
+        raise ValueError(f"Пароль має містити не більше {MAX_PASSWORD_LENGTH} символів")
     return value
 
 
@@ -36,7 +36,7 @@ class UserBase(BaseModel):
     def _check_email(cls, value: str) -> str:
         normalized = value.strip().lower()
         if not _EMAIL_PATTERN.match(normalized):
-            raise ValueError("Enter a valid email address")
+            raise ValueError("Введіть коректну адресу електронної пошти")
         return normalized
 
     @field_validator("username")
@@ -44,7 +44,7 @@ class UserBase(BaseModel):
     def _check_username(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Username is required")
+            raise ValueError("Потрібне ім'я користувача")
         return normalized
 
 
@@ -234,14 +234,14 @@ class TrackerBase(BaseModel):
     @classmethod
     def _check_type(cls, value: str) -> str:
         if value not in TRACKER_TYPES:
-            raise ValueError(f"Tracker type must be one of: {', '.join(sorted(TRACKER_TYPES))}")
+            raise ValueError(f"Тип звички має бути одним із: {', '.join(sorted(TRACKER_TYPES))}")
         return value
 
     @field_validator("impact_per", "units_per")
     @classmethod
     def _check_period(cls, value: str) -> str:
         if value not in PERIODS:
-            raise ValueError(f"Period must be one of: {', '.join(sorted(PERIODS))}")
+            raise ValueError(f"Період має бути одним із: {', '.join(sorted(PERIODS))}")
         return value
 
     @field_validator("category")
@@ -282,14 +282,14 @@ class TrackerUpdate(BaseModel):
     @classmethod
     def _check_type(cls, value: str | None) -> str | None:
         if value is not None and value not in TRACKER_TYPES:
-            raise ValueError(f"Tracker type must be one of: {', '.join(sorted(TRACKER_TYPES))}")
+            raise ValueError(f"Тип звички має бути одним із: {', '.join(sorted(TRACKER_TYPES))}")
         return value
 
     @field_validator("impact_per", "units_per")
     @classmethod
     def _check_period(cls, value: str | None) -> str | None:
         if value is not None and value not in PERIODS:
-            raise ValueError(f"Period must be one of: {', '.join(sorted(PERIODS))}")
+            raise ValueError(f"Період має бути одним із: {', '.join(sorted(PERIODS))}")
         return value
 
     @field_validator("category")
@@ -530,7 +530,7 @@ class WebhookBase(BaseModel):
     def _check_url(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized.startswith(("http://", "https://")):
-            raise ValueError("Webhook URL must start with http:// or https://")
+            raise ValueError("Адреса вебхука має починатися з http:// або https://")
         return normalized
 
 
@@ -551,7 +551,7 @@ class WebhookUpdate(BaseModel):
             return None
         normalized = value.strip()
         if not normalized.startswith(("http://", "https://")):
-            raise ValueError("Webhook URL must start with http:// or https://")
+            raise ValueError("Адреса вебхука має починатися з http:// або https://")
         return normalized
 
 

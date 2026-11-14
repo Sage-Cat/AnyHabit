@@ -42,7 +42,7 @@ def ensure_utc(value: datetime | None) -> datetime | None:
 def to_utc(value: datetime) -> datetime:
     normalized = ensure_utc(value)
     if normalized is None:
-        raise ValueError("Datetime value is required")
+        raise ValueError("Потрібні дата й час")
     return normalized
 
 

@@ -65,7 +65,7 @@ def create_token(
     if active_count >= MAX_TOKENS_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"You already have {MAX_TOKENS_PER_USER} active tokens. Revoke one first.",
+            detail=f"У вас уже {MAX_TOKENS_PER_USER} активних токенів. Спершу відкличте один.",
         )
 
     plaintext, token_hash, preview = generate_api_token()
@@ -106,13 +106,13 @@ def revoke_token(
         .first()
     )
     if token is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Токен не знайдено")
 
     # Kept as a tombstone rather than deleted, so the row's hash stays reserved
     # and a revoked token can never be resurrected by a lucky collision.
     token.revoked_at = utcnow()
     db.commit()
-    return {"message": f"Token '{token.name}' revoked"}
+    return {"message": f"Токен «{token.name}» відкликано"}
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def create_webhook(
     if db.query(models.Webhook).filter(models.Webhook.user_id == current_user.id).count() >= MAX_WEBHOOKS_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"You already have {MAX_WEBHOOKS_PER_USER} webhooks. Delete one first.",
+            detail=f"У вас уже {MAX_WEBHOOKS_PER_USER} вебхуків. Спершу видаліть один.",
         )
 
     webhook = models.Webhook(
@@ -174,7 +174,7 @@ def _get_own_webhook(db: Session, webhook_id: int, user_id: int) -> models.Webho
         .first()
     )
     if webhook is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Вебхук не знайдено")
     return webhook
 
 
@@ -212,7 +212,7 @@ def test_webhook(
         db,
         current_user.id,
         "webhook.test",
-        {"message": "Test delivery from AnyHabit", "webhook_id": webhook.id, "user": current_user.username},
+        {"message": "Тестове надсилання з AnyHabit", "webhook_id": webhook.id, "user": current_user.username},
     )
     return webhook
 
@@ -228,7 +228,7 @@ def delete_webhook(
 
     db.delete(webhook)
     db.commit()
-    return {"message": f"Webhook '{name}' deleted"}
+    return {"message": f"Вебхук «{name}» видалено"}
 
 
 # ---------------------------------------------------------------------------

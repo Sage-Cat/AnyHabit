@@ -93,11 +93,11 @@ def decode_access_token(token: str) -> dict[str, Any]:
         return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Your session expired. Please sign in again."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Сеанс завершився. Увійдіть знову."
         ) from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Недійсний токен автентифікації"
         ) from exc
 
 

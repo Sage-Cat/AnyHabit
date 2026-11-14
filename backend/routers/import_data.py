@@ -144,7 +144,7 @@ def _apply_import(
     warnings: list[str] = []
 
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The backup file is not valid JSON")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Файл резервної копії не є коректним JSON")
 
     declared_format = payload.get("format")
     is_recognised = declared_format == "anyhabit-backup" or payload.get("export_type") == "backup"
@@ -155,7 +155,7 @@ def _apply_import(
     if not isinstance(raw_trackers, list):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No trackers found in this file. Export with 'All Data' to get a restorable backup.",
+            detail="У файлі немає звичок. Для відновлюваної копії експортуйте «Усі дані».",
         )
 
     summary = schemas.ImportSummary(
@@ -317,19 +317,19 @@ async def import_data(
     db: Session = Depends(get_db),
 ):
     if mode not in {"merge", "replace"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode must be 'merge' or 'replace'")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode має бути 'merge' або 'replace'")
 
     if mode == "replace" and not dry_run and confirm.strip() != REPLACE_CONFIRMATION:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Replace mode deletes your existing trackers. Confirm with '{REPLACE_CONFIRMATION}'.",
+            detail=f"Режим заміни видаляє наявні звички. Підтвердьте значенням «{REPLACE_CONFIRMATION}».",
         )
 
     raw = await file.read()
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Backup files are limited to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+            detail=f"Файл резервної копії має бути не більшим за {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ",
         )
 
     try:
@@ -337,7 +337,7 @@ async def import_data(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="That file is not valid JSON. CSV exports cannot be imported.",
+            detail="Файл не є коректним JSON. Експорт у CSV імпортувати не можна.",
         ) from exc
 
     return _apply_import(db, payload, current_user, mode, dry_run)

@@ -28,7 +28,7 @@ def get_tracker_participant(db: Session, tracker_id: int, user_id: int) -> model
 def get_tracker_or_404(db: Session, tracker_id: int) -> models.Tracker:
     tracker = db.query(models.Tracker).filter(models.Tracker.id == tracker_id).first()
     if tracker is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tracker not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Звичку не знайдено")
     return tracker
 
 
@@ -42,10 +42,10 @@ def can_view_group(db: Session, user_id: int, group_id: int) -> bool:
 def require_group_owner(db: Session, user_id: int, group_id: int) -> models.Group:
     group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if group is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Групу не знайдено")
     if group.owner_id != user_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Only the group owner can do this"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Це може зробити лише власник групи"
         )
     return group
 
@@ -59,9 +59,9 @@ def can_access_tracker(db: Session, user_id: int, tracker: models.Tracker) -> bo
 def require_tracker_access(db: Session, user_id: int, tracker_id: int, write: bool = False) -> models.Tracker:
     tracker = get_tracker_or_404(db, tracker_id)
     if not can_access_tracker(db, user_id, tracker):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this tracker")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Немає доступу до цієї звички")
     if write and tracker.owner_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the tracker owner can modify it")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Змінювати звичку може лише її власник")
     return tracker
 
 

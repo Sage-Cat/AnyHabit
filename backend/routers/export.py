@@ -35,7 +35,7 @@ DATA_TYPES = ("all", "trackers_only", "journals_only", "specific", "backup")
 LEGACY_BACKUP_TYPE = "backup"
 FORMATS = ("json", "csv")
 
-MOOD_LABELS = {1: "Very Bad", 2: "Bad", 3: "Neutral", 4: "Good", 5: "Very Good"}
+MOOD_LABELS = {1: "Дуже погано", 2: "Погано", 3: "Нейтрально", 4: "Добре", 5: "Дуже добре"}
 
 
 def _format_timestamp(value) -> str:
@@ -231,18 +231,18 @@ def export_data(
     if data_type not in DATA_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"data_type must be one of: {', '.join(DATA_TYPES)}",
+            detail=f"data_type має бути одним із: {', '.join(DATA_TYPES)}",
         )
     if format not in FORMATS:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"format must be one of: {', '.join(FORMATS)}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"format має бути одним із: {', '.join(FORMATS)}"
         )
 
     is_backup = data_type == LEGACY_BACKUP_TYPE
     if is_backup:
         if format != "json":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="A backup must be exported as JSON"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Резервну копію можна експортувати лише в JSON"
             )
         # "backup" is a full export under an older name.
         data_type = "all"
@@ -256,7 +256,7 @@ def export_data(
         if not tracker_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Select at least one tracker for a specific export",
+                detail="Виберіть принаймні одну звичку для вибіркового експорту",
             )
         selected = set(tracker_id)
         export_trackers = [tracker for tracker in user_trackers if tracker.id in selected]
