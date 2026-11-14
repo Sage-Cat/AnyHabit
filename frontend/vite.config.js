@@ -12,6 +12,7 @@ export default defineConfig({
     // same in development as it does behind nginx in production.
     proxy: {
       '/auth': 'http://localhost:8000',
+      '/cultivation': 'http://localhost:8000',
       '/trackers': 'http://localhost:8000',
       '/groups': 'http://localhost:8000',
       '/dashboard': 'http://localhost:8000',

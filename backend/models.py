@@ -179,3 +179,81 @@ class SchemaMigration(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     applied_at = Column(DateTime(timezone=True), default=utcnow)
     app_version = Column(String, default="")
+
+
+class CultivatedHabit(Base):
+    """A habit under cultivation: one tracker plus a versioned passport.
+
+    The tracker keeps the raw facts; the passport (``CultivationPassportVersion``)
+    keeps the goal, criteria and stage.  Nothing here is ever rewritten — a
+    change is a new passport version with its reason.
+    """
+
+    __tablename__ = "cultivated_habits"
+    __table_args__ = (Index("ix_cultivated_habits_user", "user_id", "archived_at"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    tracker_id = Column(Integer, ForeignKey("trackers.id", ondelete="SET NULL"), nullable=True, index=True)
+    # sleep | build | boolean | quit — how tracker logs turn into day states.
+    kind = Column(String, nullable=False, default="boolean")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class CultivationPassportVersion(Base):
+    __tablename__ = "cultivation_passport_versions"
+    __table_args__ = (Index("ix_cultivation_versions_habit", "habit_id", "effective_from"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    habit_id = Column(Integer, ForeignKey("cultivated_habits.id", ondelete="CASCADE"), nullable=False)
+    # Local calendar date (YYYY-MM-DD) from which this version applies.
+    effective_from = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    reason = Column(Text, nullable=False)
+    # "user" or "api:<token name>" — who recorded the change.
+    author = Column(String, default="user")
+    spec_json = Column(Text, nullable=False)
+
+
+class CultivationDayMark(Base):
+    """A manual verdict for one day; the latest mark per date wins, ``clear`` removes it."""
+
+    __tablename__ = "cultivation_day_marks"
+    __table_args__ = (Index("ix_cultivation_marks_habit", "habit_id", "date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    habit_id = Column(Integer, ForeignKey("cultivated_habits.id", ondelete="CASCADE"), nullable=False)
+    date = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    reason = Column(Text, default="")
+    author = Column(String, default="user")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class CultivationMode(Base):
+    """A period of controlled degradation: the minimum level is the requirement."""
+
+    __tablename__ = "cultivation_modes"
+    __table_args__ = (Index("ix_cultivation_modes_habit", "habit_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    habit_id = Column(Integer, ForeignKey("cultivated_habits.id", ondelete="CASCADE"), nullable=False)
+    start_date = Column(String, nullable=False)
+    end_date = Column(String, nullable=True)
+    reason = Column(Text, nullable=False)
+    end_reason = Column(Text, default="")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class CultivationProfile(Base):
+    """Per-user cultivation settings: rank ladder overrides and recovery grace."""
+
+    __tablename__ = "cultivation_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    ranks_json = Column(Text, default="")
+    recovery_grace_days = Column(Integer, default=60)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

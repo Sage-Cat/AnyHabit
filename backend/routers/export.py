@@ -286,6 +286,11 @@ def export_data(
                 row["journals"] = _journal_rows(db, tracker, current_user.id)
             export_payload["trackers"].append(row)
 
+    if data_type == "all" and format == "json":
+        from .cultivation import export_cultivation
+
+        export_payload["cultivation"] = export_cultivation(db, current_user)
+
     if data_type == "journals_only":
         tracker_names = {tracker.id: tracker.name for tracker in user_trackers}
         all_journals = (

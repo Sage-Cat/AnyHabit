@@ -1,4 +1,5 @@
 from .auth import router as auth_router
+from .cultivation import router as cultivation_router
 from .dashboard import router as dashboard_router
 from .developer import activity_router
 from .developer import router as developer_router
@@ -22,4 +23,5 @@ __all__ = [
     "legacy_import_router",
     "developer_router",
     "activity_router",
+    "cultivation_router",
 ]

@@ -452,6 +452,23 @@ def _m_webhooks(connection: Connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_webhooks_user ON webhooks (user_id)"))
 
 
+def _m_cultivation(connection: Connection) -> None:
+    """Habit cultivation: versioned passports, day marks, degraded modes, rank settings.
+
+    ``create_all`` already builds these tables on a fresh or upgraded database;
+    this step only records the schema change and adds the lookup indexes.
+    """
+    statements = [
+        ("cultivated_habits", "CREATE INDEX IF NOT EXISTS ix_cultivated_habits_user ON cultivated_habits (user_id, archived_at)"),
+        ("cultivation_passport_versions", "CREATE INDEX IF NOT EXISTS ix_cultivation_versions_habit ON cultivation_passport_versions (habit_id, effective_from)"),
+        ("cultivation_day_marks", "CREATE INDEX IF NOT EXISTS ix_cultivation_marks_habit ON cultivation_day_marks (habit_id, date)"),
+        ("cultivation_modes", "CREATE INDEX IF NOT EXISTS ix_cultivation_modes_habit ON cultivation_modes (habit_id)"),
+    ]
+    for table, statement in statements:
+        if _table_exists(connection, table):
+            connection.execute(text(statement))
+
+
 MIGRATIONS: list[tuple[str, callable]] = [
     ("0001_group_tables", _m_group_tables),
     ("0002_seed_bootstrap_user", _m_seed_bootstrap_user),
@@ -471,6 +488,7 @@ MIGRATIONS: list[tuple[str, callable]] = [
     ("0016_performance_indexes", _m_performance_indexes),
     ("0017_api_tokens", _m_api_tokens),
     ("0018_webhooks", _m_webhooks),
+    ("0019_cultivation", _m_cultivation),
 ]
 
 
