@@ -5,6 +5,7 @@ Run with:  python -m backend.tests.test_cultivation
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -202,6 +203,60 @@ def main() -> int:
     check("recovery without integration does not count",
           rank_name({1: stage_versions(("recovery", 0))}, 0) == "Послушник 1 рівня")
 
+    print("\n[4b] Review regressions")
+    dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
+    check("night across a DST switch counts elapsed hours", abs(dst.hours - 9) < 0.01, str(dst.hours))
+    wake = datetime.combine(D0 + timedelta(1), cv.parse_hhmm("07:00"), TZ)
+    typo = cv.Night(2, wake - timedelta(hours=20.5), wake)
+    day = sleep_days([night(D0 + timedelta(1), "23:00", "07:00"), typo], D0 + timedelta(1))[0][-1]
+    check("a mistyped long entry does not hide the real night",
+          day.status == "success" and abs(day.night.hours - 8) < 0.01, f"{day.status} {day.night.hours}")
+
+    quit_spec = {"name": "Quit", "stage": "formation", "start_date": D0.isoformat(), "level": {}}
+    untracked = cv.build_days("quit", versions((D0, quit_spec)), {}, {}, [], D0 + timedelta(5), tracked=False)
+    check("quit habit without a tracker invents no successes", {d.status for d in untracked} == {"no_data"},
+          str({d.status for d in untracked}))
+    window = cv.build_days("quit", versions((D0, quit_spec)), {}, {}, [], D0 + timedelta(3), today=D0 + timedelta(10))
+    check("a past range ends on a closed day", window[-1].status == "success", window[-1].status)
+
+    short, full = ("02:30", "07:30"), ("23:00", "07:00")
+    pattern = [short, full, short, full, short, full, full]
+    zigzag, zvers = sleep_days([night(D0 + timedelta(i), *pattern[i]) for i in range(7)], D0 + timedelta(6))
+    episodes = cv.find_episodes(zigzag, zvers)
+    check("a zigzag deviation lasts until confirmed recovery",
+          len(episodes) == 1 and episodes[0].elapsed(D0 + timedelta(6)) == 6, str([e.as_dict(D0) for e in episodes]))
+    strict = {**SPEC, "integration": {"window_days": 7, "min_observed_days": 1, "max_deviation_days": 3}}
+    crit = {c["key"]: c for c in cv.integration_check(strict, zigzag, episodes, D0 + timedelta(6))["criteria"]}
+    check("long zigzag deviation fails the integration criterion",
+          crit["long_deviation"]["status"] == "not_met" and crit["long_deviation"]["actual"] == 6,
+          str(crit["long_deviation"]))
+
+    bad_specs = {
+        "start_date": {**SPEC, "start_date": "yesterday"},
+        "min_observed_days": {**SPEC, "integration": {"min_observed_days": "many"}},
+        "priority": {**SPEC, "priority": "high"},
+        "level type": {**SPEC, "level": "8h"},
+        "min_amount": {**SPEC, "level": {"min_amount": "lots"}},
+        "rules type": {**SPEC, "rules": [1]},
+        "zero recovery term": {**SPEC, "rules": {"recovery_ok_days": 0}},
+        "ancient start": {**SPEC, "start_date": "1900-01-01"},
+    }
+    for label, bad_spec in bad_specs.items():
+        try:
+            cv.validate_spec("sleep", bad_spec)
+            check(f"invalid passport rejected: {label}", False)
+        except cv.PassportError:
+            check(f"invalid passport rejected: {label}", True)
+    for label, ladder in {"integrated": [{"name": "A", "req": {"integrated": "abc"}}],
+                          "durable": [{"name": "A", "req": {"durable": [3]}}],
+                          "flag": [{"name": "A", "req": {"active": "yes"}}]}.items():
+        try:
+            cv.validate_ranks(ladder)
+            check(f"invalid rank ladder rejected: {label}", False)
+        except cv.PassportError:
+            check(f"invalid rank ladder rejected: {label}", True)
+    check("rank ladder gets req filled in", cv.validate_ranks([{"name": "A"}]) == [{"name": "A", "req": {}}])
+
     print("\n[5] API")
     workdir = Path(tempfile.mkdtemp(prefix="anyhabit-cultivation-"))
     os.environ["ANYHABIT_DATA_DIR"] = str(workdir / "data")
@@ -280,6 +335,48 @@ def main() -> int:
         profile = agent.put("/cultivation/profile", headers=headers, json={"recovery_grace_days": 1})
         check("agent cannot change the rank system", profile.status_code == 403)
 
+        from backend.security import ACCESS_COOKIE_NAME
+
+        via_cookie = TestClient(app)
+        via_cookie.cookies.set(ACCESS_COOKIE_NAME, token)
+        sneaky = via_cookie.post(f"/cultivation/habits/{hid}/stage", json={"stage": "formation", "reason": "cookie"})
+        check("a token in the cookie still needs consent", sneaky.status_code == 409, sneaky.text[:200])
+        check("a token in the cookie cannot change ranks",
+              via_cookie.put("/cultivation/profile", json={"recovery_grace_days": 1}).status_code == 403)
+        read_token = client.post("/developer/tokens", json={"name": "reader", "scope": "read"}).json()["token"]
+        read_mark = agent.post(f"/cultivation/habits/{hid}/marks", headers={"Authorization": f"Bearer {read_token}"},
+                               json={"date": yesterday.isoformat(), "status": "success", "reason": "x"})
+        check("read-only token cannot write", read_mark.status_code == 403, read_mark.text[:200])
+        agent_mode = agent.post(f"/cultivation/habits/{hid}/modes/start", headers=headers,
+                                json={"reason": "agent", "start_date": (local_today - timedelta(days=3)).isoformat()})
+        check("agent cannot start minimum mode without consent", agent_mode.status_code == 409, agent_mode.text[:200])
+        agent_mode = agent.post(f"/cultivation/habits/{hid}/modes/start", headers=headers,
+                                json={"reason": "user agreed", "confirmed_by_user": True})
+        check("agreed minimum mode records its author",
+              agent_mode.status_code == 201 and agent_mode.json()["mode"]["author"] == "api", agent_mode.text[:200])
+        agent.post(f"/cultivation/habits/{hid}/modes/end", headers=headers, json={"confirmed_by_user": True})
+
+        ahead = client.post(f"/cultivation/habits/{hid}/stage", json={
+            "stage": "integrated", "reason": "later", "effective_from": (local_today + timedelta(days=30)).isoformat()})
+        check("future effective date refused", ahead.status_code == 422, ahead.text[:200])
+        ancient = client.post(f"/cultivation/habits/{hid}/marks", json={"date": "1900-01-01", "status": "fail", "reason": "x"})
+        check("ancient mark refused", ancient.status_code == 422, ancient.text[:200])
+        broken = client.post(f"/cultivation/habits/{hid}/versions", json={
+            "patch": {"integration": {"min_observed_days": "many"}}, "reason": "typo"})
+        check("unreadable passport refused", broken.status_code == 422, broken.text[:200])
+        check("overview still works after a refused passport", client.get("/cultivation/overview").status_code == 200)
+
+        dst_sleep = client.post(f"/cultivation/habits/{hid}/sleep", json={
+            "bedtime": "2026-10-24T23:00", "wake": "2026-10-25T07:00"})
+        check("sleep entry across DST stores elapsed hours",
+              dst_sleep.status_code == 201 and abs(dst_sleep.json()["hours"] - 9) < 0.01, dst_sleep.text[:200])
+
+        client.post(f"/cultivation/habits/{hid}/archive")
+        archived_mark = client.post(f"/cultivation/habits/{hid}/marks", json={
+            "date": local_today.isoformat(), "status": "success", "reason": "x"})
+        check("archived habit refuses new marks", archived_mark.status_code == 409, archived_mark.text[:200])
+        client.post(f"/cultivation/habits/{hid}/unarchive")
+
         started = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "сесія"})
         check("degraded mode started", started.status_code == 201 and started.json()["mode"] is not None, started.text[:200])
         again = client.post(f"/cultivation/habits/{hid}/modes/start", json={"reason": "again"})
@@ -299,6 +396,38 @@ def main() -> int:
         other = TestClient(app)
         other.post("/auth/register", json={"username": "other", "email": "other@example.com", "password": "other-password"})
         check("another user cannot see the habit", other.get(f"/cultivation/habits/{hid}").status_code == 404)
+
+        def restore(who, data, mode="merge"):
+            files = {"file": ("backup.json", json.dumps(data), "application/json")}
+            params = {"mode": mode, "dry_run": "false"}
+            if mode == "replace":
+                params["confirm"] = "ЗАМІНИТИ МОЇ ДАНІ"
+            return who.post("/import/", params=params, files=files)
+
+        merged = restore(other, exported)
+        check("import restores cultivation into another account",
+              merged.status_code == 200 and merged.json()["cultivation_habits_created"] == 1, merged.text[:300])
+        restored = other.get("/cultivation/habits").json()
+        check("restored habit is linked to its restored tracker",
+              len(restored) == 1 and restored[0]["tracker"] is not None, str(restored)[:300])
+        again = restore(other, exported)
+        check("re-importing does not duplicate habits", again.json()["cultivation_habits_existing"] == 1, again.text[:300])
+
+        replaced = restore(client, exported, mode="replace")
+        check("replace import restores cultivation", replaced.status_code == 200
+              and replaced.json()["cultivation_habits_created"] == 1, replaced.text[:300])
+        mine = client.get("/cultivation/habits").json()
+        check("replace keeps the habit usable", len(mine) == 1 and mine[0]["tracker"] is not None, str(mine)[:300])
+
+        legacy = {k: v for k, v in client.get("/export/?data_type=all&format=json").json().items() if k != "cultivation"}
+        restore(client, legacy, mode="replace")
+        relinked = client.get("/cultivation/habits").json()
+        check("replace with an older file relinks habits to restored trackers",
+              len(relinked) == 1 and relinked[0]["tracker"] is not None, str(relinked)[:300])
+        night_after = client.post(f"/cultivation/habits/{relinked[0]['id']}/sleep", json={
+            "bedtime": f"{(local_today - timedelta(days=2)).isoformat()}T23:30",
+            "wake": f"{(local_today - timedelta(days=1)).isoformat()}T07:00"})
+        check("sleep can be logged after a replace import", night_after.status_code == 201, night_after.text[:200])
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

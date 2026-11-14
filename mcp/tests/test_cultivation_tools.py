@@ -33,7 +33,18 @@ def test_passport_changes_need_user_confirmation(server):
         server.change_habit_passport(1, "stricter", user_confirmed=False, patch={"level": {}})
     with pytest.raises(ValueError, match="user_confirmed=true"):
         server.create_cultivated_habit("sleep", {"name": "x"}, "new", user_confirmed=False)
+    with pytest.raises(ValueError, match="user_confirmed=true"):
+        server.start_minimum_mode(1, "busy week", user_confirmed=False)
+    with pytest.raises(ValueError, match="user_confirmed=true"):
+        server.end_minimum_mode(1, user_confirmed=False)
     assert server.calls == []
+
+
+def test_confirmed_minimum_mode_carries_consent(server):
+    server.start_minimum_mode(4, "busy week", user_confirmed=True)
+    method, path, kwargs = server.calls[-1]
+    assert (method, path) == ("POST", "/cultivation/habits/4/modes/start")
+    assert kwargs["json_body"]["confirmed_by_user"] is True
 
 
 def test_confirmed_change_is_forwarded_with_consent_flag(server):
