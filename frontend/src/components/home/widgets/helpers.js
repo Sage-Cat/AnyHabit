@@ -1,6 +1,6 @@
 import { TRACKER_COLOR_HEX } from '../../../constants/tracker';
 
-export const normalizeCategory = (value) => (value || 'General').trim() || 'General';
+export { categoryLabel, normalizeCategory } from '../../../utils/tracker';
 
 export const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -8,10 +8,10 @@ export const toSafeNumber = (value) => {
 };
 
 export const formatImpact = (value) =>
-  toSafeNumber(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  toSafeNumber(value).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const formatValue = (value, decimals = 1) =>
-  toSafeNumber(value).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  toSafeNumber(value).toLocaleString('uk-UA', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
 export const accentFor = (tracker) => TRACKER_COLOR_HEX[tracker?.color] || null;
 

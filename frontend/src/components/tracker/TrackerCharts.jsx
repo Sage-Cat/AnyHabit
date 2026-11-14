@@ -14,6 +14,8 @@ import {
   YAxis
 } from 'recharts';
 import { formatDate, formatTime } from '../../utils/date';
+import { formatNumber } from '../../utils/number';
+import { WEEKDAY_SHORT } from '../../utils/labels';
 
 const cardClass = 'mb-8 w-full rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6';
 const chartAxisTick = { fontSize: 11, fill: '#9ca3af' };
@@ -36,7 +38,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
   const showsLogList = selectedTracker.type === 'build' || selectedTracker.type === 'boolean';
 
   const weekdayData = useMemo(
-    () => (weekdayBreakdown || []).map((entry) => ({ ...entry, short: entry.label.slice(0, 3) })),
+    () => (weekdayBreakdown || []).map((entry) => ({ ...entry, short: WEEKDAY_SHORT[entry.weekday] ?? entry.label.slice(0, 3) })),
     [weekdayBreakdown]
   );
 
@@ -59,8 +61,8 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
     <>
       <div className={cardClass}>
         <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-sm font-semibold text-stone-700">Historical progress</h2>
-          <p className="text-xs text-gray-400">Last 120 days</p>
+          <h2 className="text-sm font-semibold text-stone-700">Історія прогресу</h2>
+          <p className="text-xs text-gray-400">Останні 120 днів</p>
         </div>
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +72,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                 <XAxis dataKey="label" minTickGap={35} tick={chartAxisTick} />
                 <YAxis tick={chartAxisTick} allowDecimals={false} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#111827" strokeWidth={2.5} dot={false} name="Streak days" />
+                <Line type="monotone" dataKey="value" stroke="#111827" strokeWidth={2.5} dot={false} name="Днів серії" />
               </LineChart>
             ) : (
               <AreaChart data={historicalChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -90,9 +92,9 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                   stroke="#111827"
                   fill="url(#progressArea)"
                   strokeWidth={2.2}
-                  name="Daily amount"
+                  name="Щоденна кількість"
                 />
-                <Line type="monotone" dataKey="cumulative" stroke="#6b7280" strokeWidth={1.4} dot={false} name="Cumulative" />
+                <Line type="monotone" dataKey="cumulative" stroke="#6b7280" strokeWidth={1.4} dot={false} name="Накопичено" />
               </AreaChart>
             )}
           </ResponsiveContainer>
@@ -104,8 +106,8 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
       {buildHeatmap && (
         <div className={`${cardClass} overflow-x-auto`}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-sm font-semibold text-stone-700">Consistency heatmap</h2>
-            <p className="text-xs text-gray-400">Last 24 weeks</p>
+            <h2 className="text-sm font-semibold text-stone-700">Теплова карта регулярності</h2>
+            <p className="text-xs text-gray-400">Останні 24 тижні</p>
           </div>
 
           <div className="flex min-w-max gap-[3px]">
@@ -120,10 +122,10 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                       key={cell.date}
                       title={
                         cell.isRelapse
-                          ? `${cell.date}: relapse logged`
+                          ? `${cell.date}: записано зрив`
                           : isQuit
-                            ? `${cell.date}: ${cell.amount > 0 ? 'clean day' : 'not tracked'}`
-                            : `${cell.date}: ${cell.amount.toFixed(1)} ${selectedTracker.unit}`
+                            ? `${cell.date}: ${cell.amount > 0 ? 'день без зриву' : 'не відстежувалось'}`
+                            : `${cell.date}: ${formatNumber(cell.amount)} ${selectedTracker.unit}`
                       }
                       className={`h-3.5 w-3.5 rounded-[3px] border border-white/60 ${
                         cell.isFiller ? 'opacity-0' : shade
@@ -136,15 +138,15 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
-            <span>Less</span>
+            <span>Менше</span>
             {HEATMAP_SHADES.map((shade) => (
               <span key={shade} className={`h-3.5 w-3.5 rounded-[3px] border border-white/60 ${shade}`} />
             ))}
-            <span>More</span>
+            <span>Більше</span>
             {isQuit && (
               <>
                 <span className="ml-3 h-3.5 w-3.5 rounded-[3px] border border-white/60 bg-rose-400" />
-                <span>Relapse</span>
+                <span>Зрив</span>
               </>
             )}
           </div>
@@ -154,8 +156,8 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
       {!isQuit && hasWeekdayData && (
         <div className={cardClass}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-sm font-semibold text-stone-700">Which days you show up</h2>
-            <p className="text-xs text-gray-400">All-time totals by weekday</p>
+            <h2 className="text-sm font-semibold text-stone-700">У які дні ви найактивніші</h2>
+            <p className="text-xs text-gray-400">Підсумки за весь час за днями тижня</p>
           </div>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -164,10 +166,10 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                 <XAxis dataKey="short" tick={chartAxisTick} />
                 <YAxis tick={chartAxisTick} />
                 <Tooltip
-                  formatter={(value) => [`${value} ${selectedTracker.unit}`, 'Total']}
+                  formatter={(value) => [`${value} ${selectedTracker.unit}`, 'Разом']}
                   labelFormatter={(label) => weekdayData.find((entry) => entry.short === label)?.label || label}
                 />
-                <Bar dataKey="total" fill="#111827" radius={[6, 6, 0, 0]} name="Total" />
+                <Bar dataKey="total" fill="#111827" radius={[6, 6, 0, 0]} name="Разом" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -176,7 +178,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
 
       {showsLogList && habitLogs.length > 0 && (
         <div className="mb-8 w-full">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Recent activity</h2>
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Останні записи</h2>
           <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2">
             {habitLogs.map((log) => (
               <div
@@ -196,7 +198,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                           if (event.key === 'Escape') setEditingLogId(null);
                         }}
                         className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-stone-400"
-                        aria-label="Amount"
+                        aria-label="Кількість"
                         autoFocus
                       />
                       <button
@@ -204,13 +206,13 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                         onClick={() => saveEdit(log.id)}
                         className="rounded-lg bg-stone-900 px-2 py-1 text-xs font-medium text-white"
                       >
-                        Save
+                        Зберегти
                       </button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 font-medium text-stone-800">
                       <CheckCircle2 size={14} className="shrink-0 text-stone-400" />
-                      {selectedTracker.type === 'boolean' ? 'Completed' : `${log.amount} ${selectedTracker.unit}`}
+                      {selectedTracker.type === 'boolean' ? 'Виконано' : `${log.amount} ${selectedTracker.unit}`}
                     </div>
                   )}
                   <div className="mt-0.5 whitespace-nowrap text-xs text-gray-400">
@@ -224,7 +226,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                     <button
                       onClick={() => startEditing(log)}
                       className="text-gray-300 hover:text-stone-600"
-                      aria-label="Edit this log entry"
+                      aria-label="Редагувати цей запис"
                     >
                       <Pencil size={14} />
                     </button>
@@ -232,7 +234,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                   <button
                     onClick={() => deleteLog(log.id)}
                     className="text-gray-300 hover:text-rose-500"
-                    aria-label="Delete this log entry"
+                    aria-label="Видалити цей запис"
                   >
                     <Trash2 size={14} />
                   </button>

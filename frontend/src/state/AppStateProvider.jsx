@@ -73,7 +73,7 @@ export function AppStateProvider({ children }) {
       // A 401 means the session lapsed; useAuth already routes the user back to
       // the sign-in screen, so a toast on top of that would just be noise.
       if (error?.status === 401) return;
-      notify.error(error?.message || 'Something went wrong');
+      notify.error(error?.message || 'Щось пішло не так');
     },
     [notify]
   );
@@ -124,7 +124,7 @@ export function AppStateProvider({ children }) {
       if (success) notify.success(success);
       return result;
     } catch (error) {
-      notify.error(error?.message || failure || 'Something went wrong');
+      notify.error(error?.message || failure || 'Щось пішло не так');
       return undefined;
     }
   };
@@ -136,7 +136,7 @@ export function AppStateProvider({ children }) {
     try {
       const saved = await trackerData.submitTracker();
       setIsTrackerModalOpen(false);
-      notify.success(isEdit ? 'Tracker updated' : 'Tracker created');
+      notify.success(isEdit ? 'Звичку оновлено' : 'Звичку створено');
 
       // Creating a tracker used to leave you exactly where you were, with no
       // sign of the thing you just made. Open it instead.
@@ -146,57 +146,57 @@ export function AppStateProvider({ children }) {
         navigate(`/tracker/${saved.id}`);
       }
     } catch (error) {
-      notify.error(error?.message || 'Could not save the tracker');
+      notify.error(error?.message || 'Не вдалося зберегти звичку');
     }
   };
 
   const handleDeleteTracker = async (id) => {
     const tracker = trackers.find((item) => item.id === id);
     const accepted = await confirm({
-      title: 'Delete this tracker?',
-      message: `"${tracker?.name || 'This tracker'}" and all of its logs and journal entries will be permanently removed. To keep the history but hide the tracker, archive it instead.`,
-      confirmLabel: 'Delete permanently',
+      title: 'Видалити цю звичку?',
+      message: `Звичку «${tracker?.name || 'без назви'}» і всі її записи та щоденник буде видалено назавжди. Щоб зберегти історію, але сховати звичку, краще архівуйте її.`,
+      confirmLabel: 'Видалити назавжди',
       tone: 'danger'
     });
     if (!accepted) return;
 
     await runAction(() => trackerData.deleteTracker(id), {
-      success: 'Tracker deleted',
-      failure: 'Could not delete the tracker'
+      success: 'Звичку видалено',
+      failure: 'Не вдалося видалити звичку'
     });
   };
 
   const handleArchiveTracker = async (trackerId) =>
     runAction(() => trackerData.archiveTracker(trackerId), {
-      success: 'Tracker archived. Its history is kept.',
-      failure: 'Could not archive the tracker'
+      success: 'Звичку архівовано. Історію збережено.',
+      failure: 'Не вдалося архівувати звичку'
     });
 
   const handleUnarchiveTracker = async (trackerId) =>
     runAction(() => trackerData.unarchiveTracker(trackerId), {
-      success: 'Tracker restored',
-      failure: 'Could not restore the tracker'
+      success: 'Звичку відновлено',
+      failure: 'Не вдалося відновити звичку'
     });
 
   const handleToggleTrackerStatus = async (tracker) =>
     runAction(() => trackerData.toggleTrackerStatus(tracker), {
-      success: tracker.is_active ? 'Tracker paused' : 'Tracker resumed',
-      failure: 'Could not update the tracker'
+      success: tracker.is_active ? 'Звичку призупинено' : 'Звичку відновлено',
+      failure: 'Не вдалося оновити звичку'
     });
 
   const handleResetTracker = async (trackerId) => {
     const accepted = await confirm({
-      title: 'Log a relapse?',
+      title: 'Записати зрив?',
       message:
-        'This restarts the streak and the totals for this run from zero. Your journal entries and lifetime totals are kept.',
-      confirmLabel: 'Log relapse',
+        'Серія й підсумки поточного періоду почнуться з нуля. Записи щоденника та підсумки за весь час збережуться.',
+      confirmLabel: 'Записати зрив',
       tone: 'danger'
     });
     if (!accepted) return;
 
     await runAction(() => trackerData.resetTracker(trackerId), {
-      success: 'Relapse logged. The counter starts again from here.',
-      failure: 'Could not log the relapse'
+      success: 'Зрив записано. Лічильник починається знову.',
+      failure: 'Не вдалося записати зрив'
     });
   };
 
@@ -204,23 +204,23 @@ export function AppStateProvider({ children }) {
     event.preventDefault();
     const isEdit = Boolean(trackerData.journalFormData.id);
     await runAction(() => trackerData.submitJournal(), {
-      success: isEdit ? 'Journal entry updated' : 'Journal entry saved',
-      failure: 'Could not save the journal entry'
+      success: isEdit ? 'Запис щоденника оновлено' : 'Запис щоденника збережено',
+      failure: 'Не вдалося зберегти запис щоденника'
     });
   };
 
   const handleDeleteJournal = async (journalId) => {
     const accepted = await confirm({
-      title: 'Delete this journal entry?',
-      message: 'This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: 'Видалити цей запис щоденника?',
+      message: 'Скасувати це неможливо.',
+      confirmLabel: 'Видалити',
       tone: 'danger'
     });
     if (!accepted) return;
 
     await runAction(() => trackerData.deleteJournal(journalId), {
-      success: 'Journal entry deleted',
-      failure: 'Could not delete the journal entry'
+      success: 'Запис щоденника видалено',
+      failure: 'Не вдалося видалити запис щоденника'
     });
   };
 
@@ -229,37 +229,37 @@ export function AppStateProvider({ children }) {
     try {
       await trackerData.submitLog();
       setIsLogModalOpen(false);
-      notify.success('Activity logged');
+      notify.success('Запис додано');
     } catch (error) {
-      notify.error(error?.message || 'Could not save the log');
+      notify.error(error?.message || 'Не вдалося зберегти запис');
     }
   };
 
   const handleDeleteLog = async (logId) => {
     const accepted = await confirm({
-      title: 'Delete this log entry?',
-      message: 'Your streak and totals will be recalculated without it.',
-      confirmLabel: 'Delete',
+      title: 'Видалити цей запис?',
+      message: 'Серію й підсумки буде перераховано без нього.',
+      confirmLabel: 'Видалити',
       tone: 'danger'
     });
     if (!accepted) return;
 
     await runAction(() => trackerData.deleteLog(logId), {
-      success: 'Log deleted',
-      failure: 'Could not delete the log'
+      success: 'Запис видалено',
+      failure: 'Не вдалося видалити запис'
     });
   };
 
   const handleQuickBooleanLog = async () =>
     runAction(() => trackerData.quickMarkBooleanDone(), {
-      success: 'Marked as done',
-      failure: 'Could not mark this as done'
+      success: 'Позначено виконаним',
+      failure: 'Не вдалося позначити виконаним'
     });
 
   const handleUpdatePreferences = async (payload) =>
     runAction(() => updatePreferences(payload), {
-      success: 'Preferences saved',
-      failure: 'Could not save your preferences'
+      success: 'Параметри збережено',
+      failure: 'Не вдалося зберегти параметри'
     });
 
   // Deliberately not memoised. The previous version hand-maintained a

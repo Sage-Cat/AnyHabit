@@ -25,11 +25,11 @@ data = response.json()`
 });
 
 const ENDPOINTS = [
-  { path: '/trackers/', label: 'List trackers' },
-  { path: '/dashboard/summary', label: 'Dashboard summary' },
-  { path: '/dashboard/activity', label: 'Recent activity' },
-  { path: '/developer/metrics', label: 'Prometheus metrics' },
-  { path: '/export/?data_type=all&format=json', label: 'Full backup' }
+  { path: '/trackers/', label: 'Список звичок' },
+  { path: '/dashboard/summary', label: 'Зведення головної' },
+  { path: '/dashboard/activity', label: 'Остання активність' },
+  { path: '/developer/metrics', label: 'Метрики Prometheus' },
+  { path: '/export/?data_type=all&format=json', label: 'Повна резервна копія' }
 ];
 
 /**
@@ -66,7 +66,7 @@ export function ApiExplorerWidget({ config, onConfigChange, onOpenSettings }) {
           type="button"
           onClick={() => copy(baseUrl, 'base')}
           className="shrink-0 rounded-lg border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-stone-50"
-          aria-label="Copy base URL"
+          aria-label="Копіювати базовий URL"
         >
           {copied === 'base' ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
         </button>
@@ -74,7 +74,7 @@ export function ApiExplorerWidget({ config, onConfigChange, onOpenSettings }) {
 
       <div>
         <label htmlFor="api-endpoint" className="sr-only">
-          Endpoint
+          Кінцева точка
         </label>
         <select
           id="api-endpoint"
@@ -108,7 +108,7 @@ export function ApiExplorerWidget({ config, onConfigChange, onOpenSettings }) {
           onClick={() => copy(snippets[kind], 'snippet')}
           className="ml-auto rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-stone-50"
         >
-          {copied === 'snippet' ? 'Copied' : 'Copy'}
+          {copied === 'snippet' ? 'Скопійовано' : 'Копіювати'}
         </button>
       </div>
 
@@ -119,7 +119,7 @@ export function ApiExplorerWidget({ config, onConfigChange, onOpenSettings }) {
       <div className="flex items-center gap-2 text-[11px] text-gray-500">
         <KeyRound size={12} className="shrink-0" />
         <button type="button" onClick={onOpenSettings} className="underline-offset-2 hover:underline">
-          Create an API token
+          Створити API-токен
         </button>
         <a
           href={`${baseUrl}/docs`}
@@ -127,7 +127,7 @@ export function ApiExplorerWidget({ config, onConfigChange, onOpenSettings }) {
           rel="noreferrer"
           className="ml-auto inline-flex items-center gap-1 underline-offset-2 hover:underline"
         >
-          API docs <ExternalLink size={11} />
+          Документація API <ExternalLink size={11} />
         </a>
       </div>
     </div>
@@ -146,8 +146,8 @@ export function EmbedWidget({ config }) {
   if (!url) {
     return (
       <WidgetEmptyState
-        title="Nothing embedded yet"
-        hint="Add a URL in widget settings — a Grafana panel, a status page, anything."
+        title="Нічого не вбудовано"
+        hint="Додайте URL у налаштуваннях віджета — панель Grafana, сторінку статусу чи будь-що."
       />
     );
   }
@@ -157,7 +157,7 @@ export function EmbedWidget({ config }) {
       <div className="flex h-full items-center justify-center px-4 text-center">
         <div className="text-sm text-rose-600">
           <ShieldAlert size={20} className="mx-auto mb-2" />
-          Only http:// and https:// URLs can be embedded.
+          Можна вбудовувати лише URL з http:// та https://.
         </div>
       </div>
     );
@@ -166,7 +166,7 @@ export function EmbedWidget({ config }) {
   return (
     <iframe
       src={url}
-      title={config.title || 'Embedded content'}
+      title={config.title || 'Вбудований вміст'}
       loading="lazy"
       referrerPolicy="no-referrer"
       sandbox="allow-scripts allow-forms allow-popups"

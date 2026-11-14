@@ -41,6 +41,7 @@ import { WidgetSettingsPanel } from './widgets/WidgetSettingsPanel';
 import { normalizeCategory } from './widgets/helpers';
 import { createLogApi } from '../../services/trackerApi';
 import { useAppState } from '../../state/appState';
+import { pluralCount } from '../../utils/plural';
 import Modal from '../ui/Modal';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -113,14 +114,14 @@ function HomePage() {
     () =>
       visibleTrackers
         .filter((tracker) => tracker.type !== 'boolean')
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort((a, b) => a.name.localeCompare(b.name, 'uk-UA')),
     [visibleTrackers]
   );
 
   const impactCandidateIds = useMemo(() => impactCandidates.map((tracker) => tracker.id), [impactCandidates]);
 
   const widgetTrackerOptions = useMemo(
-    () => [...visibleTrackers].sort((a, b) => a.name.localeCompare(b.name)),
+    () => [...visibleTrackers].sort((a, b) => a.name.localeCompare(b.name, 'uk-UA')),
     [visibleTrackers]
   );
 
@@ -153,7 +154,7 @@ function HomePage() {
         console.error(error);
         if (cancelled) return;
 
-        setDashboardLoadError('Could not load your dashboard.');
+        setDashboardLoadError('Не вдалося завантажити головну.');
         setWidgets([]);
         setLayouts({ ...EMPTY_LAYOUTS });
       } finally {
@@ -243,7 +244,7 @@ function HomePage() {
         console.error(error);
 
         if (saveRequestIdRef.current === currentRequestId) {
-          setDashboardSaveError('Could not save dashboard changes.');
+          setDashboardSaveError('Не вдалося зберегти зміни головної.');
           setIsSavingDashboard(false);
         }
       }
@@ -289,11 +290,9 @@ function HomePage() {
 
     // One misplaced click used to remove every widget with no way back.
     const accepted = await confirm({
-      title: 'Clear your dashboard?',
-      message: `All ${widgets.length} widget${
-        widgets.length === 1 ? '' : 's'
-      } will be removed. Your trackers and their history are not affected.`,
-      confirmLabel: 'Clear dashboard',
+      title: 'Очистити головну?',
+      message: `Усі віджети (${widgets.length}) буде видалено. Ваші звички та їхня історія не постраждають.`,
+      confirmLabel: 'Очистити головну',
       tone: 'danger'
     });
     if (!accepted) return;
@@ -301,7 +300,7 @@ function HomePage() {
     setWidgets([]);
     setLayouts({ ...EMPTY_LAYOUTS });
     setActiveWidgetSettingsId(null);
-    notify.success('Dashboard cleared');
+    notify.success('Головну очищено');
   };
 
   const updateWidget = (widgetId, patch) => {
@@ -338,7 +337,7 @@ function HomePage() {
   /** Log one unit against a tracker straight from a widget. */
   const handleWidgetQuickLog = async (tracker) => {
     await createLogApi(tracker.id, { amount: 1, timestamp: new Date().toISOString() });
-    notify.success(`Logged ${tracker.name}`);
+    notify.success(`Додано запис: ${tracker.name}`);
 
     // The summary drives the streak and focus widgets, so it is now stale.
     refreshDashboardSummary();
@@ -365,8 +364,8 @@ function HomePage() {
               <Menu size={24} />
             </button>
             <div>
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-stone-900">Home</h2>
-              <p className="text-sm text-gray-500 mt-1">Build your own dashboard with custom widgets.</p>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-stone-900">Головна</h2>
+              <p className="text-sm text-gray-500 mt-1">Зберіть власну головну з потрібних віджетів.</p>
             </div>
           </div>
 
@@ -376,7 +375,7 @@ function HomePage() {
               onClick={() => setIsGroupManagementOpen(true)}
               className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
             >
-              <Users size={16} /> Groups
+              <Users size={16} /> Групи
               {groups.length > 0 && <span className="text-xs font-bold bg-stone-100 px-2 py-0.5 rounded-full">{groups.length}</span>}
             </button>
 
@@ -385,7 +384,7 @@ function HomePage() {
               onClick={() => openTrackerModal()}
               className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
             >
-              Create Tracker
+              Створити звичку
             </button>
 
             <button
@@ -394,7 +393,7 @@ function HomePage() {
               className="px-3 py-2 text-sm font-medium rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors inline-flex items-center gap-2"
             >
               <Plus size={16} />
-              Add Widget
+              Додати віджет
             </button>
 
             <button
@@ -403,21 +402,21 @@ function HomePage() {
               className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors inline-flex items-center gap-2"
             >
               <RefreshCcw size={14} />
-              Clear Dashboard
+              Очистити головну
             </button>
           </div>
         </div>
 
         <div className="mt-3 min-h-5 text-xs text-gray-500 flex items-center gap-2">
-          {isSavingDashboard && <span>Saving changes...</span>}
+          {isSavingDashboard && <span>Збереження змін…</span>}
           {!isSavingDashboard && dashboardSaveError && <span className="text-rose-600">{dashboardSaveError}</span>}
-          {!isSavingDashboard && !dashboardSaveError && isHydrated && <span>All changes saved to server.</span>}
+          {!isSavingDashboard && !dashboardSaveError && isHydrated && <span>Усі зміни збережено на сервері.</span>}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 md:px-10 py-6" ref={gridContainerRef}>
         {isLoadingDashboard ? (
-          <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Loading dashboard...</div>
+          <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Завантаження головної…</div>
         ) : dashboardLoadError ? (
           <div className="bg-white border border-rose-100 rounded-3xl p-10 text-center text-rose-600">
             <p className="font-semibold">{dashboardLoadError}</p>
@@ -426,24 +425,24 @@ function HomePage() {
               onClick={() => window.location.reload()}
               className="mt-4 px-4 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors text-sm"
             >
-              Retry
+              Повторити
             </button>
           </div>
         ) : widgets.length === 0 ? (
           <div className="bg-white border border-dashed border-gray-300 rounded-3xl p-10 text-center text-gray-500">
-            <p className="text-lg font-semibold text-stone-800">Your dashboard is empty</p>
-            <p className="text-sm mt-1">Add widgets to start building your personalized home screen.</p>
+            <p className="text-lg font-semibold text-stone-800">Ваша головна порожня</p>
+            <p className="text-sm mt-1">Додайте віджети, щоб зібрати власну головну.</p>
             <button
               type="button"
               onClick={() => setIsWidgetPickerOpen(true)}
               className="mt-4 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors"
             >
-              Add your first widget
+              Додати перший віджет
             </button>
           </div>
         ) : (
           !isGridMounted ? (
-            <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Preparing layout...</div>
+            <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Підготовка розкладки…</div>
           ) : (
             <ResponsiveGridLayout
               className="home-grid"
@@ -475,8 +474,8 @@ function HomePage() {
                   : [];
                 const impactSourceLabel = isImpactWidget
                   ? impactConfig?.autoSelect
-                    ? `Source: all eligible trackers (${selectedTrackerIds.length})`
-                    : `Source: ${selectedTrackerIds.length} selected tracker${selectedTrackerIds.length === 1 ? '' : 's'}`
+                    ? `Джерело: усі придатні звички (${selectedTrackerIds.length})`
+                    : `Джерело: ${pluralCount(selectedTrackerIds.length, ['вибрана звичка', 'вибрані звички', 'вибраних звичок'])}`
                   : '';
 
                 return (
@@ -498,7 +497,7 @@ function HomePage() {
                             type="button"
                             onClick={() => setActiveWidgetSettingsId((prev) => (prev === widget.id ? null : widget.id))}
                             className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:text-stone-800 hover:bg-stone-50 flex items-center justify-center transition-colors"
-                            aria-label="Edit widget"
+                            aria-label="Редагувати віджет"
                           >
                             <Settings size={14} />
                           </button>
@@ -506,7 +505,7 @@ function HomePage() {
                             type="button"
                             onClick={() => handleRemoveWidget(widget.id)}
                             className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                            aria-label="Remove widget"
+                            aria-label="Видалити віджет"
                           >
                             <X size={14} />
                           </button>
@@ -639,8 +638,8 @@ function HomePage() {
       <Modal
         isOpen={Boolean(activeWidgetForSettings)}
         onClose={() => setActiveWidgetSettingsId(null)}
-        title="Widget settings"
-        description="Customise the title and this widget's own options."
+        title="Налаштування віджета"
+        description="Змініть назву та власні параметри цього віджета."
         size="xl"
       >
         {activeWidgetForSettings && (
@@ -661,8 +660,8 @@ function HomePage() {
       <Modal
         isOpen={isWidgetPickerOpen}
         onClose={() => setIsWidgetPickerOpen(false)}
-        title="Add a widget"
-        description="Pick what you want on your home dashboard."
+        title="Додати віджет"
+        description="Оберіть, що розмістити на головній."
         size="2xl"
       >
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">

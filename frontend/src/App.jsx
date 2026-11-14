@@ -63,21 +63,21 @@ function TrackerRoute() {
   // the user cannot reach — say so rather than spinning forever on a dead link.
   if (!selectedTracker && isLoadingTrackers) {
     return (
-      <div className="flex flex-1 items-center justify-center px-4 text-sm text-stone-500">Loading tracker…</div>
+      <div className="flex flex-1 items-center justify-center px-4 text-sm text-stone-500">Завантаження звички…</div>
     );
   }
 
   if (!selectedTracker) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-lg font-semibold text-stone-700">That tracker could not be found</p>
-        <p className="text-sm text-gray-500">It may have been deleted, or the link points somewhere else.</p>
+        <p className="text-lg font-semibold text-stone-700">Цю звичку не знайдено</p>
+        <p className="text-sm text-gray-500">Можливо, її видалили, або посилання хибне.</p>
         <button
           type="button"
           onClick={() => navigate('/')}
           className="mt-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
         >
-          Back to Home
+          На головну
         </button>
       </div>
     );
@@ -140,7 +140,7 @@ function App() {
   if (isAuthLoading) {
     return (
       <div className="app-boot flex min-h-screen items-center justify-center bg-stone-50 text-stone-500">
-        Loading workspace…
+        Завантаження…
       </div>
     );
   }

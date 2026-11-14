@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MOOD_LABELS } from '../../constants/tracker';
 import { formatDateTime } from '../../utils/date';
+import { formatChartDate } from '../../utils/labels';
 import MoodIcon from '../MoodIcon';
 
 function JournalSection({
@@ -18,7 +19,7 @@ function JournalSection({
   const isEditing = Boolean(journalFormData.id);
 
   const moodChartData = useMemo(
-    () => (moodTrend || []).slice(-60).map((point) => ({ ...point, label: point.date.slice(5) })),
+    () => (moodTrend || []).slice(-60).map((point) => ({ ...point, label: formatChartDate(point.date) })),
     [moodTrend]
   );
 
@@ -27,7 +28,7 @@ function JournalSection({
       <div className="mb-8 w-full rounded-3xl border border-gray-100 bg-white p-5 shadow-sm transition-all focus-within:border-gray-300">
         <form onSubmit={handleJournalSubmit}>
           <label htmlFor="journal-content" className="sr-only">
-            Journal entry
+            Запис щоденника
           </label>
           <textarea
             id="journal-content"
@@ -37,12 +38,12 @@ function JournalSection({
             onChange={(event) => setJournalFormData({ ...journalFormData, content: event.target.value })}
             className="w-full resize-none bg-transparent text-base text-stone-800 outline-none placeholder:text-gray-400"
             rows="2"
-            placeholder={isEditing ? 'Edit your entry…' : 'Write a journal entry…'}
+            placeholder={isEditing ? 'Редагуйте запис…' : 'Напишіть запис у щоденник…'}
           />
 
           <div className="mt-3 flex items-center justify-between border-t border-gray-50 pt-3">
             <fieldset className="flex gap-1.5">
-              <legend className="sr-only">Mood</legend>
+              <legend className="sr-only">Настрій</legend>
               {[1, 2, 3, 4, 5].map((mood) => (
                 <button
                   key={mood}
@@ -69,7 +70,7 @@ function JournalSection({
                   onClick={() => setJournalFormData({ id: null, content: '', mood: 3 })}
                   className="px-2 text-sm text-gray-400 hover:text-stone-600"
                 >
-                  Cancel
+                  Скасувати
                 </button>
               )}
               <button
@@ -77,7 +78,7 @@ function JournalSection({
                 disabled={!journalFormData.content.trim()}
                 className="rounded-xl bg-stone-900 px-5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {isEditing ? 'Update' : 'Post'}
+                {isEditing ? 'Оновити' : 'Додати'}
               </button>
             </div>
           </div>
@@ -87,8 +88,8 @@ function JournalSection({
       {moodChartData.length > 2 && (
         <div className="mb-8 w-full rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6">
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-sm font-semibold text-stone-700">Mood over time</h2>
-            <p className="text-xs text-gray-400">Average mood per day you journalled</p>
+            <h2 className="text-sm font-semibold text-stone-700">Настрій з часом</h2>
+            <p className="text-xs text-gray-400">Середній настрій за дні із записами</p>
           </div>
           <div className="h-40 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -96,8 +97,8 @@ function JournalSection({
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="label" minTickGap={30} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                 <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <Tooltip formatter={(value) => [value, 'Average mood']} />
-                <Line type="monotone" dataKey="average" stroke="#111827" strokeWidth={2} dot={{ r: 2 }} name="Mood" />
+                <Tooltip formatter={(value) => [value, 'Середній настрій']} />
+                <Line type="monotone" dataKey="average" stroke="#111827" strokeWidth={2} dot={{ r: 2 }} name="Настрій" />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -107,7 +108,7 @@ function JournalSection({
       <div className="w-full space-y-3 pb-12">
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Journal {journals.length > 0 && <span className="ml-1 normal-case text-gray-300">({journals.length})</span>}
+            Щоденник {journals.length > 0 && <span className="ml-1 normal-case text-gray-300">({journals.length})</span>}
           </h2>
 
           {/* A journal you cannot search stops being useful past a few dozen
@@ -115,14 +116,14 @@ function JournalSection({
           <div className="relative w-full sm:w-64">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <label htmlFor="journal-search" className="sr-only">
-              Search journal entries
+              Пошук у щоденнику
             </label>
             <input
               id="journal-search"
               type="search"
               value={journalSearch}
               onChange={(event) => setJournalSearch(event.target.value)}
-              placeholder="Search entries…"
+              placeholder="Пошук записів…"
               className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-stone-400"
             />
             {journalSearch && (
@@ -130,7 +131,7 @@ function JournalSection({
                 type="button"
                 onClick={() => setJournalSearch('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-stone-700"
-                aria-label="Clear search"
+                aria-label="Очистити пошук"
               >
                 <X size={13} />
               </button>
@@ -141,7 +142,7 @@ function JournalSection({
         {journals.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-sm text-gray-400">
-              {journalSearch ? `No entries match “${journalSearch}”.` : 'No journal entries yet.'}
+              {journalSearch ? `Записів за запитом «${journalSearch}» не знайдено.` : 'Записів у щоденнику ще немає.'}
             </p>
           </div>
         ) : (
@@ -160,7 +161,7 @@ function JournalSection({
                   <span className="text-xs font-medium">{formatDateTime(journal.timestamp)}</span>
                   {journal.is_relapse && (
                     <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                      <AlertTriangle size={10} /> Relapse
+                      <AlertTriangle size={10} /> Зрив
                     </span>
                   )}
                 </div>
@@ -172,7 +173,7 @@ function JournalSection({
                     <button
                       onClick={() => setJournalFormData(journal)}
                       className="text-gray-400 hover:text-stone-600"
-                      aria-label="Edit this entry"
+                      aria-label="Редагувати цей запис"
                     >
                       <Pencil size={14} />
                     </button>
@@ -180,7 +181,7 @@ function JournalSection({
                   <button
                     onClick={() => deleteJournal(journal.id)}
                     className="text-gray-400 hover:text-rose-500"
-                    aria-label="Delete this entry"
+                    aria-label="Видалити цей запис"
                   >
                     <Trash2 size={14} />
                   </button>

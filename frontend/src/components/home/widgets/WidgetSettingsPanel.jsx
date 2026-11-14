@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { FIELD_CLASS, LABEL_CLASS, normalizeCategory } from './helpers';
+import { pluralCount } from '../../../utils/plural';
+import { FIELD_CLASS, LABEL_CLASS, categoryLabel, normalizeCategory } from './helpers';
 import { normalizeImpactConfig } from './registry';
 import { TrackerMultiPicker, TrackerPicker } from './shared';
 
@@ -18,13 +19,13 @@ export function WidgetSettingsPanel({
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Widget title</label>
+          <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Назва віджета</label>
           <button
             type="button"
             onClick={() => onTitleChange(definition.label)}
             className="text-xs font-medium text-gray-500 hover:text-stone-800"
           >
-            Reset
+            Скинути
           </button>
         </div>
 
@@ -37,7 +38,7 @@ export function WidgetSettingsPanel({
           maxLength={80}
         />
 
-        <p className="text-xs text-gray-500">This title is only visible on your dashboard.</p>
+        <p className="text-xs text-gray-500">Ця назва видима лише на вашій головній.</p>
       </div>
 
       {widget.type === 'impactSummary' && (
@@ -54,7 +55,7 @@ export function WidgetSettingsPanel({
           trackers={allTrackers}
           value={widget.config?.trackerId ?? null}
           onChange={(trackerId) => onConfigChange({ trackerId })}
-          label={widget.type === 'heatmap' ? 'Tracker to chart' : 'Tracker to feature'}
+          label={widget.type === 'heatmap' ? 'Звичка для карти' : 'Звичка для виділення'}
         />
       )}
 
@@ -63,7 +64,7 @@ export function WidgetSettingsPanel({
           trackers={loggableTrackers}
           selectedIds={widget.config?.trackerIds || []}
           onChange={(trackerIds) => onConfigChange({ trackerIds })}
-          label="Trackers to show buttons for"
+          label="Звички, для яких показати кнопки"
         />
       )}
 
@@ -71,13 +72,13 @@ export function WidgetSettingsPanel({
 
       {widget.type === 'notes' && (
         <p className="text-xs text-gray-500">
-          Type directly into the widget on the dashboard — the text saves as you go.
+          Пишіть прямо у віджеті на головній — текст зберігається сам.
         </p>
       )}
 
       {widget.type === 'apiExplorer' && (
         <p className="text-xs text-gray-500">
-          Pick the endpoint and language on the widget itself. Create the token it needs under Settings → Developer.
+          Кінцеву точку й мову оберіть у самому віджеті. Токен, який для цього потрібен, створіть у Налаштування → Для розробників.
         </p>
       )}
     </div>
@@ -92,7 +93,7 @@ function EmbedSettings({ widget, onConfigChange }) {
     <div className="space-y-3">
       <div>
         <label className={LABEL_CLASS} htmlFor="embed-url">
-          Page URL
+          URL сторінки
         </label>
         <input
           id="embed-url"
@@ -102,27 +103,27 @@ function EmbedSettings({ widget, onConfigChange }) {
           placeholder="https://grafana.local/d-solo/abc/panel"
           className={FIELD_CLASS}
         />
-        {!isValid && <p className="mt-1.5 text-[11px] text-rose-600">Must start with http:// or https://</p>}
+        {!isValid && <p className="mt-1.5 text-[11px] text-rose-600">Має починатися з http:// або https://</p>}
       </div>
 
       <div>
         <label className={LABEL_CLASS} htmlFor="embed-title">
-          Accessible title
+          Доступна назва
         </label>
         <input
           id="embed-title"
           type="text"
           value={widget.config?.title || ''}
           onChange={(event) => onConfigChange({ title: event.target.value })}
-          placeholder="Grafana — server load"
+          placeholder="Grafana — навантаження сервера"
           className={FIELD_CLASS}
         />
       </div>
 
       <p className="text-[11px] leading-5 text-gray-500">
-        The page is loaded in a sandboxed frame with no access to your AnyHabit session. Sites that send
+        Сторінка завантажується в ізольованому фреймі без доступу до вашого сеансу AnyHabit. Сайти, що надсилають
         <code className="mx-1 rounded bg-stone-100 px-1 font-mono">X-Frame-Options</code>
-        will refuse to load — most public sites do.
+        відмовляться завантажуватись — так роблять більшість публічних сайтів.
       </p>
     </div>
   );
@@ -140,7 +141,7 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
     return impactCandidates.filter((tracker) => {
       const name = tracker.name.toLowerCase();
       const category = normalizeCategory(tracker.category).toLowerCase();
-      return name.includes(query) || category.includes(query);
+      return name.includes(query) || category.includes(query) || categoryLabel(tracker.category).toLowerCase().includes(query);
     });
   }, [impactCandidates, searchTerm]);
 
@@ -177,8 +178,8 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tracker source</p>
-        <p className="text-xs text-gray-500 mt-1">Choose which trackers should contribute to this widget.</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Джерело звичок</p>
+        <p className="text-xs text-gray-500 mt-1">Оберіть, які звички враховувати в цьому віджеті.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -191,7 +192,7 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
               : 'bg-white border-gray-200 text-stone-700 hover:bg-stone-50'
           }`}
         >
-          All trackers
+          Усі звички
         </button>
 
         <button
@@ -203,14 +204,14 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
               : 'bg-white border-gray-200 text-stone-700 hover:bg-stone-50'
           }`}
         >
-          Pick trackers
+          Вибрати звички
         </button>
       </div>
 
       <p className="text-xs text-gray-500">
         {config.autoSelect
-          ? `Using all eligible trackers (${impactCandidates.length}).`
-          : `Using ${selectedTrackerIds.length} selected tracker${selectedTrackerIds.length === 1 ? '' : 's'}.`}
+          ? `Використано всі придатні звички (${impactCandidates.length}).`
+          : `Використано: ${pluralCount(selectedTrackerIds.length, ['вибрана звичка', 'вибрані звички', 'вибраних звичок'])}.`}
       </p>
 
       {!config.autoSelect && (
@@ -220,7 +221,7 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search tracker"
+              placeholder="Пошук звички"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-stone-400 bg-white text-sm text-stone-800"
             />
           </div>
@@ -231,24 +232,24 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
               onClick={selectAllTrackers}
               className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-stone-800 hover:bg-white"
             >
-              Select all
+              Вибрати всі
             </button>
             <button
               type="button"
               onClick={clearSelectedTrackers}
               className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-stone-800 hover:bg-white"
             >
-              Clear
+              Очистити
             </button>
           </div>
 
           {impactCandidates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 bg-white p-3 text-xs text-gray-500">
-              No eligible trackers available.
+              Придатних звичок немає.
             </div>
           ) : filteredCandidates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 bg-white p-3 text-xs text-gray-500">
-              No tracker matches your search.
+              Жодна звичка не відповідає пошуку.
             </div>
           ) : (
             <div className="max-h-44 overflow-y-auto space-y-1">
@@ -269,7 +270,7 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
                     <span className="min-w-0">
                       <span className="block text-sm font-medium truncate">{tracker.name}</span>
                       <span className={`block text-xs truncate ${isSelected ? 'text-stone-500' : 'text-gray-500'}`}>
-                        {normalizeCategory(tracker.category)}
+                        {categoryLabel(tracker.category)}
                       </span>
                     </span>
 

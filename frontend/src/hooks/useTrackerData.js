@@ -162,7 +162,7 @@ export function useTrackerData(isAuthenticated, onError) {
 
   const existingCategories = useMemo(() => {
     const categories = trackers.map((tracker) => normalizeCategory(tracker.category));
-    return [...new Set(['General', ...categories])].sort((a, b) => a.localeCompare(b));
+    return [...new Set(['General', ...categories])].sort((a, b) => a.localeCompare(b, 'uk-UA'));
   }, [trackers]);
 
   const groupedTrackers = useMemo(
@@ -179,8 +179,8 @@ export function useTrackerData(isAuthenticated, onError) {
   const sortedCategoryEntries = useMemo(
     () =>
       Object.entries(groupedTrackers)
-        .map(([category, items]) => [category, [...items].sort((a, b) => a.name.localeCompare(b.name))])
-        .sort(([a], [b]) => a.localeCompare(b)),
+        .map(([category, items]) => [category, [...items].sort((a, b) => a.name.localeCompare(b.name, 'uk-UA'))])
+        .sort(([a], [b]) => a.localeCompare(b, 'uk-UA')),
     [groupedTrackers]
   );
 
@@ -188,7 +188,7 @@ export function useTrackerData(isAuthenticated, onError) {
     if (!selectedCategory) return [];
     return visibleTrackers
       .filter((tracker) => normalizeCategory(tracker.category) === selectedCategory)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name, 'uk-UA'));
   }, [visibleTrackers, selectedCategory]);
 
   const activeCategory = selectedTracker ? normalizeCategory(selectedTracker.category) : selectedCategory;

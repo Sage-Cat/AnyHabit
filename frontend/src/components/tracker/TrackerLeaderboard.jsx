@@ -1,5 +1,6 @@
 import { Flame, Medal, Users } from 'lucide-react';
 import { formatRelative } from '../../utils/date';
+import { formatNumber } from '../../utils/number';
 
 function TrackerLeaderboard({ shareStats }) {
   if (!shareStats || !shareStats.leaderboard?.length) return null;
@@ -9,18 +10,18 @@ function TrackerLeaderboard({ shareStats }) {
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-            <Users size={16} /> Shared progress
+            <Users size={16} /> Спільний прогрес
           </h2>
-          <p className="mt-1 text-xs text-gray-400">Everyone assigned to this tracker.</p>
+          <p className="mt-1 text-xs text-gray-400">Усі учасники цієї звички.</p>
         </div>
 
         {shareStats.groupStreakStats && (
           <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
             <div className="flex items-center gap-2 font-semibold text-stone-900">
-              <Flame size={16} /> Group streak: {shareStats.groupStreakStats.current}{' '}
+              <Flame size={16} /> Серія групи: {shareStats.groupStreakStats.current}{' '}
               <span className="font-normal text-stone-500">{shareStats.groupStreakStats.periodLabel}</span>
             </div>
-            <div className="mt-1 text-xs text-stone-500">Counts only when everyone completes the period.</div>
+            <div className="mt-1 text-xs text-stone-500">Зараховується, лише коли всі виконали період.</div>
           </div>
         )}
       </div>
@@ -34,7 +35,7 @@ function TrackerLeaderboard({ shareStats }) {
                   <Medal size={16} className={index === 0 ? 'text-amber-500' : 'text-stone-400'} />
                   <span className="truncate">{entry.user.username}</span>
                 </h3>
-                <p className="mt-1 text-xs text-stone-500">Last active {formatRelative(entry.lastActivityAt)}</p>
+                <p className="mt-1 text-xs text-stone-500">Остання активність: {formatRelative(entry.lastActivityAt)}</p>
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-2xl font-semibold text-stone-900">{entry.streakStats.current}</div>
@@ -46,17 +47,17 @@ function TrackerLeaderboard({ shareStats }) {
 
             <dl className="mt-4 space-y-3 text-sm text-stone-600">
               <div className="flex items-center justify-between rounded-2xl bg-white px-3 py-2">
-                <dt>Progress</dt>
-                <dd className="font-medium text-stone-900">{entry.dailyProgress.percentage.toFixed(0)}%</dd>
+                <dt>Прогрес</dt>
+                <dd className="font-medium text-stone-900">{formatNumber(entry.dailyProgress.percentage, 0)}%</dd>
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-white px-3 py-2">
-                <dt>Completed</dt>
+                <dt>Виконано</dt>
                 <dd className="font-medium text-stone-900">
-                  {entry.dailyProgress.total.toFixed(1)} / {entry.dailyProgress.target.toFixed(1)}
+                  {formatNumber(entry.dailyProgress.total)} / {formatNumber(entry.dailyProgress.target)}
                 </dd>
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-white px-3 py-2">
-                <dt>Longest streak</dt>
+                <dt>Найдовша серія</dt>
                 <dd className="font-medium text-stone-900">{entry.streakStats.longest}</dd>
               </div>
             </dl>

@@ -14,9 +14,10 @@ import {
   Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { TRACKER_COLOR_HEX } from '../../constants/tracker';
+import { TRACKER_COLOR_HEX, TRACKER_TYPE_LABELS } from '../../constants/tracker';
 import { formatDateTime } from '../../utils/date';
-import { formatScheduleLabel } from '../../utils/tracker';
+import { plural } from '../../utils/plural';
+import { categoryLabel, formatScheduleLabel, normalizeCategory } from '../../utils/tracker';
 
 
 function TrackerHeader({
@@ -44,7 +45,7 @@ function TrackerHeader({
     ? 'bg-white border border-gray-200 text-stone-700 hover:bg-gray-50'
     : 'bg-stone-100 border border-stone-200 text-stone-400 cursor-not-allowed';
 
-  const category = (selectedTracker.category || 'General').trim() || 'General';
+  const category = normalizeCategory(selectedTracker.category);
   const hasRestarted =
     effectiveStartDate && new Date(effectiveStartDate).getTime() !== new Date(selectedTracker.start_date).getTime();
 
@@ -56,7 +57,7 @@ function TrackerHeader({
             <button
               onClick={() => setIsSidebarOpen(true)}
               className="mr-1 text-stone-500 hover:text-stone-900 md:hidden"
-              aria-label="Open navigation"
+              aria-label="Відкрити навігацію"
             >
               <Menu size={24} />
             </button>
@@ -79,28 +80,28 @@ function TrackerHeader({
               }}
               className="rounded-md bg-stone-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition-colors hover:bg-stone-200"
             >
-              {category}
+              {categoryLabel(category)}
             </button>
 
             <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-800">
-              {selectedTracker.type}
+              {TRACKER_TYPE_LABELS[selectedTracker.type] || selectedTracker.type}
             </span>
 
             {selectedTracker.group_id && (
               <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                Shared{selectedTracker.participant_count ? ` · ${selectedTracker.participant_count} members` : ''}
+                Спільна{selectedTracker.participant_count ? ` · ${selectedTracker.participant_count} ${plural(selectedTracker.participant_count, ['учасник', 'учасники', 'учасників'])}` : ''}
               </span>
             )}
 
             {isArchived && (
               <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                Archived
+                В архіві
               </span>
             )}
 
             {!selectedTracker.is_active && !isArchived && (
               <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                Paused
+                На паузі
               </span>
             )}
           </div>
@@ -117,13 +118,13 @@ function TrackerHeader({
               {selectedTracker.type === 'boolean'
                 ? formatScheduleLabel(selectedTracker)
                 : selectedTracker.type === 'quit'
-                  ? `Avoiding ${formatScheduleLabel(selectedTracker)}`
-                  : `Goal: ${formatScheduleLabel(selectedTracker)}`}
+                  ? `Уникати: ${formatScheduleLabel(selectedTracker)}`
+                  : `Ціль: ${formatScheduleLabel(selectedTracker)}`}
             </p>
 
             <p className="flex items-center gap-2 text-sm text-gray-500">
               <Calendar size={14} className="shrink-0" />
-              Started {formatDateTime(selectedTracker.start_date)}
+              Початок: {formatDateTime(selectedTracker.start_date)}
             </p>
 
             {/* After a relapse the two dates diverge; showing both makes the
@@ -131,7 +132,7 @@ function TrackerHeader({
             {hasRestarted && (
               <p className="flex items-center gap-2 text-sm text-gray-500">
                 <Clock size={14} className="shrink-0" />
-                Current run since {formatDateTime(effectiveStartDate)}
+                Поточна серія з {formatDateTime(effectiveStartDate)}
               </p>
             )}
           </div>
@@ -146,7 +147,7 @@ function TrackerHeader({
               }}
               className="flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
             >
-              <PlusCircle size={16} /> Log activity
+              <PlusCircle size={16} /> Додати запис
             </button>
           )}
 
@@ -155,7 +156,7 @@ function TrackerHeader({
               onClick={onQuickBooleanLog}
               className="flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
             >
-              <CheckCircle2 size={16} /> Mark as done
+              <CheckCircle2 size={16} /> Позначити виконаним
             </button>
           )}
 
@@ -164,7 +165,7 @@ function TrackerHeader({
               onClick={() => handleResetTracker(selectedTracker.id)}
               className="flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
             >
-              <RotateCcw size={16} /> Log relapse
+              <RotateCcw size={16} /> Записати зрив
             </button>
           )}
 
@@ -172,16 +173,16 @@ function TrackerHeader({
             <button
               onClick={() => canManageTracker && toggleTrackerStatus(selectedTracker)}
               disabled={!canManageTracker}
-              title={!canManageTracker ? 'Only the owner can do this' : undefined}
+              title={!canManageTracker ? 'Лише власник може це зробити' : undefined}
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${ownerOnlyClass}`}
             >
               {selectedTracker.is_active ? (
                 <>
-                  <Pause size={16} /> Pause
+                  <Pause size={16} /> Пауза
                 </>
               ) : (
                 <>
-                  <Play size={16} /> Resume
+                  <Play size={16} /> Відновити
                 </>
               )}
             </button>
@@ -195,20 +196,20 @@ function TrackerHeader({
             disabled={!canManageTracker}
             title={
               !canManageTracker
-                ? 'Only the owner can do this'
+                ? 'Лише власник може це зробити'
                 : isArchived
-                  ? 'Bring this tracker back'
-                  : 'Hide this tracker but keep all of its history'
+                  ? 'Повернути цю звичку'
+                  : 'Сховати звичку, зберігши всю історію'
             }
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${ownerOnlyClass}`}
           >
             {isArchived ? (
               <>
-                <ArchiveRestore size={16} /> Restore
+                <ArchiveRestore size={16} /> Повернути
               </>
             ) : (
               <>
-                <Archive size={16} /> Archive
+                <Archive size={16} /> Архівувати
               </>
             )}
           </button>
@@ -216,23 +217,23 @@ function TrackerHeader({
           <button
             onClick={() => canManageTracker && openTrackerModal(selectedTracker)}
             disabled={!canManageTracker}
-            title={!canManageTracker ? 'Only the owner can do this' : undefined}
+            title={!canManageTracker ? 'Лише власник може це зробити' : undefined}
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${ownerOnlyClass}`}
           >
-            <Pencil size={16} /> Edit
+            <Pencil size={16} /> Редагувати
           </button>
 
           <button
             onClick={() => canManageTracker && deleteTracker(selectedTracker.id)}
             disabled={!canManageTracker}
-            title={!canManageTracker ? 'Only the owner can do this' : 'Deletes all history too'}
+            title={!canManageTracker ? 'Лише власник може це зробити' : 'Видаляє також усю історію'}
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
               canManageTracker
                 ? 'border border-gray-200 bg-white text-rose-600 hover:bg-rose-50'
                 : 'cursor-not-allowed border border-stone-200 bg-stone-100 text-stone-400'
             }`}
           >
-            <Trash2 size={16} /> Delete
+            <Trash2 size={16} /> Видалити
           </button>
         </div>
       </div>

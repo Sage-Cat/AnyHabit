@@ -1,7 +1,7 @@
 {
   "name": "AnyHabit",
   "short_name": "AnyHabit",
-  "description": "Self-hosted habit tracking for building good routines and quitting bad ones.",
+  "description": "Трекер звичок на власному сервері: формуйте корисні звички та відмовляйтеся від шкідливих.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

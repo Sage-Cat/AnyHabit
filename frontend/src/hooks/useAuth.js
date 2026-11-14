@@ -24,7 +24,7 @@ export function useAuth() {
       // A 401 here just means "not signed in yet", which is not an error the
       // user needs to read on the sign-in screen.
       if (requestError.status !== 401) {
-        setError(requestError.message || 'Authentication failed');
+        setError(requestError.message || 'Не вдалося пройти автентифікацію');
       }
     } finally {
       setIsLoading(false);
@@ -54,14 +54,14 @@ export function useAuth() {
     (identifier, password) =>
       runAuthAction(
         () => loginApi({ identifier, password }),
-        'Sign-in failed. Please check your credentials.'
+        'Не вдалося увійти. Перевірте дані для входу.'
       ),
     [runAuthAction]
   );
 
   const register = useCallback(
     (username, email, password) =>
-      runAuthAction(() => registerApi({ username, email, password }), 'Registration failed. Please try again.'),
+      runAuthAction(() => registerApi({ username, email, password }), 'Не вдалося зареєструватися. Спробуйте ще раз.'),
     [runAuthAction]
   );
 

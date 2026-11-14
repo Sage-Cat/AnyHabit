@@ -9,7 +9,7 @@ import { API_FETCH_OPTIONS, API_URL } from '../config/api';
  */
 async function toRequestError(response) {
   const body = await response.text();
-  let message = body || `Request failed (${response.status})`;
+  let message = body || `Запит не вдався (${response.status})`;
 
   try {
     const parsed = JSON.parse(body);
@@ -28,7 +28,7 @@ async function toRequestError(response) {
   // simply mistyped their password that their session had expired.
   // Gateway errors, by contrast, arrive as proxy HTML with nothing readable.
   if (response.status === 502 || response.status === 503 || response.status === 504) {
-    message = 'The AnyHabit server is not responding. Is the backend running?';
+    message = 'Сервер AnyHabit не відповідає. Чи запущено бекенд?';
   }
 
   const error = new Error(message);
@@ -51,7 +51,7 @@ async function request(path, { parse = 'json', ...options } = {}) {
     });
   } catch (networkError) {
     // fetch only rejects when the request never reached the server.
-    const error = new Error('Could not reach the AnyHabit server. Check your connection and try again.');
+    const error = new Error('Не вдалося з\'єднатися з сервером AnyHabit. Перевірте підключення й спробуйте ще раз.');
     error.status = 0;
     error.cause = networkError;
     throw error;

@@ -28,7 +28,7 @@ export function useToasts() {
 
   const pushToast = useCallback(
     (message, { tone = 'info', duration } = {}) => {
-      const text = typeof message === 'string' ? message : message?.message || 'Something went wrong';
+      const text = typeof message === 'string' ? message : message?.message || 'Щось пішло не так';
       const id = ++nextToastId;
       const life = duration ?? (tone === 'error' ? ERROR_DURATION : DEFAULT_DURATION);
 

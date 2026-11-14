@@ -4,21 +4,22 @@ import { WEEK_START_OPTIONS } from '../../constants/tracker';
 import { fetchSystemInfoApi } from '../../services/systemApi';
 import { useAppState } from '../../state/appState';
 import { getTimezoneOptions } from '../../utils/date';
+import { pluralCount } from '../../utils/plural';
 import DeveloperTab from '../settings/DeveloperTab';
 import Modal from '../ui/Modal';
 
 const TABS = [
-  { id: 'account', label: 'Account', icon: User },
-  { id: 'preferences', label: 'Preferences', icon: Palette },
-  { id: 'data', label: 'Data', icon: Database },
-  { id: 'developer', label: 'Developer', icon: Code2 },
-  { id: 'about', label: 'About', icon: Info }
+  { id: 'account', label: 'Акаунт', icon: User },
+  { id: 'preferences', label: 'Параметри', icon: Palette },
+  { id: 'data', label: 'Дані', icon: Database },
+  { id: 'developer', label: 'Для розробників', icon: Code2 },
+  { id: 'about', label: 'Про застосунок', icon: Info }
 ];
 
 const THEME_OPTIONS = [
-  { value: 'light', label: 'Light', icon: Sun, hint: 'Bright background' },
-  { value: 'dark', label: 'Dark', icon: Moon, hint: 'Dimmed for low light' },
-  { value: 'system', label: 'System', icon: Monitor, hint: 'Follow your device' }
+  { value: 'light', label: 'Світла', icon: Sun, hint: 'Світлий фон' },
+  { value: 'dark', label: 'Темна', icon: Moon, hint: 'Приглушена для слабкого освітлення' },
+  { value: 'system', label: 'Системна', icon: Monitor, hint: 'Як на вашому пристрої' }
 ];
 
 const inputClass =
@@ -50,9 +51,9 @@ function AccountTab() {
     try {
       await changePassword({ current_password: passwords.current, new_password: passwords.next });
       setPasswords({ current: '', next: '', confirm: '' });
-      notify.success('Password updated');
+      notify.success('Пароль оновлено');
     } catch (error) {
-      notify.error(error.message || 'Could not change your password');
+      notify.error(error.message || 'Не вдалося змінити пароль');
     } finally {
       setIsSaving(false);
     }
@@ -60,10 +61,10 @@ function AccountTab() {
 
   const handleDeleteAccount = async () => {
     const accepted = await confirm({
-      title: 'Delete your account?',
+      title: 'Видалити акаунт?',
       message:
-        'Every tracker, log and journal entry you own will be permanently deleted. Export a backup first if you might want any of it back.',
-      confirmLabel: 'Delete my account',
+        'Усі ваші звички, записи та щоденники буде видалено назавжди. Якщо щось може знадобитися, спершу зробіть резервну копію.',
+      confirmLabel: 'Видалити мій акаунт',
       tone: 'danger',
       requireText: user?.username || ''
     });
@@ -73,14 +74,14 @@ function AccountTab() {
       await deleteAccount(user.username);
       setIsSettingsOpen(false);
     } catch (error) {
-      notify.error(error.message || 'Could not delete the account');
+      notify.error(error.message || 'Не вдалося видалити акаунт');
     }
   };
 
   return (
     <div className="space-y-8">
       <section>
-        <h3 className={sectionTitleClass}>Signed in as</h3>
+        <h3 className={sectionTitleClass}>Ви увійшли як</h3>
         <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
           <p className="truncate text-sm font-semibold text-stone-900">{user?.username}</p>
           <p className="mt-0.5 truncate text-xs text-stone-500">{user?.email}</p>
@@ -92,17 +93,17 @@ function AccountTab() {
             }}
             className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-stone-900 transition-colors hover:text-rose-600"
           >
-            <LogOut size={16} /> Log out
+            <LogOut size={16} /> Вийти
           </button>
         </div>
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Display name</h3>
+        <h3 className={sectionTitleClass}>Ім'я користувача</h3>
         <form onSubmit={handleUsernameSave} className="flex flex-wrap items-end gap-2">
           <div className="min-w-[12rem] flex-1">
             <label htmlFor="settings-username" className="sr-only">
-              Username
+              Ім'я користувача
             </label>
             <input
               id="settings-username"
@@ -118,17 +119,17 @@ function AccountTab() {
             disabled={!username.trim() || username.trim() === user?.username}
             className="rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Save
+            Зберегти
           </button>
         </form>
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Change password</h3>
+        <h3 className={sectionTitleClass}>Зміна пароля</h3>
         <form onSubmit={handlePasswordChange} className="space-y-3">
           <div>
             <label htmlFor="current-password" className={labelClass}>
-              Current password
+              Поточний пароль
             </label>
             <input
               id="current-password"
@@ -141,7 +142,7 @@ function AccountTab() {
           </div>
           <div>
             <label htmlFor="new-password" className={labelClass}>
-              New password
+              Новий пароль
             </label>
             <input
               id="new-password"
@@ -151,11 +152,11 @@ function AccountTab() {
               onChange={(event) => setPasswords({ ...passwords, next: event.target.value })}
               className={inputClass}
             />
-            <p className="mt-1.5 text-[11px] text-gray-400">At least 8 characters.</p>
+            <p className="mt-1.5 text-[11px] text-gray-400">Щонайменше 8 символів.</p>
           </div>
           <div>
             <label htmlFor="confirm-password" className={labelClass}>
-              Confirm new password
+              Підтвердьте новий пароль
             </label>
             <input
               id="confirm-password"
@@ -166,7 +167,7 @@ function AccountTab() {
               className={inputClass}
             />
             {passwords.confirm && !passwordsMatch && (
-              <p className="mt-1.5 text-[11px] text-rose-600">These passwords do not match.</p>
+              <p className="mt-1.5 text-[11px] text-rose-600">Паролі не збігаються.</p>
             )}
           </div>
           <button
@@ -174,24 +175,24 @@ function AccountTab() {
             disabled={!canChangePassword}
             className="rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isSaving ? 'Updating…' : 'Update password'}
+            {isSaving ? 'Оновлення…' : 'Оновити пароль'}
           </button>
         </form>
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Danger zone</h3>
+        <h3 className={sectionTitleClass}>Небезпечна зона</h3>
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-          <p className="text-sm font-medium text-rose-900">Delete this account</p>
+          <p className="text-sm font-medium text-rose-900">Видалити цей акаунт</p>
           <p className="mt-1 text-xs leading-5 text-rose-700">
-            Removes every tracker, log and journal entry you own. There is no undo.
+            Видаляє всі ваші звички, записи та щоденники. Скасувати неможливо.
           </p>
           <button
             type="button"
             onClick={handleDeleteAccount}
             className="mt-3 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100"
           >
-            Delete account
+            Видалити акаунт
           </button>
         </div>
       </section>
@@ -209,7 +210,7 @@ function PreferencesTab() {
   return (
     <div className="space-y-8">
       <section>
-        <h3 className={sectionTitleClass}>Theme</h3>
+        <h3 className={sectionTitleClass}>Тема</h3>
         <div className="grid gap-3 sm:grid-cols-3">
           {THEME_OPTIONS.map((option) => {
             const Icon = option.icon;
@@ -235,12 +236,12 @@ function PreferencesTab() {
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Time zone</h3>
+        <h3 className={sectionTitleClass}>Часовий пояс</h3>
         <p className="mb-3 text-xs leading-5 text-gray-500">
-          Decides when your day rolls over, so streaks and daily targets reset at your midnight rather than UTC&nbsp;midnight.
+          Визначає, коли закінчується ваш день, тож серії та щоденні цілі скидаються о вашій півночі, а не о півночі за UTC.
         </p>
         <label htmlFor="timezone" className="sr-only">
-          Time zone
+          Часовий пояс
         </label>
         <select
           id="timezone"
@@ -251,7 +252,7 @@ function PreferencesTab() {
           {options.map((zone) => (
             <option key={zone} value={zone}>
               {zone}
-              {zone === browserZone ? ' (your device)' : ''}
+              {zone === browserZone ? ' (ваш пристрій)' : ''}
             </option>
           ))}
         </select>
@@ -262,13 +263,13 @@ function PreferencesTab() {
             onClick={() => updatePreferences({ timezone: browserZone })}
             className="mt-2 text-xs font-medium text-stone-600 underline-offset-2 hover:underline"
           >
-            Use your device time zone ({browserZone})
+            Використати часовий пояс пристрою ({browserZone})
           </button>
         )}
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Week starts on</h3>
+        <h3 className={sectionTitleClass}>Тиждень починається з</h3>
         <div className="grid gap-3 sm:grid-cols-3">
           {WEEK_START_OPTIONS.map((option) => {
             const isSelected = (user?.week_start || 'monday') === option.value;
@@ -290,7 +291,7 @@ function PreferencesTab() {
             );
           })}
         </div>
-        <p className="mt-2 text-xs text-gray-500">Applies to weekly targets and the consistency heatmap.</p>
+        <p className="mt-2 text-xs text-gray-500">Діє для тижневих цілей і теплової карти регулярності.</p>
       </section>
     </div>
   );
@@ -307,39 +308,39 @@ function DataTab() {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-stone-900">Export a backup</h3>
+        <h3 className="text-sm font-semibold text-stone-900">Експорт резервної копії</h3>
         <p className="mt-1 text-xs leading-5 text-gray-500">
-          Downloads every tracker, log and journal entry as JSON. Take one before upgrading AnyHabit.
+          Завантажує всі звички, записи та щоденники у форматі JSON. Робіть копію перед оновленням AnyHabit.
         </p>
         <button
           type="button"
           onClick={() => openDialog(setIsExportOpen)}
           className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
         >
-          Export data
+          Експортувати дані
         </button>
       </section>
 
       <section className="rounded-2xl border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-stone-900">Restore a backup</h3>
+        <h3 className="text-sm font-semibold text-stone-900">Відновлення з копії</h3>
         <p className="mt-1 text-xs leading-5 text-gray-500">
-          Import a JSON export. You will see a preview of exactly what changes before anything is written.
+          Імпортуйте JSON-експорт. Перед записом ви побачите, що саме зміниться.
         </p>
         <button
           type="button"
           onClick={() => openDialog(setIsImportOpen)}
           className="mt-3 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-stone-800 transition-colors hover:bg-stone-50"
         >
-          Restore data
+          Відновити дані
         </button>
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-stone-50 p-4">
-        <h3 className="text-sm font-semibold text-stone-900">Automatic server backups</h3>
+        <h3 className="text-sm font-semibold text-stone-900">Автоматичні копії на сервері</h3>
         <p className="mt-1 text-xs leading-5 text-gray-600">
-          Whenever AnyHabit starts with a database that needs upgrading, it copies the old database into{' '}
-          <code className="rounded bg-white px-1 py-0.5 font-mono text-[11px]">data/backups/</code> first. Those
-          snapshots live in the same Docker volume as your database.
+          Щоразу, коли AnyHabit запускається з базою даних, що потребує оновлення, він спершу копіює стару базу в{' '}
+          <code className="rounded bg-white px-1 py-0.5 font-mono text-[11px]">data/backups/</code>. Ці
+          знімки лежать у тому самому томі Docker, що й ваша база даних.
         </p>
       </section>
     </div>
@@ -370,7 +371,7 @@ function AboutTab() {
     <div className="space-y-6">
       <section className="rounded-2xl border border-gray-200 bg-stone-50 p-4">
         <p className="text-sm leading-6 text-stone-700">
-          AnyHabit is a self-hosted habit tracker, made by Bebedi as an open source project.
+          AnyHabit — трекер звичок для власного сервера, відкритий проєкт від Bebedi.
         </p>
         <a
           href="https://github.com/Sparths/AnyHabit"
@@ -383,30 +384,29 @@ function AboutTab() {
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Server</h3>
+        <h3 className={sectionTitleClass}>Сервер</h3>
         {loadFailed ? (
-          <p className="text-sm text-gray-500">Could not reach the server for version information.</p>
+          <p className="text-sm text-gray-500">Не вдалося зв'язатися із сервером для отримання відомостей про версію.</p>
         ) : !systemInfo ? (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <p className="text-sm text-gray-500">Завантаження…</p>
         ) : (
           <dl className="space-y-2">
             <div className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <dt className="text-stone-600">Version</dt>
+              <dt className="text-stone-600">Версія</dt>
               <dd className="font-mono text-stone-900">{systemInfo.version}</dd>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <dt className="text-stone-600">Database schema</dt>
+              <dt className="text-stone-600">Схема бази даних</dt>
               <dd className="font-mono text-stone-900">v{systemInfo.schema_version}</dd>
             </div>
             {systemInfo.migrations_applied_on_boot?.length > 0 && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
                 <dt className="font-medium text-emerald-900">
-                  Upgraded on last start ({systemInfo.migrations_applied_on_boot.length} migration
-                  {systemInfo.migrations_applied_on_boot.length === 1 ? '' : 's'})
+                  Оновлено під час останнього запуску ({pluralCount(systemInfo.migrations_applied_on_boot.length, ['міграція', 'міграції', 'міграцій'])})
                 </dt>
                 {systemInfo.backup_created_on_boot && (
                   <dd className="mt-1 break-all font-mono text-[11px] text-emerald-800">
-                    Backup: {systemInfo.backup_created_on_boot}
+                    Копія: {systemInfo.backup_created_on_boot}
                   </dd>
                 )}
               </div>
@@ -416,12 +416,12 @@ function AboutTab() {
       </section>
 
       <section>
-        <h3 className={sectionTitleClass}>Keyboard shortcuts</h3>
+        <h3 className={sectionTitleClass}>Клавіатурні скорочення</h3>
         <dl className="space-y-2 text-sm">
           {[
-            ['Ctrl / ⌘ + K', 'Search trackers and actions'],
-            ['Esc', 'Close a dialog'],
-            ['↑ ↓ then ↵', 'Move through search results']
+            ['Ctrl / ⌘ + K', 'Пошук звичок і дій'],
+            ['Esc', 'Закрити вікно'],
+            ['↑ ↓, потім ↵', 'Перехід по результатах пошуку']
           ].map(([keys, description]) => (
             <div key={keys} className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2">
               <dt className="text-stone-600">{description}</dt>
@@ -454,8 +454,8 @@ function SettingsModal() {
     <Modal
       isOpen
       onClose={() => setIsSettingsOpen(false)}
-      title="Settings"
-      description="Personalise AnyHabit and manage your data."
+      title="Налаштування"
+      description="Налаштуйте AnyHabit і керуйте своїми даними."
       size="xl"
     >
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-100 pb-px">

@@ -3,11 +3,12 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TRACKER_COLOR_HEX } from '../constants/tracker';
 import { useAppState } from '../state/appState';
+import { categoryLabel } from '../utils/tracker';
 
 const TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'private', label: 'Private' },
-  { id: 'groups', label: 'Groups' }
+  { id: 'all', label: 'Усі' },
+  { id: 'private', label: 'Особисті' },
+  { id: 'groups', label: 'Групові' }
 ];
 
 function Sidebar({ isHomeActive }) {
@@ -99,7 +100,7 @@ function Sidebar({ isHomeActive }) {
         <button
           className="text-gray-400 hover:text-stone-900 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
-          aria-label="Close navigation"
+          aria-label="Закрити навігацію"
         >
           <X size={20} />
         </button>
@@ -114,7 +115,7 @@ function Sidebar({ isHomeActive }) {
         className="mb-4 flex w-full items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-400 transition-colors hover:border-stone-300 hover:text-stone-600"
       >
         <Search size={15} />
-        <span className="flex-1 text-left">Search…</span>
+        <span className="flex-1 text-left">Пошук…</span>
         <kbd className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] font-medium">⌘K</kbd>
       </button>
 
@@ -126,15 +127,15 @@ function Sidebar({ isHomeActive }) {
         }`}
       >
         <Home size={16} />
-        <span>Home</span>
+        <span>Головна</span>
       </button>
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Trackers</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Звички</h2>
         <button
           onClick={() => openTrackerModal()}
           className="flex items-center justify-center text-gray-400 transition-colors hover:text-stone-900"
-          aria-label="Create a tracker"
+          aria-label="Нова звичка"
         >
           <Plus size={18} />
         </button>
@@ -166,14 +167,14 @@ function Sidebar({ isHomeActive }) {
           <div className="relative mb-3">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <label htmlFor="sidebar-filter" className="sr-only">
-              Filter trackers
+              Фільтр звичок
             </label>
             <input
               id="sidebar-filter"
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter…"
+              placeholder="Фільтр…"
               className="w-full rounded-lg border border-gray-200 bg-stone-50 py-1.5 pl-8 pr-2 text-xs outline-none focus:border-stone-400"
             />
           </div>
@@ -183,7 +184,7 @@ function Sidebar({ isHomeActive }) {
       <ul className="flex-1 space-y-4 overflow-y-auto pr-1">
         {!hasResults ? (
           <li className="mt-6 text-center text-sm text-gray-400">
-            {query ? 'No tracker matches that filter.' : 'No trackers yet.'}
+            {query ? 'Жодна звичка не підходить під фільтр.' : 'Звичок ще немає.'}
           </li>
         ) : (
           filteredEntries.map(([category, items]) => (
@@ -202,7 +203,7 @@ function Sidebar({ isHomeActive }) {
                   className="flex min-w-0 flex-1 items-center justify-between rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-stone-100/60"
                 >
                   <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
-                    {category}
+                    {categoryLabel(category)}
                   </span>
                   <span className="category-count-badge ml-2 rounded-full bg-stone-100/80 px-2 py-0.5 text-[10px] font-medium text-stone-400">
                     {items.length}
@@ -214,7 +215,7 @@ function Sidebar({ isHomeActive }) {
                     setCollapsedCategories((previous) => ({ ...previous, [category]: !previous[category] }))
                   }
                   className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-stone-100/70 hover:text-stone-700"
-                  aria-label={`${collapsedCategories[category] ? 'Expand' : 'Collapse'} ${category}`}
+                  aria-label={`${collapsedCategories[category] ? 'Розгорнути' : 'Згорнути'} ${categoryLabel(category)}`}
                   aria-expanded={!collapsedCategories[category]}
                 >
                   <ChevronDown
@@ -262,7 +263,7 @@ function Sidebar({ isHomeActive }) {
                                       : 'bg-rose-400'
                                 }`}
                                 title={
-                                  tracker.archived_at ? 'Archived' : tracker.is_active ? 'Active' : 'Paused'
+                                  tracker.archived_at ? 'В архіві' : tracker.is_active ? 'Активна' : 'На паузі'
                                 }
                               />
                             </span>
@@ -288,7 +289,7 @@ function Sidebar({ isHomeActive }) {
           }`}
         >
           <Archive size={16} />
-          <span className="flex-1 text-left">{showArchived ? 'Hide archived' : 'Show archived'}</span>
+          <span className="flex-1 text-left">{showArchived ? 'Сховати архів' : 'Показати архів'}</span>
           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">
             {archivedCount}
           </span>
@@ -297,10 +298,10 @@ function Sidebar({ isHomeActive }) {
 
       <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
         {[
-          { label: 'Groups', Icon: Users, action: () => setIsGroupManagementOpen(true) },
-          { label: 'Export data', Icon: Download, action: () => setIsExportOpen(true) },
-          { label: 'Restore backup', Icon: Upload, action: () => setIsImportOpen(true) },
-          { label: 'Settings', Icon: Settings, action: () => setIsSettingsOpen(true) }
+          { label: 'Групи', Icon: Users, action: () => setIsGroupManagementOpen(true) },
+          { label: 'Експорт даних', Icon: Download, action: () => setIsExportOpen(true) },
+          { label: 'Відновити з копії', Icon: Upload, action: () => setIsImportOpen(true) },
+          { label: 'Налаштування', Icon: Settings, action: () => setIsSettingsOpen(true) }
         ].map((item) => (
           <button
             key={item.label}

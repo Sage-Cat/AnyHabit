@@ -1,7 +1,8 @@
 import { Check, ChevronDown } from 'lucide-react';
-import { PERIOD_OPTIONS, TRACKER_COLORS } from '../../constants/tracker';
+import { PERIOD_OPTIONS, ROLE_LABELS, TRACKER_COLORS } from '../../constants/tracker';
 import { useAppState } from '../../state/appState';
 import { toDateInputValue } from '../../utils/date';
+import { categoryLabel } from '../../utils/tracker';
 import Modal from '../ui/Modal';
 
 const inputClass =
@@ -56,14 +57,14 @@ function TrackerModal() {
     <Modal
       isOpen
       onClose={() => setIsTrackerModalOpen(false)}
-      title={trackerFormData.id ? 'Edit tracker' : 'New tracker'}
+      title={trackerFormData.id ? 'Редагувати звичку' : 'Нова звичка'}
       description={selectedType?.hint}
       size="lg"
     >
       <form id="tracker-form" onSubmit={handleTrackerSubmit} className="space-y-5">
         <div>
           <label htmlFor="tracker-name" className={labelClass}>
-            Name
+            Назва
           </label>
           <input
             id="tracker-name"
@@ -73,13 +74,13 @@ function TrackerModal() {
             value={trackerFormData.name}
             onChange={(event) => update({ name: event.target.value })}
             className={inputClass}
-            placeholder="e.g. Quit Smoking"
+            placeholder="напр. Кинути курити"
           />
         </div>
 
         <div>
           <label htmlFor="tracker-description" className={labelClass}>
-            Description <span className="normal-case tracking-normal text-gray-400">(optional)</span>
+            Опис <span className="normal-case tracking-normal text-gray-400">(необов'язково)</span>
           </label>
           <textarea
             id="tracker-description"
@@ -88,13 +89,13 @@ function TrackerModal() {
             value={trackerFormData.description || ''}
             onChange={(event) => update({ description: event.target.value })}
             className={`${inputClass} resize-none`}
-            placeholder="Why does this matter to you? You will read this on hard days."
+            placeholder="Чому це важливо для вас? Ви перечитаєте це у важкі дні."
           />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className={labelClass}>Category</span>
+            <span className={labelClass}>Категорія</span>
             <div className="space-y-2" ref={categoryMenuRef}>
               <button
                 type="button"
@@ -103,7 +104,7 @@ function TrackerModal() {
                 className={`${inputClass} flex items-center justify-between`}
               >
                 <span className="truncate text-left">
-                  {isCreatingCategory ? 'Create new category' : trackerFormData.category || 'General'}
+                  {isCreatingCategory ? 'Нова категорія' : categoryLabel(trackerFormData.category)}
                 </span>
                 <ChevronDown
                   size={16}
@@ -129,7 +130,7 @@ function TrackerModal() {
                               : 'text-stone-700 hover:bg-stone-50'
                           }`}
                         >
-                          {category}
+                          {categoryLabel(category)}
                         </button>
                       </li>
                     ))}
@@ -143,7 +144,7 @@ function TrackerModal() {
                         }}
                         className="w-full border-t border-gray-100 px-3 py-2 text-left text-sm text-stone-700 hover:bg-stone-50"
                       >
-                        + Create new category
+                        + Нова категорія
                       </button>
                     </li>
                   </ul>
@@ -158,15 +159,15 @@ function TrackerModal() {
                   value={trackerFormData.category}
                   onChange={(event) => update({ category: event.target.value })}
                   className={inputClass}
-                  placeholder="e.g. Health"
-                  aria-label="New category name"
+                  placeholder="напр. Здоров'я"
+                  aria-label="Назва нової категорії"
                 />
               )}
             </div>
           </div>
 
           <div>
-            <span className={labelClass}>Type</span>
+            <span className={labelClass}>Тип</span>
             <div className="space-y-2" ref={typeMenuRef}>
               <button
                 type="button"
@@ -174,7 +175,7 @@ function TrackerModal() {
                 aria-expanded={isTypeMenuOpen}
                 className={`${inputClass} flex items-center justify-between`}
               >
-                <span className="truncate text-left">{selectedType?.label || 'Quit'}</span>
+                <span className="truncate text-left">{selectedType?.label || 'Відмова'}</span>
                 <ChevronDown
                   size={16}
                   className={`text-gray-400 transition-transform ${isTypeMenuOpen ? 'rotate-180' : ''}`}
@@ -213,7 +214,7 @@ function TrackerModal() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="tracker-start" className={labelClass}>
-              Start date
+              Дата початку
             </label>
             <input
               id="tracker-start"
@@ -228,14 +229,14 @@ function TrackerModal() {
             {/* Without this, a quit tracker always started "today", so people
                 who quit months ago lost that history on day one. */}
             <p className="mt-1.5 text-[11px] text-gray-400">
-              {isQuit ? 'Already quit a while ago? Backdate it.' : 'Leave empty to start today.'}
+              {isQuit ? 'Кинули давно? Вкажіть справжню дату.' : 'Залиште порожнім, щоб почати сьогодні.'}
             </p>
           </div>
 
           {!isBoolean && (
             <div>
               <label htmlFor="tracker-unit" className={labelClass}>
-                Unit
+                Одиниця
               </label>
               <input
                 id="tracker-unit"
@@ -245,14 +246,14 @@ function TrackerModal() {
                 value={trackerFormData.unit}
                 onChange={(event) => update({ unit: event.target.value })}
                 className={inputClass}
-                placeholder="e.g. Pages, Cigarettes"
+                placeholder="напр. сторінки, сигарети"
               />
             </div>
           )}
         </div>
 
         <div>
-          <span className={labelClass}>Colour</span>
+          <span className={labelClass}>Колір</span>
           <div className="flex flex-wrap gap-2">
             {TRACKER_COLORS.map((option) => {
               const isSelected = (trackerFormData.color || '') === option.value;
@@ -277,7 +278,7 @@ function TrackerModal() {
         </div>
 
         <div>
-          <span className={labelClass}>Sharing</span>
+          <span className={labelClass}>Спільний доступ</span>
           <div className="space-y-2" ref={groupMenuRef}>
             <button
               type="button"
@@ -285,7 +286,7 @@ function TrackerModal() {
               aria-expanded={isGroupMenuOpen}
               className={`${inputClass} flex items-center justify-between`}
             >
-              <span className="truncate text-left">{selectedGroup?.name || 'Private tracker'}</span>
+              <span className="truncate text-left">{selectedGroup?.name || 'Особиста звичка'}</span>
               <ChevronDown
                 size={16}
                 className={`text-gray-400 transition-transform ${isGroupMenuOpen ? 'rotate-180' : ''}`}
@@ -308,7 +309,7 @@ function TrackerModal() {
                           : 'text-stone-700 hover:bg-stone-50'
                       }`}
                     >
-                      Private tracker
+                      Особиста звичка
                     </button>
                   </li>
                   {ownerGroupOptions.map((group) => (
@@ -335,17 +336,17 @@ function TrackerModal() {
           </div>
           <p className="mt-1.5 text-[11px] text-gray-400">
             {ownerGroupOptions.length
-              ? 'Shared trackers can only live in groups you own.'
-              : 'Create a group first to share a tracker with other people.'}
+              ? 'Спільні звички можуть бути лише в групах, якими ви володієте.'
+              : 'Спершу створіть групу, щоб ділитися звичкою з іншими.'}
           </p>
         </div>
 
         {selectedGroup && (
           <fieldset className="rounded-2xl border border-gray-100 p-4">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Assigned members
+              Призначені учасники
             </legend>
-            <p className="mb-3 text-[11px] text-stone-400">You are always included as the owner.</p>
+            <p className="mb-3 text-[11px] text-stone-400">Ви завжди входите як власник.</p>
             <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
               {selectedGroup.members.map((membership) => (
                 <label
@@ -354,7 +355,7 @@ function TrackerModal() {
                 >
                   <span className="min-w-0 truncate">
                     {membership.user.username}
-                    <span className="ml-2 text-xs text-stone-400">{membership.role}</span>
+                    <span className="ml-2 text-xs text-stone-400">{ROLE_LABELS[membership.role] || membership.role}</span>
                   </span>
                   <input
                     type="checkbox"
@@ -370,13 +371,13 @@ function TrackerModal() {
 
         <fieldset className="rounded-2xl border border-gray-100 p-4">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
-            {isBoolean ? 'Frequency' : isQuit ? 'Usage to avoid' : 'Target goal'}
+            {isBoolean ? 'Частота' : isQuit ? 'Від чого уникати' : 'Цільова кількість'}
           </legend>
 
           {isBoolean ? (
             <div className="space-y-3">
               <label htmlFor="boolean-period" className="sr-only">
-                How often
+                Як часто
               </label>
               <select
                 id="boolean-period"
@@ -384,10 +385,10 @@ function TrackerModal() {
                 onChange={(event) => update({ units_per: event.target.value })}
                 className={inputClass}
               >
-                <option value="day">Daily</option>
-                <option value="week">Weekly</option>
-                <option value="month">Monthly</option>
-                <option value="year">Yearly</option>
+                <option value="day">Щодня</option>
+                <option value="week">Щотижня</option>
+                <option value="month">Щомісяця</option>
+                <option value="year">Щороку</option>
               </select>
             </div>
           ) : (
@@ -399,14 +400,14 @@ function TrackerModal() {
                 value={trackerFormData.units_per_amount}
                 onChange={(event) => update({ units_per_amount: event.target.value })}
                 className={`${inputClass} flex-1`}
-                aria-label="Amount"
+                aria-label="Кількість"
               />
-              <span className="text-sm text-gray-400">per</span>
+              <span className="text-sm text-gray-400">за</span>
               <select
                 value={trackerFormData.units_per}
                 onChange={(event) => update({ units_per: event.target.value })}
                 className={`${inputClass} flex-1`}
-                aria-label="Period"
+                aria-label="Період"
               >
                 {PERIOD_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -419,7 +420,7 @@ function TrackerModal() {
 
           <div className="mt-3">
             <label htmlFor="interval" className={labelClass}>
-              Every N periods
+              Кожні N періодів
             </label>
             <input
               id="interval"
@@ -433,7 +434,7 @@ function TrackerModal() {
               placeholder="1"
             />
             <p className="mt-1.5 text-[11px] text-gray-400">
-              Use 1 for every period, 2 for every other, and so on.
+              1 — кожен період, 2 — через один і так далі.
             </p>
           </div>
         </fieldset>
@@ -441,10 +442,10 @@ function TrackerModal() {
         {!isBoolean && (
           <fieldset className="rounded-2xl border border-gray-100 p-4">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Secondary impact
+              Додатковий вплив
             </legend>
             <p className="mb-3 text-[11px] text-gray-400">
-              Money saved, CO₂ avoided, hours reclaimed — anything you want counted alongside the habit.
+              Заощаджені гроші, уникнуті викиди CO₂, відвойовані години — усе, що варто рахувати разом зі звичкою.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -454,8 +455,8 @@ function TrackerModal() {
                 value={trackerFormData.impact_amount}
                 onChange={(event) => update({ impact_amount: event.target.value })}
                 className={`${inputClass} flex-1`}
-                placeholder="Amount"
-                aria-label="Impact amount"
+                placeholder="Кількість"
+                aria-label="Кількість впливу"
               />
               <input
                 type="text"
@@ -463,15 +464,15 @@ function TrackerModal() {
                 value={trackerFormData.impact_unit}
                 onChange={(event) => update({ impact_unit: event.target.value })}
                 className={`${inputClass} flex-1`}
-                placeholder="$ or kg CO₂"
-                aria-label="Impact unit"
+                placeholder="$ або кг CO₂"
+                aria-label="Одиниця впливу"
               />
-              <span className="text-sm text-gray-400">per</span>
+              <span className="text-sm text-gray-400">за</span>
               <select
                 value={trackerFormData.impact_per}
                 onChange={(event) => update({ impact_per: event.target.value })}
                 className={`${inputClass} flex-1`}
-                aria-label="Impact period"
+                aria-label="Період впливу"
               >
                 {PERIOD_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -489,13 +490,13 @@ function TrackerModal() {
             onClick={() => setIsTrackerModalOpen(false)}
             className="rounded-xl px-5 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50"
           >
-            Cancel
+            Скасувати
           </button>
           <button
             type="submit"
             className="rounded-xl bg-stone-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-stone-800"
           >
-            Save
+            Зберегти
           </button>
         </div>
       </form>

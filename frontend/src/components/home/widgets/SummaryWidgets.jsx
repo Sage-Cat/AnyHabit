@@ -1,6 +1,7 @@
 import { Flame, RefreshCcw } from 'lucide-react';
 import { useMemo } from 'react';
-import { formatImpact, formatValue, normalizeCategory } from './helpers';
+import { localizeModeLabel, localizePeriodLabel } from '../../../utils/labels';
+import { formatImpact, formatValue, categoryLabel } from './helpers';
 
 export function ImpactSummaryWidget({
   selectedTrackers,
@@ -19,7 +20,7 @@ export function ImpactSummaryWidget({
           tracker,
           mainAmount: impact?.main_amount ?? 0,
           impactValue: impact?.impact_value ?? 0,
-          modeLabel: impact?.mode_label ?? 'No impact configured'
+          modeLabel: localizeModeLabel(impact?.mode_label ?? 'No impact configured')
         };
       }),
     [selectedTrackers, impactRows]
@@ -39,8 +40,8 @@ export function ImpactSummaryWidget({
     return (
       <div className="h-full flex items-center justify-center text-center text-gray-500 px-4">
         <div>
-          <p className="font-medium text-stone-700">No trackers selected</p>
-          <p className="text-sm mt-1">Open widget settings and choose which trackers to include.</p>
+          <p className="font-medium text-stone-700">Звичок не вибрано</p>
+          <p className="text-sm mt-1">Відкрийте налаштування віджета й оберіть звички.</p>
         </div>
       </div>
     );
@@ -54,7 +55,7 @@ export function ImpactSummaryWidget({
         <div className="flex flex-wrap gap-2">
           {Object.entries(totalsByUnit).map(([unit, value]) => (
             <div key={unit} className="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-800 text-sm font-medium">
-              Total: {formatImpact(value)} {unit}
+              Разом: {formatImpact(value)} {unit}
             </div>
           ))}
         </div>
@@ -65,7 +66,7 @@ export function ImpactSummaryWidget({
           className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-stone-700 hover:bg-stone-50 transition-colors inline-flex items-center gap-1"
         >
           <RefreshCcw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-          Refresh
+          Оновити
         </button>
       </div>
 
@@ -84,10 +85,10 @@ export function ImpactSummaryWidget({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-stone-900 truncate">{row.tracker.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {normalizeCategory(row.tracker.category)} · {row.modeLabel}
+                    {categoryLabel(row.tracker.category)} · {row.modeLabel}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    Basis: {formatValue(row.mainAmount)} {row.tracker.unit}
+                    Основа: {formatValue(row.mainAmount)} {row.tracker.unit}
                   </p>
                 </div>
 
@@ -95,7 +96,7 @@ export function ImpactSummaryWidget({
                   <p className="text-sm font-semibold text-stone-900">
                     {formatImpact(row.impactValue)} {impactUnit}
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5">Total impact</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Загальний вплив</p>
                 </div>
               </div>
             </button>
@@ -116,16 +117,16 @@ export function TrackerOverviewWidget({ overview }) {
   return (
     <div className="h-full flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <StatTile label="Total" value={total} />
-        <StatTile label="Active" value={active} />
-        <StatTile label="Paused" value={stopped} />
-        <StatTile label="Categories" value={categoryCount} />
+        <StatTile label="Усього" value={total} />
+        <StatTile label="Активні" value={active} />
+        <StatTile label="На паузі" value={stopped} />
+        <StatTile label="Категорії" value={categoryCount} />
       </div>
 
       <div className="rounded-2xl border border-gray-100 bg-stone-50 p-3 text-sm text-stone-700 space-y-1">
-        <p>Quit: {byType.quit || 0}</p>
-        <p>Build: {byType.build || 0}</p>
-        <p>Boolean: {byType.boolean || 0}</p>
+        <p>Відмова: {byType.quit || 0}</p>
+        <p>Накопичення: {byType.build || 0}</p>
+        <p>Так/ні: {byType.boolean || 0}</p>
       </div>
     </div>
   );
@@ -135,7 +136,7 @@ export function CategoryBreakdownWidget({ categories, onOpenCategory }) {
   const rows = categories || [];
 
   if (!rows.length) {
-    return <div className="h-full flex items-center justify-center text-sm text-gray-500">No categories yet.</div>;
+    return <div className="h-full flex items-center justify-center text-sm text-gray-500">Категорій ще немає.</div>;
   }
 
   const maxCount = Math.max(...rows.map((row) => row.count));
@@ -150,7 +151,7 @@ export function CategoryBreakdownWidget({ categories, onOpenCategory }) {
           className="w-full text-left rounded-xl border border-gray-200 px-3 py-2 hover:bg-stone-50 transition-colors"
         >
           <div className="flex items-center justify-between text-sm text-stone-700">
-            <span className="font-medium truncate">{row.category}</span>
+            <span className="font-medium truncate">{categoryLabel(row.category)}</span>
             <span className="text-xs text-gray-500">{row.count}</span>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -170,7 +171,7 @@ export function TopImpactWidget({ rows, onOpenTracker }) {
 
   if (!topRows.length) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-gray-500">No impact settings configured yet.</div>
+      <div className="h-full flex items-center justify-center text-sm text-gray-500">Вплив ще не налаштовано.</div>
     );
   }
 
@@ -188,14 +189,14 @@ export function TopImpactWidget({ rows, onOpenTracker }) {
               <p className="text-sm font-semibold text-stone-900 truncate">
                 #{index + 1} {row.tracker.name}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">{normalizeCategory(row.tracker.category)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{categoryLabel(row.tracker.category)}</p>
             </div>
 
             <div className="text-right">
               <p className="text-sm font-semibold text-stone-900">
                 {formatImpact(row.month_impact)} {row.tracker.impact_unit || '$'}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">per month estimate</p>
+              <p className="text-xs text-gray-400 mt-0.5">оцінка на місяць</p>
             </div>
           </div>
         </button>
@@ -220,7 +221,7 @@ export function TodayFocusWidget({ rows, overview, isLoading, onOpenTracker }) {
   );
 
   if (isLoading) {
-    return <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading…</div>;
+    return <div className="flex h-full items-center justify-center text-sm text-gray-500">Завантаження…</div>;
   }
 
   const done = overview?.completed_today ?? 0;
@@ -229,7 +230,7 @@ export function TodayFocusWidget({ rows, overview, isLoading, onOpenTracker }) {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="rounded-2xl border border-gray-100 bg-stone-50 p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Completed this period</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Виконано за цей період</p>
         <p className="mt-1 text-2xl font-semibold text-stone-900">
           {done}
           <span className="text-base font-normal text-gray-400"> / {due}</span>
@@ -244,7 +245,7 @@ export function TodayFocusWidget({ rows, overview, isLoading, onOpenTracker }) {
 
       {pending.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-center text-sm text-gray-500">
-          {due > 0 ? 'Everything is done for now. Nice.' : 'No recurring trackers are active.'}
+          {due > 0 ? 'Наразі все виконано. Чудово.' : 'Активних регулярних звичок немає.'}
         </div>
       ) : (
         <div className="space-y-2 overflow-y-auto pr-1">
@@ -286,7 +287,7 @@ export function StreaksWidget({ rows, onOpenTracker }) {
   if (!streaks.length) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500">
-        No active streaks yet. Log something today to start one.
+        Активних серій ще немає. Додайте запис сьогодні, щоб розпочати серію.
       </div>
     );
   }
@@ -302,12 +303,12 @@ export function StreaksWidget({ rows, onOpenTracker }) {
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-stone-900">{row.tracker.name}</span>
-            <span className="block text-xs text-gray-500">{normalizeCategory(row.tracker.category)}</span>
+            <span className="block text-xs text-gray-500">{categoryLabel(row.tracker.category)}</span>
           </span>
           <span className="flex shrink-0 items-center gap-1.5 text-stone-900">
             <Flame size={15} className="text-amber-500" />
             <span className="text-lg font-semibold">{row.current_streak}</span>
-            <span className="text-xs text-gray-400">{row.streak_label}</span>
+            <span className="text-xs text-gray-400">{localizePeriodLabel(row.streak_label)}</span>
           </span>
         </button>
       ))}

@@ -3,11 +3,11 @@ import { fetchTrackerAnalyticsApi } from '../services/trackerApi';
 
 export const DEFAULT_ANALYTICS = {
   currentMath: {
-    mainUnit: '0.0',
-    targetUnit: '0.0',
-    impactValue: '0.00',
-    lifetimeMainUnit: '0.0',
-    lifetimeImpactValue: '0.00'
+    mainUnit: '0,0',
+    targetUnit: '0,0',
+    impactValue: '0,00',
+    lifetimeMainUnit: '0,0',
+    lifetimeImpactValue: '0,00'
   },
   dailyProgress: { total: 0, target: 0, percentage: 0, windowStart: null, windowEnd: null },
   historicalChartData: [],

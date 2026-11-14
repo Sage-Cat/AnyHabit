@@ -30,13 +30,13 @@ const inputClass =
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500';
 
 const EXPIRY_OPTIONS = [
-  { value: '', label: 'Never expires' },
-  { value: '30', label: '30 days' },
-  { value: '90', label: '90 days' },
-  { value: '365', label: '1 year' }
+  { value: '', label: 'Не спливає' },
+  { value: '30', label: '30 днів' },
+  { value: '90', label: '90 днів' },
+  { value: '365', label: '1 рік' }
 ];
 
-function CopyButton({ value, label = 'Copy' }) {
+function CopyButton({ value, label = 'Копіювати' }) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -54,7 +54,7 @@ function CopyButton({ value, label = 'Copy' }) {
       className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-50"
     >
       {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-      {copied ? 'Copied' : label}
+      {copied ? 'Скопійовано' : label}
     </button>
   );
 }
@@ -74,7 +74,7 @@ function TokenSection() {
     try {
       setTokens(await fetchTokensApi());
     } catch (error) {
-      notify.error(error.message || 'Could not load your API tokens');
+      notify.error(error.message || 'Не вдалося завантажити API-токени');
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +99,7 @@ function TokenSection() {
       setExpiry('');
       await load();
     } catch (error) {
-      notify.error(error.message || 'Could not create the token');
+      notify.error(error.message || 'Не вдалося створити токен');
     } finally {
       setIsCreating(false);
     }
@@ -107,35 +107,35 @@ function TokenSection() {
 
   const handleRevoke = async (token) => {
     const accepted = await confirm({
-      title: `Revoke "${token.name}"?`,
-      message: 'Anything using this token stops working immediately. This cannot be undone.',
-      confirmLabel: 'Revoke token',
+      title: `Відкликати токен «${token.name}»?`,
+      message: 'Усе, що використовує цей токен, одразу перестане працювати. Скасувати це неможливо.',
+      confirmLabel: 'Відкликати токен',
       tone: 'danger'
     });
     if (!accepted) return;
 
     try {
       await revokeTokenApi(token.id);
-      notify.success('Token revoked');
+      notify.success('Токен відкликано');
       await load();
     } catch (error) {
-      notify.error(error.message || 'Could not revoke the token');
+      notify.error(error.message || 'Не вдалося відкликати токен');
     }
   };
 
   return (
     <section>
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">API tokens</h3>
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">API-токени</h3>
       <p className="mb-4 text-xs leading-5 text-gray-500">
-        Long-lived credentials for scripts, cron jobs and integrations. Send one as{' '}
-        <code className="rounded bg-stone-100 px-1 font-mono text-[11px]">Authorization: Bearer …</code> on any
-        API request.
+        Довготривалі облікові дані для скриптів, завдань cron та інтеграцій. Передавайте токен як{' '}
+        <code className="rounded bg-stone-100 px-1 font-mono text-[11px]">Authorization: Bearer …</code> в
+        будь-якому запиті до API.
       </p>
 
       {freshToken && (
         <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
-            <KeyRound size={15} /> Copy this now — it is not shown again
+            <KeyRound size={15} /> Скопіюйте зараз — повторно він не показується
           </p>
           <div className="mt-3 flex items-center gap-2">
             <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-white px-3 py-2 font-mono text-xs text-stone-800">
@@ -148,7 +148,7 @@ function TokenSection() {
             onClick={() => setFreshToken(null)}
             className="mt-3 text-xs font-medium text-emerald-800 underline-offset-2 hover:underline"
           >
-            I have saved it
+            Я зберіг(-ла) токен
           </button>
         </div>
       )}
@@ -156,7 +156,7 @@ function TokenSection() {
       <form onSubmit={handleCreate} className="mb-4 space-y-3 rounded-2xl border border-gray-200 p-4">
         <div>
           <label htmlFor="token-name" className={labelClass}>
-            What is it for?
+            Для чого він?
           </label>
           <input
             id="token-name"
@@ -164,13 +164,13 @@ function TokenSection() {
             value={name}
             maxLength={80}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Home Assistant, backup script, Grafana…"
+            placeholder="Home Assistant, скрипт резервного копіювання, Grafana…"
             className={inputClass}
           />
         </div>
         <div>
           <label htmlFor="token-expiry" className={labelClass}>
-            Expiry
+            Термін дії
           </label>
           <select
             id="token-expiry"
@@ -190,15 +190,15 @@ function TokenSection() {
           disabled={!name.trim() || isCreating}
           className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Plus size={15} /> {isCreating ? 'Creating…' : 'Create token'}
+          <Plus size={15} /> {isCreating ? 'Створення…' : 'Створити токен'}
         </button>
       </form>
 
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500">Завантаження…</p>
       ) : tokens.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500">
-          No tokens yet.
+          Токенів ще немає.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -210,17 +210,17 @@ function TokenSection() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-stone-900">{token.name}</p>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  <span className="font-mono">{token.token_prefix}…</span> · created{' '}
-                  {formatDate(token.created_at)} · last used{' '}
+                  <span className="font-mono">{token.token_prefix}…</span> · створено{' '}
+                  {formatDate(token.created_at)} · востаннє використано{' '}
                   {token.last_used_at ? formatRelative(token.last_used_at) : 'never'}
-                  {token.expires_at ? ` · expires ${formatDate(token.expires_at)}` : ''}
+                  {token.expires_at ? ` · спливає ${formatDate(token.expires_at)}` : ''}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => handleRevoke(token)}
                 className="shrink-0 rounded-lg p-2 text-gray-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                aria-label={`Revoke ${token.name}`}
+                aria-label={`Відкликати токен ${token.name}`}
               >
                 <Trash2 size={15} />
               </button>
@@ -247,7 +247,7 @@ function WebhookSection() {
       setWebhooks(hooks);
       setAvailableEvents(events);
     } catch (error) {
-      notify.error(error.message || 'Could not load your webhooks');
+      notify.error(error.message || 'Не вдалося завантажити вебхуки');
     } finally {
       setIsLoading(false);
     }
@@ -268,11 +268,11 @@ function WebhookSection() {
         url: form.url.trim(),
         events: form.events.trim() || '*'
       });
-      notify.success('Webhook created');
+      notify.success('Вебхук створено');
       setForm({ name: '', url: '', events: '*' });
       await load();
     } catch (error) {
-      notify.error(error.message || 'Could not create the webhook');
+      notify.error(error.message || 'Не вдалося створити вебхук');
     } finally {
       setIsCreating(false);
     }
@@ -281,9 +281,9 @@ function WebhookSection() {
   const handleTest = async (webhook) => {
     try {
       await testWebhookApi(webhook.id);
-      notify.info('Test sent. Refresh in a moment to see the result.');
+      notify.info('Тест надіслано. За мить оновіть, щоб побачити результат.');
     } catch (error) {
-      notify.error(error.message || 'Could not send the test');
+      notify.error(error.message || 'Не вдалося надіслати тест');
     }
   };
 
@@ -292,50 +292,50 @@ function WebhookSection() {
       await updateWebhookApi(webhook.id, { is_active: !webhook.is_active });
       await load();
     } catch (error) {
-      notify.error(error.message || 'Could not update the webhook');
+      notify.error(error.message || 'Не вдалося оновити вебхук');
     }
   };
 
   const handleDelete = async (webhook) => {
     const accepted = await confirm({
-      title: `Delete "${webhook.name || webhook.url}"?`,
-      message: 'It stops receiving events immediately.',
-      confirmLabel: 'Delete webhook',
+      title: `Видалити вебхук «${webhook.name || webhook.url}»?`,
+      message: 'Він одразу перестане отримувати події.',
+      confirmLabel: 'Видалити вебхук',
       tone: 'danger'
     });
     if (!accepted) return;
 
     try {
       await deleteWebhookApi(webhook.id);
-      notify.success('Webhook deleted');
+      notify.success('Вебхук видалено');
       await load();
     } catch (error) {
-      notify.error(error.message || 'Could not delete the webhook');
+      notify.error(error.message || 'Не вдалося видалити вебхук');
     }
   };
 
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Webhooks</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Вебхуки</h3>
         <button
           type="button"
           onClick={load}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-stone-800"
         >
-          <RefreshCcw size={12} /> Refresh
+          <RefreshCcw size={12} /> Оновити
         </button>
       </div>
       <p className="mb-4 text-xs leading-5 text-gray-500">
-        AnyHabit POSTs a JSON payload to your URL when something happens. Every request is signed with
-        HMAC-SHA256 in the{' '}
-        <code className="rounded bg-stone-100 px-1 font-mono text-[11px]">X-AnyHabit-Signature</code> header.
+        Коли щось відбувається, AnyHabit надсилає POST із JSON на вашу адресу. Кожен запит підписано
+        HMAC-SHA256 у заголовку{' '}
+        <code className="rounded bg-stone-100 px-1 font-mono text-[11px]">X-AnyHabit-Signature</code>.
       </p>
 
       <form onSubmit={handleCreate} className="mb-4 space-y-3 rounded-2xl border border-gray-200 p-4">
         <div>
           <label htmlFor="webhook-url" className={labelClass}>
-            Endpoint URL
+            URL кінцевої точки
           </label>
           <input
             id="webhook-url"
@@ -348,7 +348,7 @@ function WebhookSection() {
         </div>
         <div>
           <label htmlFor="webhook-name" className={labelClass}>
-            Label
+            Назва
           </label>
           <input
             id="webhook-name"
@@ -362,7 +362,7 @@ function WebhookSection() {
         </div>
         <div>
           <label htmlFor="webhook-events" className={labelClass}>
-            Events
+            Події
           </label>
           <input
             id="webhook-events"
@@ -373,7 +373,7 @@ function WebhookSection() {
             className={`${inputClass} font-mono text-xs`}
           />
           <p className="mt-1.5 text-[11px] leading-5 text-gray-400">
-            <code className="font-mono">*</code> for everything, or a comma-separated list:{' '}
+            <code className="font-mono">*</code> — усі події, або список через кому:{' '}
             {availableEvents.join(', ') || 'log.created, journal.created, …'}
           </p>
         </div>
@@ -382,15 +382,15 @@ function WebhookSection() {
           disabled={!form.url.trim() || isCreating}
           className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Plus size={15} /> {isCreating ? 'Creating…' : 'Add webhook'}
+          <Plus size={15} /> {isCreating ? 'Створення…' : 'Додати вебхук'}
         </button>
       </form>
 
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500">Завантаження…</p>
       ) : webhooks.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500">
-          No webhooks yet.
+          Вебхуків ще немає.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -400,18 +400,18 @@ function WebhookSection() {
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 truncate text-sm font-medium text-stone-900">
                     <WebhookIcon size={14} className="shrink-0 text-gray-400" />
-                    {webhook.name || 'Unnamed webhook'}
+                    {webhook.name || 'Вебхук без назви'}
                     {!webhook.is_active && (
                       <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-stone-500">
-                        Paused
+                        На паузі
                       </span>
                     )}
                   </p>
                   <p className="mt-0.5 truncate font-mono text-xs text-gray-500">{webhook.url}</p>
                   <p className="mt-1 text-[11px] text-gray-400">
-                    {webhook.events === '*' ? 'All events' : webhook.events} · {webhook.delivery_count} sent
-                    {webhook.failure_count > 0 ? ` · ${webhook.failure_count} failed` : ''}
-                    {webhook.last_triggered_at ? ` · last ${formatRelative(webhook.last_triggered_at)}` : ''}
+                    {webhook.events === '*' ? 'Усі події' : webhook.events} · надіслано: {webhook.delivery_count}
+                    {webhook.failure_count > 0 ? ` · помилок: ${webhook.failure_count}` : ''}
+                    {webhook.last_triggered_at ? ` · востаннє ${formatRelative(webhook.last_triggered_at)}` : ''}
                   </p>
                   {webhook.last_error && (
                     <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-rose-600">
@@ -426,8 +426,8 @@ function WebhookSection() {
                     type="button"
                     onClick={() => handleTest(webhook)}
                     className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:bg-stone-50 hover:text-stone-900"
-                    aria-label="Send a test delivery"
-                    title="Send a test delivery"
+                    aria-label="Надіслати тестову доставку"
+                    title="Надіслати тестову доставку"
                   >
                     <Send size={14} />
                   </button>
@@ -436,13 +436,13 @@ function WebhookSection() {
                     onClick={() => handleToggle(webhook)}
                     className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-stone-50"
                   >
-                    {webhook.is_active ? 'Pause' : 'Resume'}
+                    {webhook.is_active ? 'Пауза' : 'Відновити'}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDelete(webhook)}
                     className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                    aria-label="Delete webhook"
+                    aria-label="Видалити вебхук"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -451,7 +451,7 @@ function WebhookSection() {
 
               <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
                 <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  Signing secret
+                  Секрет підпису
                 </span>
                 <code className="min-w-0 flex-1 truncate rounded bg-stone-50 px-2 py-1 font-mono text-[11px] text-stone-600">
                   {webhook.secret}
@@ -473,7 +473,7 @@ function DeveloperTab() {
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-gray-200 bg-stone-50 p-4">
-        <h3 className="text-sm font-semibold text-stone-900">Your instance</h3>
+        <h3 className="text-sm font-semibold text-stone-900">Ваш екземпляр</h3>
         <div className="mt-2 flex items-center gap-2">
           <code className="min-w-0 flex-1 truncate rounded-lg bg-white px-3 py-2 font-mono text-xs text-stone-700">
             {baseUrl}
@@ -484,7 +484,7 @@ function DeveloperTab() {
           {[
             { href: `${baseUrl}/docs`, label: 'Swagger UI' },
             { href: `${baseUrl}/redoc`, label: 'ReDoc' },
-            { href: `${baseUrl}/openapi.json`, label: 'OpenAPI schema' }
+            { href: `${baseUrl}/openapi.json`, label: 'Схема OpenAPI' }
           ].map((link) => (
             <a
               key={link.label}
@@ -505,8 +505,8 @@ function DeveloperTab() {
       <section className="rounded-2xl border border-gray-200 bg-stone-50 p-4">
         <h3 className="text-sm font-semibold text-stone-900">Prometheus</h3>
         <p className="mt-1 text-xs leading-5 text-gray-600">
-          Scrape <code className="rounded bg-white px-1 font-mono text-[11px]">/developer/metrics</code> for
-          tracker counts, streaks and progress. It needs an API token:
+          Збирайте <code className="rounded bg-white px-1 font-mono text-[11px]">/developer/metrics</code> — там
+          кількість звичок, серії та прогрес. Потрібен API-токен:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-stone-900 p-3 font-mono text-[11px] leading-5 text-stone-100">
 {`scrape_configs:

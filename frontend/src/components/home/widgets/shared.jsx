@@ -1,4 +1,4 @@
-import { FIELD_CLASS, LABEL_CLASS, normalizeCategory } from './helpers';
+import { FIELD_CLASS, LABEL_CLASS, categoryLabel } from './helpers';
 
 /** Shown when a widget needs configuring before it can display anything. */
 export function WidgetEmptyState({ title, hint }) {
@@ -13,11 +13,11 @@ export function WidgetEmptyState({ title, hint }) {
 }
 
 export function WidgetLoading() {
-  return <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading…</div>;
+  return <div className="flex h-full items-center justify-center text-sm text-gray-500">Завантаження…</div>;
 }
 
 /** Single-tracker picker used by the spotlight and heatmap widgets. */
-export function TrackerPicker({ trackers, value, onChange, label = 'Tracker' }) {
+export function TrackerPicker({ trackers, value, onChange, label = 'Звичка' }) {
   return (
     <div>
       <label className={LABEL_CLASS} htmlFor="widget-tracker-picker">
@@ -29,10 +29,10 @@ export function TrackerPicker({ trackers, value, onChange, label = 'Tracker' }) 
         onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
         className={FIELD_CLASS}
       >
-        <option value="">Choose a tracker…</option>
+        <option value="">Оберіть звичку…</option>
         {trackers.map((tracker) => (
           <option key={tracker.id} value={tracker.id}>
-            {tracker.name} · {normalizeCategory(tracker.category)}
+            {tracker.name} · {categoryLabel(tracker.category)}
           </option>
         ))}
       </select>
@@ -41,7 +41,7 @@ export function TrackerPicker({ trackers, value, onChange, label = 'Tracker' }) 
 }
 
 /** Multi-tracker picker used by the quick-log widget. */
-export function TrackerMultiPicker({ trackers, selectedIds, onChange, label = 'Trackers' }) {
+export function TrackerMultiPicker({ trackers, selectedIds, onChange, label = 'Звички' }) {
   const toggle = (trackerId) =>
     onChange(
       selectedIds.includes(trackerId)
@@ -54,7 +54,7 @@ export function TrackerMultiPicker({ trackers, selectedIds, onChange, label = 'T
       <span className={LABEL_CLASS}>{label}</span>
       {trackers.length === 0 ? (
         <p className="rounded-xl border border-dashed border-gray-300 p-3 text-xs text-gray-500">
-          No eligible trackers yet.
+          Придатних звичок ще немає.
         </p>
       ) : (
         <div className="max-h-44 space-y-1 overflow-y-auto">
@@ -70,7 +70,7 @@ export function TrackerMultiPicker({ trackers, selectedIds, onChange, label = 'T
                 className="h-4 w-4"
               />
               <span className="min-w-0 flex-1 truncate text-stone-800">{tracker.name}</span>
-              <span className="shrink-0 text-xs text-gray-400">{normalizeCategory(tracker.category)}</span>
+              <span className="shrink-0 text-xs text-gray-400">{categoryLabel(tracker.category)}</span>
             </label>
           ))}
         </div>

@@ -23,10 +23,10 @@ function ConfirmDialog({ request, onResolve }) {
   if (!request) return null;
 
   const {
-    title = 'Are you sure?',
+    title = 'Ви впевнені?',
     message,
-    confirmLabel = 'Confirm',
-    cancelLabel = 'Cancel',
+    confirmLabel = 'Підтвердити',
+    cancelLabel = 'Скасувати',
     tone = 'danger',
     requireText = ''
   } = request;
@@ -56,7 +56,7 @@ function ConfirmDialog({ request, onResolve }) {
           {requireText && (
             <label className="mt-4 block">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Type <span className="font-mono text-stone-900">{requireText}</span> to confirm
+                Введіть <span className="font-mono text-stone-900">{requireText}</span> для підтвердження
               </span>
               <input
                 ref={inputRef}
@@ -91,7 +91,7 @@ function ConfirmDialog({ request, onResolve }) {
             tone === 'danger' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-stone-900 hover:bg-stone-800'
           }`}
         >
-          {isWorking ? 'Working…' : confirmLabel}
+          {isWorking ? 'Виконується…' : confirmLabel}
         </button>
       </div>
     </Modal>

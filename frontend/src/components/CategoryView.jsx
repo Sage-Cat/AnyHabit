@@ -1,9 +1,10 @@
 import { Archive, Menu, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { TRACKER_COLOR_HEX } from '../constants/tracker';
+import { PERIOD_NOUNS, TRACKER_COLOR_HEX, TRACKER_TYPE_LABELS } from '../constants/tracker';
 import { useAppState } from '../state/appState';
 import { formatDate } from '../utils/date';
-import { formatScheduleLabel } from '../utils/tracker';
+import { plural } from '../utils/plural';
+import { categoryLabel, formatScheduleLabel } from '../utils/tracker';
 
 function CategoryView() {
   const navigate = useNavigate();
@@ -27,15 +28,15 @@ function CategoryView() {
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="text-stone-500 hover:text-stone-900 md:hidden"
-            aria-label="Open navigation"
+            aria-label="Відкрити навігацію"
           >
             <Menu size={24} />
           </button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">{selectedCategory}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">{categoryLabel(selectedCategory)}</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {selectedCategoryTrackers.length} tracker{selectedCategoryTrackers.length === 1 ? '' : 's'} in this
-              category.
+              {selectedCategoryTrackers.length}{' '}
+              {plural(selectedCategoryTrackers.length, ['звичка', 'звички', 'звичок'])} у цій категорії.
             </p>
           </div>
         </div>
@@ -45,13 +46,13 @@ function CategoryView() {
           onClick={() => openTrackerModal()}
           className="flex shrink-0 items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
         >
-          <Plus size={16} /> New
+          <Plus size={16} /> Нова
         </button>
       </div>
 
       {selectedCategoryTrackers.length === 0 ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-400">
-          No trackers in this category yet.
+          У цій категорії ще немає звичок.
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
@@ -74,11 +75,11 @@ function CategoryView() {
                         )}
                         <h2 className="truncate text-base font-semibold text-stone-900">{tracker.name}</h2>
                         <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-800">
-                          {tracker.type}
+                          {TRACKER_TYPE_LABELS[tracker.type] || tracker.type}
                         </span>
                         {isArchived ? (
                           <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                            <Archive size={10} /> Archived
+                            <Archive size={10} /> В архіві
                           </span>
                         ) : (
                           <span
@@ -86,7 +87,7 @@ function CategoryView() {
                               tracker.is_active ? 'bg-stone-100 text-stone-800' : 'bg-gray-100 text-gray-500'
                             }`}
                           >
-                            {tracker.is_active ? 'Active' : 'Paused'}
+                            {tracker.is_active ? 'Активна' : 'На паузі'}
                           </span>
                         )}
                       </div>
@@ -99,14 +100,14 @@ function CategoryView() {
                         <span>
                           {tracker.type === 'boolean'
                             ? formatScheduleLabel(tracker)
-                            : `${tracker.type === 'quit' ? 'Avoid' : 'Goal'}: ${formatScheduleLabel(tracker)}`}
+                            : `${tracker.type === 'quit' ? 'Уникати' : 'Ціль'}: ${formatScheduleLabel(tracker)}`}
                         </span>
                         {tracker.type !== 'boolean' && tracker.impact_amount > 0 && (
                           <span>
-                            Rate: {tracker.impact_amount} {tracker.impact_unit || '$'} / {tracker.impact_per}
+                            Вплив: {tracker.impact_amount} {tracker.impact_unit || '$'} / {PERIOD_NOUNS[tracker.impact_per] || tracker.impact_per}
                           </span>
                         )}
-                        <span>Started {formatDate(tracker.start_date)}</span>
+                        <span>Початок: {formatDate(tracker.start_date)}</span>
                       </div>
                     </div>
 
@@ -115,7 +116,7 @@ function CategoryView() {
                       onClick={() => openTracker(tracker.id)}
                       className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-white"
                     >
-                      Open
+                      Відкрити
                     </button>
                   </div>
                 </li>

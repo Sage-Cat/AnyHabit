@@ -44,7 +44,7 @@ function Toaster({ toasts, onDismiss }) {
               type="button"
               onClick={() => onDismiss(toast.id)}
               className="shrink-0 rounded-lg p-1 opacity-60 transition-opacity hover:opacity-100"
-              aria-label="Dismiss notification"
+              aria-label="Закрити сповіщення"
             >
               <X size={14} />
             </button>

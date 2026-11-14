@@ -1,3 +1,5 @@
+import { formatNumber } from '../utils/number';
+import { formatChartDate, localizePeriodLabel, WEEKDAY_NAMES } from '../utils/labels';
 import { apiClient } from './apiClient';
 
 export const fetchTrackersApi = (includeArchived = false) =>
@@ -21,7 +23,7 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const formatValue = (value, digits) => toNumber(value).toFixed(digits);
+const formatValue = (value, digits) => formatNumber(toNumber(value), digits);
 
 const normalizeMemberEntry = (entry) => ({
   user: entry.user,
@@ -40,7 +42,7 @@ const normalizeMemberEntry = (entry) => ({
   streakStats: {
     current: toNumber(entry?.streak_stats?.current),
     longest: toNumber(entry?.streak_stats?.longest),
-    periodLabel: entry?.streak_stats?.period_label ?? 'days',
+    periodLabel: localizePeriodLabel(entry?.streak_stats?.period_label ?? 'days'),
     totalRelapses: toNumber(entry?.streak_stats?.total_relapses)
   },
   lastActivityAt: entry?.last_activity_at || null
@@ -65,7 +67,7 @@ export function normalizeTrackerAnalytics(data) {
     },
     historicalChartData: (data?.historical_chart_data ?? []).map((point) => ({
       date: point.date,
-      label: point.label,
+      label: point.date ? formatChartDate(point.date) : point.label,
       value: toNumber(point.value),
       ...(point.cumulative !== null && point.cumulative !== undefined
         ? { cumulative: toNumber(point.cumulative) }
@@ -74,7 +76,7 @@ export function normalizeTrackerAnalytics(data) {
     streakStats: {
       current: toNumber(data?.streak_stats?.current),
       longest: toNumber(data?.streak_stats?.longest),
-      periodLabel: data?.streak_stats?.period_label ?? 'days',
+      periodLabel: localizePeriodLabel(data?.streak_stats?.period_label ?? 'days'),
       totalRelapses: toNumber(data?.streak_stats?.total_relapses)
     },
     consistency: {
@@ -86,7 +88,7 @@ export function normalizeTrackerAnalytics(data) {
     },
     weekdayBreakdown: (data?.weekday_breakdown ?? []).map((entry) => ({
       weekday: toNumber(entry.weekday),
-      label: entry.label,
+      label: WEEKDAY_NAMES[toNumber(entry.weekday)] ?? entry.label,
       total: toNumber(entry.total),
       entries: toNumber(entry.entries)
     })),
@@ -109,8 +111,8 @@ export function normalizeTrackerAnalytics(data) {
             ? {
                 current: toNumber(data.share_stats.group_streak_stats.current),
                 longest: toNumber(data.share_stats.group_streak_stats.longest),
-                periodLabel: data.share_stats.group_streak_stats.period_label ?? 'days',
-                ruleLabel: data.share_stats.group_streak_stats.rule_label ?? 'All assigned members'
+                periodLabel: localizePeriodLabel(data.share_stats.group_streak_stats.period_label ?? 'days'),
+                ruleLabel: data.share_stats.group_streak_stats.rule_label ?? 'Усі призначені учасники'
               }
             : null
         }
@@ -150,7 +152,7 @@ export async function saveTrackerApi(trackerFormData) {
     type: trackerFormData.type,
     // A boolean tracker is "done or not done", so its unit and impact fields
     // are fixed rather than asked for in the form.
-    unit: isBoolean ? 'Times' : (trackerFormData.unit || '').trim(),
+    unit: isBoolean ? 'разів' : (trackerFormData.unit || '').trim(),
     impact_amount: isBoolean ? 0 : Math.max(0, parseFloat(trackerFormData.impact_amount) || 0),
     impact_unit: isBoolean ? '$' : (trackerFormData.impact_unit || '$').trim() || '$',
     impact_per: trackerFormData.impact_per,

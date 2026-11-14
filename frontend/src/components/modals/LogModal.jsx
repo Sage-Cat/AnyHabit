@@ -10,7 +10,7 @@ function LogModal() {
 
   if (!isLogModalOpen) return null;
 
-  const unit = selectedTracker?.unit || 'units';
+  const unit = selectedTracker?.unit || 'од.';
   const amount = Number(logFormData.amount);
   const isAmountValid = Number.isFinite(amount) && amount !== 0;
 
@@ -20,8 +20,8 @@ function LogModal() {
     <Modal
       isOpen
       onClose={() => setIsLogModalOpen(false)}
-      title="Log activity"
-      description={selectedTracker ? `Record progress for ${selectedTracker.name}` : undefined}
+      title="Додати запис"
+      description={selectedTracker ? `Запишіть прогрес для «${selectedTracker.name}»` : undefined}
       size="sm"
     >
       <form onSubmit={handleLogSubmit} className="space-y-5">
@@ -30,7 +30,7 @@ function LogModal() {
             htmlFor="log-amount"
             className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500"
           >
-            Amount ({unit})
+            Кількість ({unit})
           </label>
           <input
             id="log-amount"
@@ -59,7 +59,7 @@ function LogModal() {
 
         <div>
           <label htmlFor="log-note" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Note <span className="normal-case tracking-normal text-gray-400">(optional)</span>
+            Нотатка <span className="normal-case tracking-normal text-gray-400">(необов'язково)</span>
           </label>
           <input
             id="log-note"
@@ -67,14 +67,14 @@ function LogModal() {
             maxLength={500}
             value={logFormData.note || ''}
             onChange={(event) => setLogFormData((previous) => ({ ...previous, note: event.target.value }))}
-            placeholder="What happened?"
+            placeholder="Що сталося?"
             className="w-full rounded-xl border border-gray-200 bg-stone-50 p-3 text-sm text-stone-800 outline-none focus:border-stone-400"
           />
         </div>
 
         <div>
           <label htmlFor="log-when" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
-            When (your local time)
+            Коли (ваш місцевий час)
           </label>
           <input
             id="log-when"
@@ -95,7 +95,7 @@ function LogModal() {
             onClick={() => setLogFormData((previous) => ({ ...previous, timestamp: new Date().toISOString() }))}
             className="mt-2 text-xs font-medium text-stone-500 hover:text-stone-800"
           >
-            Set to now
+            Поставити зараз
           </button>
         </div>
 
@@ -105,14 +105,14 @@ function LogModal() {
             onClick={() => setIsLogModalOpen(false)}
             className="rounded-xl px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50"
           >
-            Cancel
+            Скасувати
           </button>
           <button
             type="submit"
             disabled={!isAmountValid}
             className="rounded-xl bg-stone-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save
+            Зберегти
           </button>
         </div>
       </form>

@@ -17,110 +17,129 @@ import { toSafeNumber } from './helpers';
 
 export const WIDGET_DEFINITIONS = {
   impactSummary: {
-    label: 'Impact Totals',
+    label: 'Підсумки впливу',
     icon: Coins,
-    description: 'Aggregate all impact units from selected trackers.',
+    description: 'Сумарний вплив за вибраними звичками.',
     defaultSize: { w: 7, h: 10, minW: 4, minH: 6 },
     defaultConfig: { autoSelect: true, selectedTrackerIds: [] }
   },
   trackerOverview: {
-    label: 'Tracker Overview',
+    label: 'Огляд звичок',
     icon: Activity,
-    description: 'See active tracker stats at a glance.',
+    description: 'Статистика активних звичок з першого погляду.',
     defaultSize: { w: 5, h: 6, minW: 3, minH: 5 },
     defaultConfig: {}
   },
   categoryBreakdown: {
-    label: 'Category Breakdown',
+    label: 'Розподіл за категоріями',
     icon: Layers,
-    description: 'View tracker distribution by category.',
+    description: 'Розподіл звичок за категоріями.',
     defaultSize: { w: 5, h: 6, minW: 3, minH: 4 },
     defaultConfig: {}
   },
   topImpact: {
-    label: 'Top Impact Rates',
+    label: 'Найбільший вплив',
     icon: BarChart3,
-    description: 'Trackers ranked by estimated monthly impact rate.',
+    description: 'Звички за орієнтовним місячним впливом.',
     defaultSize: { w: 6, h: 6, minW: 3, minH: 4 },
     defaultConfig: {}
   },
   todayFocus: {
-    label: "Today's Focus",
+    label: 'Фокус на сьогодні',
     icon: Target,
-    description: 'What still needs doing in the current period.',
+    description: 'Що ще потрібно зробити в поточному періоді.',
     defaultSize: { w: 6, h: 8, minW: 3, minH: 5 },
     defaultConfig: {}
   },
   streaks: {
-    label: 'Active Streaks',
+    label: 'Активні серії',
     icon: Flame,
-    description: 'Your longest running streaks right now.',
+    description: 'Ваші найдовші серії просто зараз.',
     defaultSize: { w: 6, h: 7, minW: 3, minH: 4 },
     defaultConfig: {}
   },
   trackerSpotlight: {
-    label: 'Tracker Spotlight',
+    label: 'Звичка в центрі уваги',
     icon: Sparkles,
-    description: 'One tracker up close, with a one-tap log button.',
+    description: 'Одна звичка зблизька з кнопкою запису в один дотик.',
     defaultSize: { w: 4, h: 11, minW: 3, minH: 9 },
     defaultConfig: { trackerId: null }
   },
   quickLog: {
-    label: 'Quick Log',
+    label: 'Швидкий запис',
     icon: Zap,
-    description: 'One-tap logging for the trackers you touch most.',
+    description: 'Запис в один дотик для звичок, які ви ведете найчастіше.',
     defaultSize: { w: 5, h: 8, minW: 3, minH: 4 },
     defaultConfig: { trackerIds: [] }
   },
   heatmap: {
-    label: 'Consistency Heatmap',
+    label: 'Теплова карта регулярності',
     icon: CalendarRange,
-    description: "A single tracker's last 24 weeks at a glance.",
+    description: 'Останні 24 тижні однієї звички з першого погляду.',
     defaultSize: { w: 6, h: 8, minW: 4, minH: 6 },
     defaultConfig: { trackerId: null }
   },
   activityFeed: {
-    label: 'Recent Activity',
+    label: 'Остання активність',
     icon: Activity,
-    description: 'The latest entries logged across every tracker.',
+    description: 'Найновіші записи за всіма звичками.',
     defaultSize: { w: 5, h: 10, minW: 3, minH: 5 },
     defaultConfig: {}
   },
   journalFeed: {
-    label: 'Journal Feed',
+    label: 'Стрічка щоденника',
     icon: NotebookPen,
-    description: 'Your most recent journal entries, wherever you wrote them.',
+    description: 'Ваші найновіші записи щоденника, де б ви їх не залишили.',
     defaultSize: { w: 5, h: 10, minW: 3, minH: 5 },
     defaultConfig: {}
   },
   moodTrend: {
-    label: 'Mood Trend',
+    label: 'Динаміка настрою',
     icon: Smile,
-    description: 'Average journalled mood over time.',
+    description: 'Середній настрій із записів щоденника з часом.',
     defaultSize: { w: 6, h: 8, minW: 3, minH: 5 },
     defaultConfig: {}
   },
   notes: {
-    label: 'Notes',
+    label: 'Нотатки',
     icon: NotebookPen,
-    description: 'A free-text note pinned to your dashboard.',
+    description: 'Довільна нотатка, закріплена на головній.',
     defaultSize: { w: 4, h: 7, minW: 2, minH: 3 },
     defaultConfig: { text: '' }
   },
   apiExplorer: {
-    label: 'API Explorer',
+    label: 'Огляд API',
     icon: Code2,
-    description: 'Copy-ready request snippets against your own instance.',
+    description: 'Готові до копіювання приклади запитів до вашого екземпляра.',
     defaultSize: { w: 6, h: 11, minW: 4, minH: 9 },
     defaultConfig: { path: '/trackers/', snippet: 'curl' }
   },
   embed: {
-    label: 'Embed',
+    label: 'Вбудована сторінка',
     icon: MonitorPlay,
-    description: 'Show another page — a Grafana panel, a status board.',
+    description: 'Показати іншу сторінку — панель Grafana, дошку статусу.',
     defaultSize: { w: 6, h: 10, minW: 3, minH: 5 },
     defaultConfig: { url: '', title: '' }
   }
+};
+
+/** Default titles from before the UI was translated; shown under their new names. */
+const LEGACY_TITLES = {
+  impactSummary: 'Impact Totals',
+  trackerOverview: 'Tracker Overview',
+  categoryBreakdown: 'Category Breakdown',
+  topImpact: 'Top Impact Rates',
+  todayFocus: "Today's Focus",
+  streaks: 'Active Streaks',
+  trackerSpotlight: 'Tracker Spotlight',
+  quickLog: 'Quick Log',
+  heatmap: 'Consistency Heatmap',
+  activityFeed: 'Recent Activity',
+  journalFeed: 'Journal Feed',
+  moodTrend: 'Mood Trend',
+  notes: 'Notes',
+  apiExplorer: 'API Explorer',
+  embed: 'Embed'
 };
 
 export const WIDGET_TYPE_ALIASES = {
@@ -160,7 +179,9 @@ export const normalizeWidget = (rawWidget) => {
 
   const id = typeof rawWidget.id === 'string' && rawWidget.id.trim() ? rawWidget.id : `${resolvedType}-${createWidgetId()}`;
   const title =
-    typeof rawWidget.title === 'string' && rawWidget.title.trim() ? rawWidget.title.trim() : definition.label;
+    typeof rawWidget.title === 'string' && rawWidget.title.trim() && rawWidget.title.trim() !== LEGACY_TITLES[resolvedType]
+      ? rawWidget.title.trim()
+      : definition.label;
 
   const config =
     resolvedType === 'impactSummary'

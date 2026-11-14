@@ -2,6 +2,7 @@ import { Check, Copy, Crown, LogIn, LogOut, Pencil, Plus, RefreshCw, Trash2, Use
 import { useState } from 'react';
 import { useAppState } from '../../state/appState';
 import { formatDate } from '../../utils/date';
+import { pluralCount } from '../../utils/plural';
 import Modal from '../ui/Modal';
 
 const inputClass =
@@ -23,7 +24,7 @@ function GroupCard({ group, currentUserId }) {
     } catch {
       // Clipboard access is denied outside secure contexts; the code is on
       // screen either way, so this is not worth an error toast.
-      notify.info(`Join code: ${group.join_code}`);
+      notify.info(`Код запрошення: ${group.join_code}`);
     }
   };
 
@@ -35,72 +36,70 @@ function GroupCard({ group, currentUserId }) {
     }
     try {
       await renameGroup(group.id, draftName.trim());
-      notify.success('Group renamed');
+      notify.success('Групу перейменовано');
       setIsRenaming(false);
     } catch (error) {
-      notify.error(error.message || 'Could not rename the group');
+      notify.error(error.message || 'Не вдалося перейменувати групу');
     }
   };
 
   const handleRotate = async () => {
     const accepted = await confirm({
-      title: 'Generate a new join code?',
-      message: 'The current code stops working immediately. Members who already joined are unaffected.',
-      confirmLabel: 'Generate new code',
+      title: 'Створити новий код запрошення?',
+      message: 'Поточний код перестане діяти одразу. Учасників, які вже приєдналися, це не торкнеться.',
+      confirmLabel: 'Створити новий код',
       tone: 'default'
     });
     if (!accepted) return;
 
     try {
       await rotateJoinCode(group.id);
-      notify.success('New join code generated');
+      notify.success('Новий код запрошення створено');
     } catch (error) {
-      notify.error(error.message || 'Could not generate a new code');
+      notify.error(error.message || 'Не вдалося створити новий код');
     }
   };
 
   const handleRemoveMember = async (member) => {
     const accepted = await confirm({
-      title: `Remove ${member.user.username}?`,
+      title: `Видалити учасника ${member.user.username}?`,
       message:
-        'They lose access to this group and its shared trackers. Their own logs and journal entries are kept.',
-      confirmLabel: 'Remove',
+        'Він втратить доступ до групи та її спільних звичок. Його власні записи й щоденники збережуться.',
+      confirmLabel: 'Видалити',
       tone: 'danger'
     });
     if (!accepted) return;
 
     try {
       await removeGroupMember(group.id, member.user.id);
-      notify.success(`${member.user.username} removed`);
+      notify.success(`Учасника ${member.user.username} видалено`);
     } catch (error) {
-      notify.error(error.message || 'Could not remove that member');
+      notify.error(error.message || 'Не вдалося видалити учасника');
     }
   };
 
   const handleLeave = async () => {
     const accepted = await confirm({
-      title: `Leave ${group.name}?`,
-      message: 'You lose access to its shared trackers. Your own history stays with you.',
-      confirmLabel: 'Leave group',
+      title: `Вийти з групи «${group.name}»?`,
+      message: 'Ви втратите доступ до її спільних звичок. Ваша власна історія залишиться з вами.',
+      confirmLabel: 'Вийти з групи',
       tone: 'danger'
     });
     if (!accepted) return;
 
     try {
       await leaveGroup(group.id);
-      notify.success(`You left ${group.name}`);
+      notify.success(`Ви вийшли з групи «${group.name}»`);
     } catch (error) {
-      notify.error(error.message || 'Could not leave the group');
+      notify.error(error.message || 'Не вдалося вийти з групи');
     }
   };
 
   const handleDelete = async () => {
     const accepted = await confirm({
-      title: `Delete ${group.name}?`,
-      message: `Its ${group.tracker_count} shared tracker${
-        group.tracker_count === 1 ? '' : 's'
-      } become private trackers owned by whoever created them. No history is deleted.`,
-      confirmLabel: 'Delete group',
+      title: `Видалити групу «${group.name}»?`,
+      message: `Спільні звички групи (${group.tracker_count}) стануть особистими звичками тих, хто їх створив. Жодна історія не видаляється.`,
+      confirmLabel: 'Видалити групу',
       tone: 'danger',
       requireText: group.name
     });
@@ -108,9 +107,9 @@ function GroupCard({ group, currentUserId }) {
 
     try {
       await deleteGroup(group.id);
-      notify.success('Group deleted');
+      notify.success('Групу видалено');
     } catch (error) {
-      notify.error(error.message || 'Could not delete the group');
+      notify.error(error.message || 'Не вдалося видалити групу');
     }
   };
 
@@ -126,10 +125,10 @@ function GroupCard({ group, currentUserId }) {
                 maxLength={80}
                 onChange={(event) => setDraftName(event.target.value)}
                 className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-stone-500"
-                aria-label="Group name"
+                aria-label="Назва групи"
               />
               <button type="submit" className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-medium text-white">
-                Save
+                Зберегти
               </button>
               <button
                 type="button"
@@ -139,18 +138,17 @@ function GroupCard({ group, currentUserId }) {
                 }}
                 className="rounded-lg px-2 py-1.5 text-xs text-stone-500"
               >
-                Cancel
+                Скасувати
               </button>
             </form>
           ) : (
             <h4 className="flex items-center gap-2 truncate font-semibold text-stone-900">
               {group.name}
-              {isOwner && <Crown size={14} className="shrink-0 text-amber-500" aria-label="You own this group" />}
+              {isOwner && <Crown size={14} className="shrink-0 text-amber-500" aria-label="Ви власник цієї групи" />}
             </h4>
           )}
           <p className="mt-1 text-xs text-stone-500">
-            {group.member_count} member{group.member_count === 1 ? '' : 's'} · {group.tracker_count} shared tracker
-            {group.tracker_count === 1 ? '' : 's'}
+            {pluralCount(group.member_count, ['учасник', 'учасники', 'учасників'])} · {pluralCount(group.tracker_count, ['спільна звичка', 'спільні звички', 'спільних звичок'])}
           </p>
         </div>
 
@@ -159,8 +157,8 @@ function GroupCard({ group, currentUserId }) {
             <button
               type="button"
               onClick={() => setIsRenaming(true)}
-              title="Rename group"
-              aria-label={`Rename ${group.name}`}
+              title="Перейменувати групу"
+              aria-label={`Перейменувати групу «${group.name}»`}
               className="rounded-lg border border-stone-200 p-2 text-stone-500 transition-colors hover:border-stone-300 hover:bg-white hover:text-stone-900"
             >
               <Pencil size={14} />
@@ -169,8 +167,8 @@ function GroupCard({ group, currentUserId }) {
           <button
             type="button"
             onClick={copyJoinCode}
-            title="Copy join code"
-            aria-label={`Copy the join code for ${group.name}`}
+            title="Скопіювати код запрошення"
+            aria-label={`Скопіювати код запрошення для групи «${group.name}»`}
             className="rounded-lg border border-stone-200 p-2 text-stone-500 transition-colors hover:border-stone-300 hover:bg-white hover:text-stone-900"
           >
             {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
@@ -186,8 +184,8 @@ function GroupCard({ group, currentUserId }) {
           <button
             type="button"
             onClick={handleRotate}
-            title="Generate a new join code"
-            aria-label="Generate a new join code"
+            title="Створити новий код запрошення"
+            aria-label="Створити новий код запрошення"
             className="rounded-lg border border-stone-200 p-2 text-stone-500 transition-colors hover:border-stone-300 hover:bg-white hover:text-stone-900"
           >
             <RefreshCw size={14} />
@@ -201,15 +199,15 @@ function GroupCard({ group, currentUserId }) {
             <li key={member.user.id} className="flex items-center justify-between gap-2 px-1 py-1 text-sm">
               <span className="min-w-0 flex-1 truncate text-stone-700">
                 {member.user.username}
-                {member.user.id === currentUserId && <span className="ml-1.5 text-xs text-stone-400">(you)</span>}
-                <span className="ml-2 text-xs text-stone-400">joined {formatDate(member.joined_at)}</span>
+                {member.user.id === currentUserId && <span className="ml-1.5 text-xs text-stone-400">(ви)</span>}
+                <span className="ml-2 text-xs text-stone-400">приєднався(-лась) {formatDate(member.joined_at)}</span>
               </span>
               {isOwner && member.user.id !== group.owner_id && (
                 <button
                   type="button"
                   onClick={() => handleRemoveMember(member)}
-                  title={`Remove ${member.user.username}`}
-                  aria-label={`Remove ${member.user.username} from ${group.name}`}
+                  title={`Видалити учасника ${member.user.username}`}
+                  aria-label={`Видалити учасника ${member.user.username} з групи «${group.name}»`}
                   className="shrink-0 rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
                 >
                   <UserMinus size={14} />
@@ -227,7 +225,7 @@ function GroupCard({ group, currentUserId }) {
             onClick={handleDelete}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 transition-colors hover:text-rose-700"
           >
-            <Trash2 size={13} /> Delete group
+            <Trash2 size={13} /> Видалити групу
           </button>
         ) : (
           <button
@@ -235,7 +233,7 @@ function GroupCard({ group, currentUserId }) {
             onClick={handleLeave}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 transition-colors hover:text-rose-700"
           >
-            <LogOut size={13} /> Leave group
+            <LogOut size={13} /> Вийти з групи
           </button>
         )}
       </div>
@@ -261,11 +259,11 @@ function GroupManagementModal() {
     setIsSubmitting(true);
     try {
       await createGroup(groupName.trim());
-      notify.success(`Group "${groupName.trim()}" created`);
+      notify.success(`Групу «${groupName.trim()}» створено`);
       setGroupName('');
       setActiveTab('list');
     } catch (error) {
-      notify.error(error.message || 'Could not create the group');
+      notify.error(error.message || 'Не вдалося створити групу');
     } finally {
       setIsSubmitting(false);
     }
@@ -278,28 +276,28 @@ function GroupManagementModal() {
     setIsSubmitting(true);
     try {
       const group = await joinGroup(joinCode.trim());
-      notify.success(`Joined ${group?.name || 'the group'}`);
+      notify.success(`Ви приєдналися до групи ${group?.name ? `«${group.name}»` : ''}`.trim());
       setJoinCode('');
       setActiveTab('list');
     } catch (error) {
-      notify.error(error.message || 'Could not join that group');
+      notify.error(error.message || 'Не вдалося приєднатися до групи');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const TABS = [
-    { id: 'list', label: 'Your groups', badge: groups.length },
-    { id: 'create', label: 'Create' },
-    { id: 'join', label: 'Join' }
+    { id: 'list', label: 'Ваші групи', badge: groups.length },
+    { id: 'create', label: 'Створити' },
+    { id: 'join', label: 'Приєднатися' }
   ];
 
   return (
     <Modal
       isOpen
       onClose={() => setIsGroupManagementOpen(false)}
-      title="Groups"
-      description="Share trackers with family or friends and compare progress."
+      title="Групи"
+      description="Діліться звичками з родиною чи друзями та порівнюйте прогрес."
       size="xl"
     >
       <div className="mb-6 flex gap-2 border-b border-gray-100">
@@ -328,8 +326,8 @@ function GroupManagementModal() {
           {groups.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-stone-200 bg-stone-50 p-8 text-center">
               <Users size={32} className="mx-auto mb-3 text-stone-300" />
-              <p className="mb-1 text-sm text-stone-600">No groups yet</p>
-              <p className="text-xs text-stone-500">Create one, or join with a code someone shared with you.</p>
+              <p className="mb-1 text-sm text-stone-600">Груп ще немає</p>
+              <p className="text-xs text-stone-500">Створіть групу або приєднайтеся за кодом, яким з вами поділилися.</p>
             </div>
           ) : (
             groups.map((group) => <GroupCard key={group.id} group={group} currentUserId={user?.id} />)
@@ -341,27 +339,27 @@ function GroupManagementModal() {
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label htmlFor="group-name" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">
-              Group name
+              Назва групи
             </label>
             <input
               id="group-name"
               value={groupName}
               maxLength={80}
               onChange={(event) => setGroupName(event.target.value)}
-              placeholder="e.g. Family, Friends, Team"
+              placeholder="напр. Родина, Друзі, Команда"
               className={inputClass}
               required
             />
           </div>
           <p className="text-xs text-stone-500">
-            You will get a join code to share. Only you can add shared trackers to a group you own.
+            Ви отримаєте код запрошення, яким можна поділитися. Лише ви можете додавати спільні звички до своєї групи.
           </p>
           <button
             type="submit"
             disabled={isSubmitting}
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:opacity-60"
           >
-            <Plus size={16} /> Create group
+            <Plus size={16} /> Створити групу
           </button>
         </form>
       )}
@@ -370,7 +368,7 @@ function GroupManagementModal() {
         <form onSubmit={handleJoin} className="space-y-4">
           <div>
             <label htmlFor="join-code" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">
-              Join code
+              Код запрошення
             </label>
             <input
               id="join-code"
@@ -382,13 +380,13 @@ function GroupManagementModal() {
               required
             />
           </div>
-          <p className="text-xs text-stone-500">Ask a group member for their code.</p>
+          <p className="text-xs text-stone-500">Попросіть код у когось із учасників групи.</p>
           <button
             type="submit"
             disabled={isSubmitting}
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:opacity-60"
           >
-            <LogIn size={16} /> Join group
+            <LogIn size={16} /> Приєднатися до групи
           </button>
         </form>
       )}

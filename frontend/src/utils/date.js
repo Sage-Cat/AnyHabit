@@ -1,3 +1,5 @@
+import { pluralCount } from './plural';
+
 export const DAY_MS = 1000 * 60 * 60 * 24;
 
 /**
@@ -22,40 +24,40 @@ export const parseApiDate = (value) => {
 
 export const formatDate = (value, options = { dateStyle: 'medium' }) => {
   const date = parseApiDate(value);
-  return date ? date.toLocaleDateString(undefined, options) : '—';
+  return date ? date.toLocaleDateString('uk-UA', options) : '—';
 };
 
 export const formatDateTime = (value) => {
   const date = parseApiDate(value);
-  return date ? date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  return date ? date.toLocaleString('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 };
 
 export const formatTime = (value) => {
   const date = parseApiDate(value);
-  return date ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+  return date ? date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '—';
 };
 
-/** "3 days ago" style label for activity timestamps. */
+/** «3 дні тому» style label for activity timestamps. */
 export const formatRelative = (value) => {
   const date = parseApiDate(value);
-  if (!date) return 'never';
+  if (!date) return 'ніколи';
 
   const diffMs = Date.now() - date.getTime();
   const diffDays = Math.floor(diffMs / DAY_MS);
 
-  if (diffMs < 60_000) return 'just now';
+  if (diffMs < 60_000) return 'щойно';
   if (diffMs < 3_600_000) {
     const minutes = Math.floor(diffMs / 60_000);
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    return `${pluralCount(minutes, ['хвилину', 'хвилини', 'хвилин'])} тому`;
   }
   if (diffDays < 1) {
     const hours = Math.floor(diffMs / 3_600_000);
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return `${pluralCount(hours, ['годину', 'години', 'годин'])} тому`;
   }
-  if (diffDays === 1) return 'yesterday';
-  if (diffDays < 30) return `${diffDays} days ago`;
+  if (diffDays === 1) return 'вчора';
+  if (diffDays < 30) return `${pluralCount(diffDays, ['день', 'дні', 'днів'])} тому`;
 
-  return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return date.toLocaleDateString('uk-UA', { dateStyle: 'medium' });
 };
 
 /** Value for a `datetime-local` input, which expects local wall-clock time. */

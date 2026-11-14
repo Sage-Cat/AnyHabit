@@ -1,24 +1,24 @@
 export const TRACKER_TYPE_OPTIONS = [
-  { value: 'quit', label: 'Quit', hint: 'Stop something. Counts time avoided.' },
-  { value: 'build', label: 'Build', hint: 'Do more of something. Counts amounts you log.' },
-  { value: 'boolean', label: 'Yes/No', hint: 'Simply done or not done each period.' }
+  { value: 'quit', label: 'Відмова', hint: 'Кинути щось. Рахує час без цього.' },
+  { value: 'build', label: 'Накопичення', hint: 'Робити щось частіше. Рахує внесені кількості.' },
+  { value: 'boolean', label: 'Так/ні', hint: 'Просто зроблено чи ні за кожен період.' }
 ];
 
 export const PERIOD_OPTIONS = [
-  { value: 'day', label: 'Day' },
-  { value: 'week', label: 'Week' },
-  { value: 'month', label: 'Month' },
-  { value: 'year', label: 'Year' }
+  { value: 'day', label: 'День' },
+  { value: 'week', label: 'Тиждень' },
+  { value: 'month', label: 'Місяць' },
+  { value: 'year', label: 'Рік' }
 ];
 
 /** Accent colours a tracker can be tagged with, for scanning a long list. */
 export const TRACKER_COLORS = [
-  { value: '', label: 'Default', swatch: '#a8a29e' },
-  { value: 'emerald', label: 'Emerald', swatch: '#10b981' },
-  { value: 'sky', label: 'Sky', swatch: '#0ea5e9' },
-  { value: 'violet', label: 'Violet', swatch: '#8b5cf6' },
-  { value: 'amber', label: 'Amber', swatch: '#f59e0b' },
-  { value: 'rose', label: 'Rose', swatch: '#f43f5e' }
+  { value: '', label: 'Типовий', swatch: '#a8a29e' },
+  { value: 'emerald', label: 'Смарагдовий', swatch: '#10b981' },
+  { value: 'sky', label: 'Блакитний', swatch: '#0ea5e9' },
+  { value: 'violet', label: 'Фіолетовий', swatch: '#8b5cf6' },
+  { value: 'amber', label: 'Бурштиновий', swatch: '#f59e0b' },
+  { value: 'rose', label: 'Рожевий', swatch: '#f43f5e' }
 ];
 
 export const TRACKER_COLOR_HEX = TRACKER_COLORS.reduce((accumulator, option) => {
@@ -27,17 +27,17 @@ export const TRACKER_COLOR_HEX = TRACKER_COLORS.reduce((accumulator, option) => 
 }, {});
 
 export const WEEK_START_OPTIONS = [
-  { value: 'monday', label: 'Monday' },
-  { value: 'sunday', label: 'Sunday' },
-  { value: 'saturday', label: 'Saturday' }
+  { value: 'monday', label: 'Понеділок' },
+  { value: 'sunday', label: 'Неділя' },
+  { value: 'saturday', label: 'Субота' }
 ];
 
 export const MOOD_LABELS = {
-  1: 'Very bad',
-  2: 'Bad',
-  3: 'Neutral',
-  4: 'Good',
-  5: 'Very good'
+  1: 'Дуже погано',
+  2: 'Погано',
+  3: 'Нейтрально',
+  4: 'Добре',
+  5: 'Дуже добре'
 };
 
 export const DEFAULT_TRACKER_FORM = {
@@ -67,3 +67,10 @@ export const DEFAULT_LOG_FORM = {
   note: '',
   timestamp: new Date().toISOString()
 };
+
+/** Display names for stored tracker types and periods. */
+export const TRACKER_TYPE_LABELS = Object.fromEntries(TRACKER_TYPE_OPTIONS.map((option) => [option.value, option.label]));
+export const PERIOD_NOUNS = { day: 'день', week: 'тиждень', month: 'місяць', year: 'рік' };
+
+/** Display names for stored group roles. */
+export const ROLE_LABELS = { owner: 'власник', admin: 'адміністратор', member: 'учасник' };

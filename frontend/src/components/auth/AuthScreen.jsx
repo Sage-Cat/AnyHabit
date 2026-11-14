@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { ArrowRight, Loader, LockKeyhole, Mail, UserRound } from 'lucide-react';
 
 const AUTH_COPY = {
-  title: 'Private by default. Shared by choice.',
-  subtitle: 'Sign in to your workspace or create a new account to start building private habits and group trackers.',
-  note: 'Self-hosted. Your data never leaves your server.'
+  title: 'Приватно за замовчуванням. Спільно — за вашим вибором.',
+  subtitle: 'Увійдіть або створіть акаунт, щоб вести особисті звички та спільні звички в групах.',
+  note: 'Власний сервер. Ваші дані не покидають його.'
 };
 
 function AuthScreen({ onLogin, onRegister, error, isBusy }) {
@@ -22,7 +22,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
         await onRegister(form.username.trim(), form.email.trim(), form.password);
       }
     } catch (err) {
-      setLocalError(err.message || 'An error occurred. Please try again.');
+      setLocalError(err.message || 'Сталася помилка. Спробуйте ще раз.');
     }
   };
 
@@ -35,7 +35,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
             <p className="text-xs uppercase tracking-[0.34em] text-stone-500 font-semibold">AnyHabit</p>
             <div className="inline-flex items-center gap-3 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-600 shadow-sm">
               <LockKeyhole size={16} />
-              Account Workspace
+              Особистий простір
             </div>
             <h1 className="mt-8 text-4xl md:text-6xl font-semibold tracking-tight text-stone-950 leading-[0.95]">
               {AUTH_COPY.title}
@@ -43,16 +43,16 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
             <p className="mt-5 text-lg text-stone-600 max-w-2xl leading-8">{AUTH_COPY.subtitle}</p>
             <div className="mt-10 grid md:grid-cols-3 gap-4 text-sm">
               <div className="rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
-                <div className="font-semibold text-stone-900">Private first</div>
-                <p className="mt-2 text-stone-600">Every user gets isolated trackers, journals, and dashboard state.</p>
+                <div className="font-semibold text-stone-900">Спершу приватність</div>
+                <p className="mt-2 text-stone-600">Кожен користувач має окремі звички, щоденники та налаштування головної.</p>
               </div>
               <div className="rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
-                <div className="font-semibold text-stone-900">Shared groups</div>
-                <p className="mt-2 text-stone-600">Invite family or friends and compare progress inside a group tracker.</p>
+                <div className="font-semibold text-stone-900">Спільні групи</div>
+                <p className="mt-2 text-stone-600">Запросіть родину чи друзів і порівнюйте прогрес у груповій звичці.</p>
               </div>
               <div className="rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
-                <div className="font-semibold text-stone-900">Dual streaks</div>
-                <p className="mt-2 text-stone-600">Track individual consistency and the full group streak side by side.</p>
+                <div className="font-semibold text-stone-900">Дві серії</div>
+                <p className="mt-2 text-stone-600">Стежте за власною регулярністю та серією всієї групи поруч.</p>
               </div>
             </div>
           </div>
@@ -64,7 +64,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
           <div className="mb-5 flex items-center gap-3">
             <img src="/AnyHabit.png" alt="AnyHabit" className="w-8 h-8 rounded-lg object-cover" />
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-stone-400">Welcome to</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-stone-400">Ласкаво просимо до</p>
               <p className="text-lg font-semibold text-stone-900">AnyHabit</p>
             </div>
           </div>
@@ -76,7 +76,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
                 mode === 'login' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
               }`}
             >
-              Sign In
+              Увійти
             </button>
             <button
               type="button"
@@ -85,14 +85,14 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
                 mode === 'register' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
               }`}
             >
-              Create Account
+              Створити акаунт
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Username</span>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ім'я користувача</span>
                 <div className="relative">
                   <UserRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
@@ -101,7 +101,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
                     value={form.username}
                     onChange={(event) => setForm({ ...form, username: event.target.value })}
                     className="w-full rounded-2xl border border-stone-200 bg-stone-50 pl-11 pr-4 py-3 text-sm outline-none focus:border-stone-400"
-                    placeholder="Your display name"
+                    placeholder="Ваше ім'я"
                   />
                 </div>
               </label>
@@ -109,7 +109,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
 
             <label className="block">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">
-                {mode === 'login' ? 'Email or username' : 'Email'}
+                {mode === 'login' ? 'Email або ім\'я користувача' : 'Email'}
               </span>
               <div className="relative">
                 <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -121,13 +121,13 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
                     setForm(mode === 'login' ? { ...form, identifier: event.target.value } : { ...form, email: event.target.value })
                   }
                   className="w-full rounded-2xl border border-stone-200 bg-stone-50 pl-11 pr-4 py-3 text-sm outline-none focus:border-stone-400"
-                  placeholder={mode === 'login' ? 'Email or username' : 'you@example.com'}
+                  placeholder={mode === 'login' ? 'Email або ім\'я користувача' : 'you@example.com'}
                 />
               </div>
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Password</span>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Пароль</span>
               <div className="relative">
                 <LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
                 <input
@@ -142,7 +142,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
                 />
               </div>
               {mode === 'register' && (
-                <span className="mt-1.5 block text-[11px] text-stone-400">At least 8 characters.</span>
+                <span className="mt-1.5 block text-[11px] text-stone-400">Щонайменше 8 символів.</span>
               )}
             </label>
 
@@ -158,7 +158,7 @@ function AuthScreen({ onLogin, onRegister, error, isBusy }) {
               className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isBusy && <Loader size={16} className="animate-spin" />}
-              {isBusy ? 'Loading...' : (mode === 'login' ? 'Enter Workspace' : 'Create Workspace')}
+              {isBusy ? 'Завантаження…' : (mode === 'login' ? 'Увійти' : 'Зареєструватися')}
               {!isBusy && <ArrowRight size={16} />}
             </button>
           </form>

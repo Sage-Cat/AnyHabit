@@ -2,8 +2,9 @@ import { Archive, Home, Layers, Plus, Search, Settings, Upload, Download, Users 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../state/appState';
+import { categoryLabel } from '../utils/tracker';
 
-const TYPE_LABELS = { quit: 'Quit', build: 'Build', boolean: 'Yes/No' };
+const TYPE_LABELS = { quit: 'Відмова', build: 'Накопичення', boolean: 'Так/ні' };
 
 /**
  * Ctrl/Cmd+K launcher.
@@ -66,8 +67,8 @@ function CommandPalette() {
     const actions = [
       {
         id: 'action-home',
-        label: 'Go to Home',
-        hint: 'Dashboard',
+        label: 'Перейти на головну',
+        hint: 'Головна',
         icon: Home,
         run: go('/', () => {
           setSelectedTrackerId(null);
@@ -76,8 +77,8 @@ function CommandPalette() {
       },
       {
         id: 'action-new-tracker',
-        label: 'Create a tracker',
-        hint: 'New',
+        label: 'Створити звичку',
+        hint: 'Нова',
         icon: Plus,
         run: () => {
           close();
@@ -86,8 +87,8 @@ function CommandPalette() {
       },
       {
         id: 'action-groups',
-        label: 'Manage groups',
-        hint: 'Groups',
+        label: 'Керувати групами',
+        hint: 'Групи',
         icon: Users,
         run: () => {
           close();
@@ -96,8 +97,8 @@ function CommandPalette() {
       },
       {
         id: 'action-export',
-        label: 'Export data / backup',
-        hint: 'Data',
+        label: 'Експорт даних / резервна копія',
+        hint: 'Дані',
         icon: Download,
         run: () => {
           close();
@@ -106,8 +107,8 @@ function CommandPalette() {
       },
       {
         id: 'action-import',
-        label: 'Restore from a backup',
-        hint: 'Data',
+        label: 'Відновити з резервної копії',
+        hint: 'Дані',
         icon: Upload,
         run: () => {
           close();
@@ -116,8 +117,8 @@ function CommandPalette() {
       },
       {
         id: 'action-settings',
-        label: 'Open settings',
-        hint: 'Settings',
+        label: 'Відкрити налаштування',
+        hint: 'Налаштування',
         icon: Settings,
         run: () => {
           close();
@@ -129,9 +130,9 @@ function CommandPalette() {
     const trackerCommands = trackers.map((tracker) => ({
       id: `tracker-${tracker.id}`,
       label: tracker.name,
-      hint: `${TYPE_LABELS[tracker.type] || tracker.type} · ${(tracker.category || 'General').trim()}`,
+      hint: `${TYPE_LABELS[tracker.type] || tracker.type} · ${categoryLabel(tracker.category)}`,
       icon: tracker.archived_at ? Archive : Search,
-      keywords: `${tracker.name} ${tracker.category} ${tracker.description || ''}`,
+      keywords: `${tracker.name} ${tracker.category} ${categoryLabel(tracker.category)} ${tracker.description || ''}`,
       run: go(`/tracker/${tracker.id}`, () => {
         setSelectedCategory((tracker.category || 'General').trim() || 'General');
         setSelectedTrackerId(tracker.id);
@@ -140,8 +141,8 @@ function CommandPalette() {
 
     const categoryCommands = existingCategories.map((category) => ({
       id: `category-${category}`,
-      label: category,
-      hint: 'Category',
+      label: categoryLabel(category),
+      hint: 'Категорія',
       icon: Layers,
       run: go(`/category/${encodeURIComponent(category)}`, () => {
         setSelectedTrackerId(null);
@@ -207,7 +208,7 @@ function CommandPalette() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Search AnyHabit"
+        aria-label="Пошук в AnyHabit"
         className="app-modal-card w-full max-w-xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl"
       >
         <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
@@ -218,9 +219,9 @@ function CommandPalette() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search trackers, categories and actions…"
+            placeholder="Шукайте звички, категорії та дії…"
             className="w-full bg-transparent text-sm text-stone-800 outline-none placeholder:text-gray-400"
-            aria-label="Search"
+            aria-label="Пошук"
           />
           <kbd className="hidden shrink-0 rounded-md border border-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 sm:block">
             esc
@@ -229,7 +230,7 @@ function CommandPalette() {
 
         <div ref={listRef} className="max-h-80 overflow-y-auto p-2">
           {results.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-gray-400">Nothing matches “{query}”.</p>
+            <p className="px-3 py-8 text-center text-sm text-gray-400">Нічого не знайдено за запитом «{query}».</p>
           ) : (
             results.map((command, index) => {
               const Icon = command.icon;
@@ -256,8 +257,8 @@ function CommandPalette() {
         </div>
 
         <div className="flex items-center gap-4 border-t border-gray-100 px-4 py-2 text-[11px] text-gray-400">
-          <span>↑↓ to navigate</span>
-          <span>↵ to open</span>
+          <span>↑↓ — навігація</span>
+          <span>↵ — відкрити</span>
           <span className="ml-auto">Ctrl/⌘ + K</span>
         </div>
       </div>

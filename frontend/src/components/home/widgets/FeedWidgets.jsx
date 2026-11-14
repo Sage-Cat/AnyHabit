@@ -3,6 +3,9 @@ import { useMemo } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MOOD_LABELS } from '../../../constants/tracker';
 import { formatRelative } from '../../../utils/date';
+import { formatNumber } from '../../../utils/number';
+import { formatChartDate } from '../../../utils/labels';
+import { pluralCount } from '../../../utils/plural';
 import MoodIcon from '../../MoodIcon';
 import { formatValue } from './helpers';
 import { WidgetEmptyState, WidgetLoading } from './shared';
@@ -12,7 +15,7 @@ export function ActivityFeedWidget({ activity, isLoading, onOpenTracker }) {
 
   const logs = activity?.logs || [];
   if (!logs.length) {
-    return <WidgetEmptyState title="No activity yet" hint="Logged entries appear here as you record them." />;
+    return <WidgetEmptyState title="Активності ще немає" hint="Записи з'являтимуться тут, щойно ви їх додасте." />;
   }
 
   return (
@@ -43,7 +46,7 @@ export function JournalFeedWidget({ activity, isLoading, onOpenTracker }) {
 
   const journals = activity?.journals || [];
   if (!journals.length) {
-    return <WidgetEmptyState title="No journal entries yet" hint="Write one on any tracker page." />;
+    return <WidgetEmptyState title="Записів щоденника ще немає" hint="Напишіть запис на сторінці будь-якої звички." />;
   }
 
   return (
@@ -78,7 +81,7 @@ export function JournalFeedWidget({ activity, isLoading, onOpenTracker }) {
 
 export function MoodTrendWidget({ activity, isLoading }) {
   const data = useMemo(
-    () => (activity?.mood_trend || []).slice(-60).map((point) => ({ ...point, label: point.date.slice(5) })),
+    () => (activity?.mood_trend || []).slice(-60).map((point) => ({ ...point, label: formatChartDate(point.date) })),
     [activity]
   );
 
@@ -87,8 +90,8 @@ export function MoodTrendWidget({ activity, isLoading }) {
   if (data.length < 2) {
     return (
       <WidgetEmptyState
-        title="Not enough mood data"
-        hint="Journal with a mood on a couple of days and a trend appears."
+        title="Замало даних про настрій"
+        hint="Зробіть записи з настроєм принаймні за пару днів — і з'явиться динаміка."
       />
     );
   }
@@ -98,8 +101,8 @@ export function MoodTrendWidget({ activity, isLoading }) {
   return (
     <div className="flex h-full flex-col gap-2">
       <p className="text-xs text-gray-500">
-        Average mood <span className="font-semibold text-stone-800">{average.toFixed(2)}</span> over{' '}
-        {data.length} days
+        Середній настрій <span className="font-semibold text-stone-800">{formatNumber(average, 2)}</span> за{' '}
+        {pluralCount(data.length, ['день', 'дні', 'днів'])}
       </p>
       <div className="min-h-0 flex-1">
         <ResponsiveContainer width="100%" height="100%">
@@ -107,8 +110,8 @@ export function MoodTrendWidget({ activity, isLoading }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="label" minTickGap={28} tick={{ fontSize: 10, fill: '#9ca3af' }} />
             <YAxis domain={[1, 5]} ticks={[1, 3, 5]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-            <Tooltip formatter={(value) => [value, 'Average mood']} />
-            <Line type="monotone" dataKey="average" stroke="#111827" strokeWidth={2} dot={{ r: 2 }} name="Mood" />
+            <Tooltip formatter={(value) => [value, 'Середній настрій']} />
+            <Line type="monotone" dataKey="average" stroke="#111827" strokeWidth={2} dot={{ r: 2 }} name="Настрій" />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -120,17 +123,17 @@ export function NotesWidget({ config, onConfigChange }) {
   return (
     <div className="flex h-full flex-col">
       <label htmlFor="widget-note" className="sr-only">
-        Note
+        Нотатка
       </label>
       <textarea
         id="widget-note"
         value={config.text || ''}
         onChange={(event) => onConfigChange({ text: event.target.value.slice(0, 5000) })}
-        placeholder="Anything you want on your dashboard — a reminder, a quote, this week's intention…"
+        placeholder="Усе, що хочете бачити на головній: нагадування, цитата, намір на цей тиждень…"
         className="h-full w-full resize-none rounded-xl border border-transparent bg-transparent p-1 text-sm leading-6 text-stone-700 outline-none transition-colors focus:border-gray-200 focus:bg-stone-50"
       />
       <p className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-400">
-        <NotebookPen size={11} /> Saved automatically
+        <NotebookPen size={11} /> Зберігається автоматично
       </p>
     </div>
   );

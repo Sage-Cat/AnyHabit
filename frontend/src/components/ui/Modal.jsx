@@ -127,7 +127,7 @@ function Modal({
               type="button"
               onClick={onClose}
               className="shrink-0 rounded-xl p-2 text-gray-400 transition-colors hover:bg-stone-50 hover:text-stone-900"
-              aria-label="Close dialog"
+              aria-label="Закрити вікно"
             >
               <X size={18} />
             </button>
