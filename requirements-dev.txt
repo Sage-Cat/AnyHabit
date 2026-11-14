@@ -1,0 +1,2 @@
+# Development tools; the app itself needs only backend/requirements.txt.
+ruff==0.17.5
