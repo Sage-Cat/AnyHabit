@@ -193,6 +193,37 @@ try {
     'home card shows rank and a sleep entry button',
     homeText.toLowerCase().includes('ранг') && homeText.includes('Внести сон')
   );
+  const rankCard = page.locator('[data-testid="home-rank-card"]');
+  check('rank has its own card', (await rankCard.innerText()).toLowerCase().includes('ранг культивації'));
+  const ladderSteps = await rankCard.locator('ol li [role="img"]').count();
+  check('rank card draws an emblem for every rank', ladderSteps >= 2, String(ladderSteps));
+  check(
+    'rank card does not carry habit actions',
+    (await rankCard.getByRole('button', { name: 'Внести сон' }).count()) === 0
+  );
+  const todayHabit = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', { hasText: habitName });
+  check('today card lists the active habit', (await todayHabit.count()) === 1);
+
+  const boolName = `Телефон ${Date.now()}`;
+  await page.evaluate(async (name) => {
+    const response = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'boolean', spec: { name, stage: 'formation' }, reason: 'e2e' })
+    });
+    if (!response.ok) throw new Error(await response.text());
+  }, boolName);
+  await page.reload({ waitUntil: 'networkidle' });
+  const boolRow = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', { hasText: boolName });
+  await boolRow.waitFor({ timeout: 10000 });
+  await boolRow.getByRole('button', { name: 'Виконано' }).click();
+  await page.waitForSelector(`text=«${boolName}» — виконано`, { timeout: 10000 });
+  await boolRow.getByRole('button', { name: 'Виконано' }).waitFor({ state: 'detached', timeout: 10000 });
+  check(
+    'one tap marks a yes/no habit done for today',
+    (await boolRow.locator('[data-testid="today-status"]').innerText()).trim() === 'Успіх'
+  );
 
   await page.setViewportSize({ width: 390, height: 800 });
   for (const path of ['/practice', `/practice/${habitId}`]) {
