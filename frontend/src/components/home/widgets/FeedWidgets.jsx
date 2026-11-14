@@ -63,8 +63,8 @@ export function JournalFeedWidget({ activity, isLoading, onOpenTracker }) {
           }`}
         >
           <span className="flex items-center gap-2">
-            <span className="shrink-0 text-stone-400" title={MOOD_LABELS[entry.mood || 3]}>
-              <MoodIcon moodValue={entry.mood || 3} size={14} />
+            <span className="shrink-0" title={MOOD_LABELS[entry.mood || 3]}>
+              <MoodIcon moodValue={entry.mood || 3} size={22} />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-900">
               {entry.tracker_name}

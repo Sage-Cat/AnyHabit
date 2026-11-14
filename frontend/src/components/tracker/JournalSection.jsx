@@ -52,13 +52,13 @@ function JournalSection({
                   aria-pressed={journalFormData.mood === mood}
                   aria-label={MOOD_LABELS[mood]}
                   title={MOOD_LABELS[mood]}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-all ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
                     journalFormData.mood === mood
-                      ? 'bg-stone-900 text-white'
-                      : 'bg-transparent text-gray-400 hover:bg-stone-100'
+                      ? 'scale-110 ring-2 ring-sky-500'
+                      : 'opacity-70 hover:scale-105 hover:opacity-100'
                   }`}
                 >
-                  <MoodIcon moodValue={mood} size={16} />
+                  <MoodIcon moodValue={mood} size={34} />
                 </button>
               ))}
             </fieldset>
@@ -155,8 +155,8 @@ function JournalSection({
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3 text-gray-500">
-                  <span className="text-stone-400" title={MOOD_LABELS[journal.mood || 3]}>
-                    <MoodIcon moodValue={journal.mood || 3} size={16} />
+                  <span title={MOOD_LABELS[journal.mood || 3]}>
+                    <MoodIcon moodValue={journal.mood || 3} size={26} />
                   </span>
                   <span className="text-xs font-medium">{formatDateTime(journal.timestamp)}</span>
                   {journal.is_relapse && (
