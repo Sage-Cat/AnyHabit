@@ -148,6 +148,29 @@ to `backend:8000`.
 - `remove_group_member`
 - `delete_group`
 
+### Habit cultivation
+- `get_cultivation_overview`
+- `list_cultivated_habits`
+- `get_cultivated_habit`
+- `get_habit_days`
+- `get_cultivation_rank`
+- `get_cultivation_vocabulary`
+- `export_cultivation`
+- `log_sleep`
+- `mark_habit_day`
+- `start_minimum_mode`
+- `end_minimum_mode`
+- `create_cultivated_habit`
+- `change_habit_passport`
+- `change_habit_stage`
+
+Recording facts (sleep, day marks, minimum mode) works directly. Creating a
+passport, changing its goals or criteria and moving a stage take
+`user_confirmed=true`, which the agent may pass only after the user approved
+that exact change; the API also refuses such changes from a token without
+`confirmed_by_user`. Every change is appended to the passport history with
+its reason. The rank system itself can only be changed in the web UI.
+
 ## Destructive operations
 
 Permanent deletion/removal tools exist but are disabled by default.

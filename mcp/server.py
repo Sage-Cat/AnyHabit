@@ -22,7 +22,15 @@ mcp = MCPServer(
         "Control and inspect an AnyHabit instance. Resolve tracker names to IDs "
         "before mutating them. Prefer archive over permanent deletion. Use "
         "record_relapse only when the user explicitly wants to reset a quit "
-        "streak. Irreversible tools may be disabled by server configuration."
+        "streak. Irreversible tools may be disabled by server configuration. "
+        "Habit cultivation (passports, stages, recovery, ranks): base every "
+        "statement on the returned data, keep facts apart from assumptions and "
+        "say when there is not enough data. Record only what the user reported; "
+        "never invent completions. A day without a record is 'no data', not a "
+        "failure. Passport, criteria and stage changes need the user's explicit "
+        "approval of that exact change (user_confirmed=true) and a reason; "
+        "history is appended, never rewritten. A habit is integrated only when "
+        "the user decides so — integration checks are recommendations."
     ),
 )
 
@@ -526,6 +534,186 @@ def delete_group(group_id: int) -> dict[str, Any]:
     """
     api.require_destructive("Group deletion")
     return api.delete(f"/groups/{group_id}")
+
+
+# ---------------------------------------------------------------------------
+# Habit cultivation
+# ---------------------------------------------------------------------------
+
+CultivationKind = Literal["sleep", "build", "boolean", "quit"]
+CultivationStage = Literal["planned", "formation", "stabilization", "integrated", "recovery"]
+DayMarkStatus = Literal["success", "minimum", "fail", "exception", "clear"]
+
+
+def _require_user_confirmation(user_confirmed: bool, action: str) -> None:
+    if not user_confirmed:
+        raise ValueError(
+            f"{action} changes the user's goals or criteria. Describe the exact change, "
+            "get the user's explicit approval, then call again with user_confirmed=true."
+        )
+
+
+@mcp.tool()
+def get_cultivation_overview() -> dict[str, Any]:
+    """Active, integrated and planned habits with today's requirement, recovery state and the rank."""
+    return api.get("/cultivation/overview")
+
+
+@mcp.tool()
+def list_cultivated_habits(include_archived: bool = False) -> list[dict[str, Any]]:
+    """List cultivated habits with their stage, today's state and a 14-day history."""
+    return api.get("/cultivation/habits", params={"include_archived": include_archived})
+
+
+@mcp.tool()
+def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any]:
+    """Full passport, version history, success rates, deviations, recovery metrics,
+    monthly dynamics, integration criteria check and stage recommendation."""
+    return api.get(f"/cultivation/habits/{habit_id}", params={"history_days": history_days})
+
+
+@mcp.tool()
+def get_habit_days(habit_id: int, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
+    """Day-by-day states (success, minimum, fail, exception, no_data, unrated, invalid).
+
+    Dates are YYYY-MM-DD in the user's timezone.
+    """
+    return api.get(f"/cultivation/habits/{habit_id}/days", params=_without_none(start=start, end=end))
+
+
+@mcp.tool()
+def get_cultivation_rank() -> dict[str, Any]:
+    """Current cultivation rank, progress to the next one, rank history and warnings."""
+    return api.get("/cultivation/rank")
+
+
+@mcp.tool()
+def get_cultivation_vocabulary() -> dict[str, Any]:
+    """Stage and day-state labels, habit kinds and passport defaults."""
+    return api.get("/cultivation/vocabulary")
+
+
+@mcp.tool()
+def export_cultivation() -> dict[str, Any]:
+    """Complete cultivation history: passports with every version, day marks, minimum-mode periods."""
+    return api.get("/cultivation/export")
+
+
+@mcp.tool()
+def log_sleep(
+    habit_id: int,
+    bedtime: str,
+    wake: str,
+    reason: str = "",
+    state: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Record one night for a sleep habit, exactly as the user reported it.
+
+    bedtime/wake are ISO datetimes; without an offset they are read in the
+    user's timezone. reason explains a deviation, state is how the next day felt.
+    """
+    return api.post(
+        f"/cultivation/habits/{habit_id}/sleep",
+        json_body={"bedtime": bedtime, "wake": wake, "reason": reason, "state": state, "note": note},
+    )
+
+
+@mcp.tool()
+def mark_habit_day(habit_id: int, date: str, status: DayMarkStatus, reason: str = "") -> dict[str, Any]:
+    """Record the user's verdict for a day (e.g. an excused exception or a failure with unknown details).
+
+    The latest mark wins; status=clear removes it. A reason is required except for clear.
+    """
+    return api.post(
+        f"/cultivation/habits/{habit_id}/marks",
+        json_body={"date": date, "status": status, "reason": reason},
+    )
+
+
+@mcp.tool()
+def start_minimum_mode(habit_id: int, reason: str, start_date: str | None = None) -> dict[str, Any]:
+    """Start controlled degradation: until it ends, the minimum level is the requirement."""
+    return api.post(
+        f"/cultivation/habits/{habit_id}/modes/start",
+        json_body=_without_none(reason=reason, start_date=start_date),
+    )
+
+
+@mcp.tool()
+def end_minimum_mode(habit_id: int, reason: str = "", end_date: str | None = None) -> dict[str, Any]:
+    """End the active minimum mode and return to the normal requirement."""
+    return api.post(
+        f"/cultivation/habits/{habit_id}/modes/end",
+        json_body=_without_none(reason=reason, end_date=end_date),
+    )
+
+
+@mcp.tool()
+def create_cultivated_habit(
+    kind: CultivationKind,
+    spec: dict[str, Any],
+    reason: str,
+    user_confirmed: bool,
+    tracker_id: int | None = None,
+    effective_from: str | None = None,
+) -> dict[str, Any]:
+    """Create a habit passport (and a matching tracker unless tracker_id is given).
+
+    spec keys: name, description, why, trait, priority, stage, goal, level,
+    minimum, subgoals, rules, stabilization, integration, maintenance — see
+    get_cultivation_vocabulary for defaults. Requires the user's approval.
+    """
+    _require_user_confirmation(user_confirmed, "Creating a habit passport")
+    return api.post(
+        "/cultivation/habits",
+        json_body=_without_none(
+            kind=kind,
+            spec=spec,
+            reason=reason,
+            tracker_id=tracker_id,
+            effective_from=effective_from,
+            confirmed_by_user=True,
+        ),
+    )
+
+
+@mcp.tool()
+def change_habit_passport(
+    habit_id: int,
+    reason: str,
+    user_confirmed: bool,
+    patch: dict[str, Any] | None = None,
+    spec: dict[str, Any] | None = None,
+    effective_from: str | None = None,
+) -> dict[str, Any]:
+    """Append a new passport version (merge patch or full spec) with its reason.
+
+    Goals, criteria and sub-goals change only with the user's explicit approval.
+    """
+    _require_user_confirmation(user_confirmed, "Changing a habit passport")
+    return api.post(
+        f"/cultivation/habits/{habit_id}/versions",
+        json_body=_without_none(
+            patch=patch, spec=spec, reason=reason, effective_from=effective_from, confirmed_by_user=True
+        ),
+    )
+
+
+@mcp.tool()
+def change_habit_stage(
+    habit_id: int,
+    stage: CultivationStage,
+    reason: str,
+    user_confirmed: bool,
+    effective_from: str | None = None,
+) -> dict[str, Any]:
+    """Move a habit to another stage. The user decides; recommendations do not move stages."""
+    _require_user_confirmation(user_confirmed, "Changing a habit stage")
+    return api.post(
+        f"/cultivation/habits/{habit_id}/stage",
+        json_body=_without_none(stage=stage, reason=reason, effective_from=effective_from, confirmed_by_user=True),
+    )
 
 
 if __name__ == "__main__":
