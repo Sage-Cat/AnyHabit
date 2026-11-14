@@ -512,6 +512,15 @@ def main() -> int:
             dst_sleep.status_code == 201 and abs(dst_sleep.json()["hours"] - 9) < 0.01,
             dst_sleep.text[:200],
         )
+        odd_sleep = client.post(
+            f"/cultivation/habits/{hid}/sleep", json={"bedtime": "2026-10-26T06:00", "wake": "2026-10-26T12:40"}
+        )
+        odd_night = ((odd_sleep.json().get("day") or {}).get("sleep") or {}) if odd_sleep.status_code == 201 else {}
+        check(
+            "bedtime is shown to the minute it was entered",
+            str(odd_night.get("bedtime", "")).startswith("2026-10-26T06:00"),
+            odd_sleep.text[:300],
+        )
 
         client.post(f"/cultivation/habits/{hid}/archive")
         archived_mark = client.post(
