@@ -51,18 +51,35 @@ try {
   await page.getByLabel('Сон до, год').fill('9');
   await page.getByRole('button', { name: 'Створити', exact: true }).click();
   await page.waitForSelector('text=Звичку додано до культивації', { timeout: 10000 });
-  const card = page.locator('[data-testid="habit-card"]', { hasText: habitName });
-  await card.waitFor({ timeout: 10000 });
-  check('new habit shows up among active habits', true);
+  const row = page.locator('[data-testid="readiness-now"] [data-testid="readiness-row"]', { hasText: habitName });
+  await row.waitFor({ timeout: 10000 });
+  check('new habit shows up in the readiness list', true);
+  const rowText = await row.innerText();
   check(
-    'card shows the requirement',
-    (await card.locator('[data-testid="today-requirement"]').innerText()).includes('23:59')
+    'readiness row shows the stage and the next one',
+    rowText.includes('Формування') && rowText.includes('Стабілізація'),
+    rowText
   );
-  check('card shows the stage badge', (await card.innerText()).includes('Формування'));
   check(
-    'no data yet is reported as such',
-    (await card.locator('[data-testid="today-status"]').innerText()).trim() === 'Немає даних'
+    'the active habit cards are gone',
+    (await page.locator('[data-testid="habit-card"]').count()) === 0 &&
+      (await page.locator('[data-testid="active-habits"]').count()) === 0
   );
+  for (const id of ['breakthrough-history', 'stage-paths', 'deviations-chart']) {
+    check(`progress chart ${id} renders`, (await page.locator(`[data-testid="${id}"]`).count()) === 1);
+  }
+  check(
+    'every habit has a stage path',
+    (await page.locator('[data-testid="stage-path"]').count()) ===
+      (await page.locator('[data-testid="readiness-row"]').count())
+  );
+  await page.getByRole('button', { name: 'Рік', exact: true }).click();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[aria-label="Період"] button')].some(
+      (b) => b.textContent === 'Рік' && b.getAttribute('aria-pressed') === 'true'
+    )
+  );
+  check('progress period can be switched', (await page.locator('[data-testid="breakthrough-history"]').count()) === 1);
   const practiceRank = page.locator('[data-testid="rank-card"]');
   const percent = practiceRank.locator('[data-testid="breakthrough-percent"]');
   await percent.waitFor({ timeout: 10000 });
@@ -74,8 +91,20 @@ try {
   const formationCount = await practiceRank.locator('[data-testid="stage-count-formation"]').innerText();
   check('rank card counts habits per stage', Number(formationCount.match(/\d+/)?.[0]) >= 1, formationCount);
 
-  console.log('\n[3] Quick sleep entry');
-  await card.getByRole('button', { name: 'Внести сон' }).click();
+  await row.getByRole('link', { name: habitName }).click();
+  await page.waitForURL(/\/practice\/\d+$/);
+  habitId = page.url().match(/\/practice\/(\d+)$/)[1];
+  const todayBlock = page.locator('[data-testid="today-block"]');
+  await todayBlock.waitFor({ timeout: 10000 });
+  check('readiness row opens the habit page', true);
+  check('habit page shows the requirement', (await todayBlock.innerText()).includes('23:59'));
+  check(
+    'no data yet is reported as such',
+    (await todayBlock.locator('[data-testid="today-status"]').innerText()).trim() === 'Немає даних'
+  );
+
+  console.log('\n[3] Sleep entry from the habit page');
+  await todayBlock.getByRole('button', { name: 'Внести сон' }).click();
   await page.waitForSelector('#sleep-entry-form');
   const defaultBed = await page.getByLabel('Час засинання').inputValue();
   check('bedtime is prefilled with 23:00 of the previous day', defaultBed.endsWith('T23:00'), defaultBed);
@@ -114,24 +143,16 @@ try {
   const toastText = (await toast.innerText()).trim();
   check('toast reports the resulting day status', /Сон записано.*:\s*\S+/.test(toastText), toastText);
   const statusLabel = toastText.split(':').pop().trim();
-
+  check('good night counts as success', statusLabel === 'Успіх', statusLabel);
   await page.waitForFunction(
-    (name) => {
-      const el = [...document.querySelectorAll('[data-testid="habit-card"]')].find((c) => c.textContent.includes(name));
-      return el && !el.textContent.includes('Немає даних');
-    },
-    habitName,
+    () =>
+      document.querySelector('[data-testid="today-block"] [data-testid="today-status"]')?.textContent.trim() !==
+      'Немає даних',
+    null,
     { timeout: 10000 }
   );
-  const pill = (await card.locator('[data-testid="today-status"]').innerText()).trim();
-  check('day status appears on /practice', pill === statusLabel && statusLabel.length > 0, `${pill} vs ${statusLabel}`);
-  check('good night counts as success', statusLabel === 'Успіх', statusLabel);
 
   console.log('\n[4] Habit page');
-  await card.getByRole('link', { name: habitName }).click();
-  await page.waitForURL(/\/practice\/\d+$/);
-  habitId = page.url().match(/\/practice\/(\d+)$/)[1];
-  await page.waitForSelector('[data-testid="habit-title"]');
   check('habit page shows the title', (await page.locator('[data-testid="habit-title"]').innerText()) === habitName);
   const detailPill = (
     await page.locator('[data-testid="today-block"] [data-testid="today-status"]').innerText()
@@ -289,8 +310,8 @@ try {
   await page.waitForSelector('text=Звичку архівовано', { timeout: 10000 });
   await page.waitForSelector('[data-testid="rank-name"]');
   check(
-    'archived habit leaves the active list',
-    (await page.locator('[data-testid="habit-card"]', { hasText: habitName }).count()) === 0
+    'archived habit leaves the progress lists',
+    (await page.locator('[data-testid="readiness-row"]', { hasText: habitName }).count()) === 0
   );
   await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
   await header.locator('text=в архіві').waitFor({ timeout: 10000 });

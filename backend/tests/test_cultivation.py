@@ -228,6 +228,52 @@ def main() -> int:
     ready = cv.stage_readiness(formation, days, cv.find_episodes(days, vers), D0 + timedelta(days=4))
     check("readiness: 5 of 10 observed days, rate above the bar", ready == 0.5, str(ready))
     check("no readiness for an integrated habit", cv.stage_readiness({"stage": "integrated"}, days, [], today) is None)
+    early = cv.stage_progress(formation, days, cv.find_episodes(days, vers), D0 + timedelta(days=4))
+    check(
+        "stage progress names what is missing",
+        early["target"] == "stabilization" and early["blockers"] and "5 з 10" in early["blockers"][0],
+        str(early),
+    )
+    days, vers = sleep_days(perfect, today, vers=versions((D0, spec)))
+    stuck = cv.stage_progress(spec, days, cv.find_episodes(days, vers), today)
+    check(
+        "a perfect run waits just below 100% for a tested recovery",
+        stuck["readiness"] == 0.99 and any("ще не було збою" in b for b in stuck["blockers"]),
+        str(stuck),
+    )
+
+    print("\n[3b] Progress history")
+    fvers = versions((D0, formation))
+    fdays, _ = sleep_days(perfect, today, vers=fvers)
+    hist = cv.progress_history([{"id": 1, "versions": fvers, "days": fdays}], D0 - timedelta(days=30), today)
+    check("history starts with the first habit", hist["days"][0]["date"] == D0.isoformat(), hist["days"][0]["date"])
+    check("one point per day", len(hist["days"]) == 14, str(len(hist["days"])))
+    now = cv.compute_rank({1: fvers}, today, readiness={1: cv.stage_readiness(formation, fdays, [], today)})
+    check(
+        "the last day matches the current Прорив",
+        hist["days"][-1]["breakthrough"] == now["next"]["breakthrough"],
+        f"{hist['days'][-1]} vs {now['next']['breakthrough']}",
+    )
+    check(
+        "readiness grows day by day as it was then",
+        hist["readiness"][1][0]["value"] < hist["readiness"][1][-1]["value"] == 1.0,
+        str([r["value"] for r in hist["readiness"][1]]),
+    )
+    check(
+        "the stage path is one formation segment",
+        hist["segments"][1] == [{"stage": "formation", "start": D0.isoformat(), "end": today.isoformat()}],
+        str(hist["segments"][1]),
+    )
+    slips = cv.find_episodes(*sleep_days(one_slip, today, vers=versions((D0, spec))))
+    monthly = cv.deviations_by_month(slips, today, months=3)
+    check(
+        "deviations per month with the days to the first good day",
+        len(monthly) == 3
+        and monthly[-1]["month"] == today.isoformat()[:7]
+        and sum(m["deviations"] for m in monthly) == 1
+        and [m["first_ok_median"] for m in monthly if m["deviations"]] == [1],
+        str(monthly),
+    )
     slipping = {**SPEC, "stage": "integrated", "maintenance": {"window_days": 14, "min_success_rate": 0.6}}
     late = [night(D0 + timedelta(i), "04:00", "12:00") for i in range(14)]
     days, vers = sleep_days(late, today, vers=versions((D0, slipping)))
@@ -720,6 +766,19 @@ def main() -> int:
             and overview["rank"]["stages"]["stabilization"] == 1
             and overview["rank"]["timeline"],
             str(overview["rank"].get("stages")),
+        )
+        progress = client.get("/cultivation/progress", params={"days": 30}).json()
+        check(
+            "progress history ends with today's Прорив",
+            progress["days"][-1]["breakthrough"] == overview["rank"]["next"]["breakthrough"]
+            and progress["habits"][0]["progress"]["target"] == "integrated"
+            and progress["habits"][0]["segments"]
+            and len(progress["deviations"]) == 12,
+            str({k: progress[k] for k in ("since", "until")}),
+        )
+        check(
+            "progress window is bounded",
+            client.get("/cultivation/progress", params={"days": 400}).status_code == 422,
         )
         alone = client.get("/cultivation/rank").json()
         check(

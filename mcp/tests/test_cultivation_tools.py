@@ -64,3 +64,8 @@ def test_facts_are_recorded_without_confirmation(server):
 def test_stats_pass_the_window(server):
     server.get_cultivation_stats(30)
     assert server.calls[-1] == ("GET", "/cultivation/stats", {"params": {"days": 30}})
+
+
+def test_progress_pass_the_window(server):
+    server.get_cultivation_progress(365)
+    assert server.calls[-1] == ("GET", "/cultivation/progress", {"params": {"days": 365}})
