@@ -884,12 +884,12 @@ DEFAULT_RANKS: list[dict] = [
     {"name": "Маг другого рангу", "req": {"integrated": 2, "durable": [1, 30]}, "confirmed": True},
     {"name": "Маг третього рангу", "req": {"integrated": 4, "durable": [2, 60]}, "confirmed": True},
     {"name": "Маг Нової Зірки", "req": {"integrated": 8, "durable": [4, 120]}, "confirmed": True},
-    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 240]}, "confirmed": True},
-    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 480]}, "confirmed": True},
-    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [32, 960]}, "confirmed": True},
-    {"name": "Великий Маг Законів", "req": {"integrated": 128, "durable": [64, 1920]}, "confirmed": True},
-    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256, "durable": [128, 3840]}, "confirmed": True},
-    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512, "durable": [256, 7680]}, "confirmed": True},
+    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 120]}, "confirmed": True},
+    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 240]}, "confirmed": True},
+    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [20, 365]}, "confirmed": True},
+    {"name": "Великий Маг Законів", "req": {"integrated": 128, "durable": [40, 730]}, "confirmed": True},
+    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256, "durable": [80, 1095]}, "confirmed": True},
+    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512, "durable": [128, 1825]}, "confirmed": True},
 ]
 
 
@@ -955,8 +955,17 @@ def rank_index(ranks: list[dict], states: list[HabitRankState]) -> int:
 
 
 def _hold_text(days: int) -> str:
-    """Hold periods are set in 30-day months."""
+    """Hold periods are set in 365-day years or 30-day months."""
     days = int(days)
+    if days % 365 == 0:
+        years = days // 365
+        if years % 10 == 1 and years % 100 != 11:
+            word = "рік"
+        elif 2 <= years % 10 <= 4 and not 12 <= years % 100 <= 14:
+            word = "роки"
+        else:
+            word = "років"
+        return f"{years} {word}"
     return f"{days // 30} міс." if days % 30 == 0 else f"{days} дн."
 
 
