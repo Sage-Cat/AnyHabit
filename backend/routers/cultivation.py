@@ -517,6 +517,68 @@ def stats(
     }
 
 
+@router.get("/progress")
+def progress(
+    days: int = Query(90, ge=7, le=366, description="How many days of history to return"),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cultivation progress: «Прорив» per day, readiness and stage path per habit, deviations per month."""
+    today = _today(current_user)
+    habits = (
+        db.query(models.CultivatedHabit)
+        .filter(models.CultivatedHabit.user_id == current_user.id, models.CultivatedHabit.archived_at.is_(None))
+        .order_by(models.CultivatedHabit.id)
+        .all()
+    )
+    rows, episodes = [], []
+    for habit in habits:
+        versions = _versions(db, habit)
+        tracker = _tracker_info(db, habit)
+        day_list = cv.build_days(
+            habit.kind,
+            versions,
+            _observations(db, habit, current_user),
+            _marks(db, habit),
+            _modes(db, habit),
+            today,
+            tracked=tracker is not None,
+        )
+        found = cv.find_episodes(day_list, versions)
+        episodes.extend(found)
+        rows.append({"id": habit.id, "versions": versions, "days": day_list, "episodes": found, "tracker": tracker})
+    ranks, _custom = _profile(db, current_user)
+    history = cv.progress_history(rows, today - timedelta(days=days - 1), today, ranks)
+    held = {
+        h["habit_id"]: h["held_days"]
+        for h in cv.compute_rank({r["id"]: r["versions"] for r in rows}, today, ranks)["habits"]
+    }
+    out_habits = []
+    for row in rows:
+        spec = cv.latest_spec(row["versions"]) or {}
+        stage = spec.get("stage")
+        out_habits.append(
+            {
+                "id": row["id"],
+                "name": spec.get("name", ""),
+                "color": row["tracker"]["color"] if row["tracker"] else "",
+                "stage": stage,
+                "stage_label": cv.STAGE_LABELS.get(stage, ""),
+                "progress": cv.stage_progress(spec, row["days"], row["episodes"], today) if spec else None,
+                "held_days": held.get(row["id"], 0),
+                "readiness": history["readiness"][row["id"]],
+                "segments": history["segments"][row["id"]],
+            }
+        )
+    return {
+        "since": history["days"][0]["date"] if history["days"] else today.isoformat(),
+        "until": today.isoformat(),
+        "days": history["days"],
+        "habits": out_habits,
+        "deviations": cv.deviations_by_month(episodes, today),
+    }
+
+
 @router.get("/habits")
 def list_habits(
     include_archived: bool = False,

@@ -16,6 +16,7 @@ Everything here is pure: the router loads rows and passes plain data in.
 
 from __future__ import annotations
 
+import bisect
 import copy
 import math
 import statistics
@@ -862,13 +863,14 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
     return None
 
 
-def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> float | None:
-    """How close a habit is to its next stage, from 0 to 1 (None for other stages).
+def stage_progress(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> dict | None:
+    """How close a habit is to its next stage and what still holds it back (None for other stages).
 
     Formation is measured against the stabilization criteria, stabilization
-    against the integration ones: the share of the required observed days times
-    the share of the required success rate.  It reaches 1 only when the move is
-    recommended, so a criterion still unmet keeps it just below.
+    against the integration ones: ``readiness`` is the share of the required
+    observed days times the share of the required success rate.  It reaches 1
+    only when the move is recommended, so a criterion still unmet keeps it just
+    below; ``blockers`` names those criteria.
     """
     stage = spec.get("stage")
     if stage == "formation":
@@ -877,15 +879,42 @@ def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today:
         cfg, target = section(spec, "integration", DEFAULT_INTEGRATION), "integrated"
     else:
         return None
-    advice = recommendation(spec, days, episodes, today)
-    if advice and advice["to"] == target:
-        return 1.0
     stats = rate(days, int(cfg["window_days"]), today)
     need_days = int(cfg["min_observed_days"])
     need_rate = float(cfg["min_success_rate"])
     observed = min(stats["observed_days"] / need_days, 1.0) if need_days > 0 else 1.0
     success = min((stats["success_rate"] or 0.0) / need_rate, 1.0) if need_rate > 0 else 1.0
-    return min(observed * success, 0.99)
+    advice = recommendation(spec, days, episodes, today)
+    ready = bool(advice and advice["to"] == target)
+    blockers = []
+    if not ready and stage == "formation":
+        if observed < 1:
+            blockers.append(f"Днів із оцінкою за {cfg['window_days']} дн.: {stats['observed_days']} з {need_days}")
+        if success < 1:
+            blockers.append(f"Успішних днів {(stats['success_rate'] or 0):.0%} при порозі {need_rate:.0%}")
+    elif not ready:
+        for criterion in integration_check(spec, days, episodes, today)["criteria"]:
+            if criterion["status"] == "untested":
+                blockers.append(f"{criterion['label']}: ще не було збою, щоб це перевірити")
+            elif criterion["status"] not in ("met", "manual"):
+                blockers.append(criterion["label"])
+    return {
+        "target": target,
+        "target_label": STAGE_LABELS[target],
+        "readiness": 1.0 if ready else min(observed * success, 0.99),
+        "window_days": int(cfg["window_days"]),
+        "observed_days": stats["observed_days"],
+        "need_days": need_days,
+        "success_rate": stats["success_rate"],
+        "need_rate": need_rate,
+        "blockers": blockers,
+    }
+
+
+def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> float | None:
+    """``readiness`` of :func:`stage_progress`, from 0 to 1."""
+    progress = stage_progress(spec, days, episodes, today)
+    return None if progress is None else progress["readiness"]
 
 
 # ---------------------------------------------------------------------------
@@ -1172,6 +1201,79 @@ def compute_rank(
         "history": history,
         "warnings": warnings,
     }
+
+
+def progress_history(habits: list[dict], since: date, today: date, ranks: list[dict] | None = None) -> dict:
+    """Cultivation progress day by day, from ``since`` (or the first habit) to ``today``.
+
+    ``habits`` holds ``id``, ``versions`` and ``days`` built through ``today``.
+    Each day is judged as it was then: the passport in force, the days and
+    deviations up to that day, the stages of that day.  Returns «Прорив» with
+    the rank per day, every habit's readiness for its next stage, and its stages
+    as segments.
+    """
+    ranks = ranks or DEFAULT_RANKS
+    daily = {h["id"]: simulate_stages(h["id"], h["versions"], today) for h in habits}
+    first = min((min(states) for states in daily.values() if states), default=today)
+    start = max(since, first)
+    dates = {h["id"]: [d.date for d in h["days"]] for h in habits}
+    points: list[dict] = []
+    readiness_series: dict[int, list[dict]] = {h["id"]: [] for h in habits}
+    segments: dict[int, list[dict]] = {h["id"]: [] for h in habits}
+    current = start
+    while current <= today:
+        readiness: dict[int, float | None] = {}
+        for habit in habits:
+            hid = habit["id"]
+            spec = spec_for(habit["versions"], current)
+            if spec is None:
+                continue
+            cut = habit["days"][: bisect.bisect_right(dates[hid], current)]
+            readiness[hid] = stage_readiness(spec, cut, find_episodes(cut, habit["versions"]), current)
+            readiness_series[hid].append({"date": current.isoformat(), "value": readiness[hid]})
+            stage = daily[hid][current].stage if current in daily[hid] else None
+            run = segments[hid]
+            if run and run[-1]["stage"] == stage:
+                run[-1]["end"] = current.isoformat()
+            else:
+                run.append({"stage": stage, "start": current.isoformat(), "end": current.isoformat()})
+        states = [states_by_day[current] for states_by_day in daily.values() if current in states_by_day]
+        index = rank_index(ranks, states)
+        nxt = ranks[index + 1] if index + 1 < len(ranks) else None
+        points.append(
+            {
+                "date": current.isoformat(),
+                "breakthrough": breakthrough(rank_progress(nxt["req"], states, readiness)) if nxt else 100,
+                "rank_index": index,
+                "rank_name": ranks[index]["name"],
+                "next_name": nxt["name"] if nxt else None,
+            }
+        )
+        current += timedelta(days=1)
+    return {"days": points, "readiness": readiness_series, "segments": segments}
+
+
+def deviations_by_month(episodes: list[Episode], today: date, months: int = 12) -> list[dict]:
+    """Deviations of all habits per month (by start), with the median days to the first good day."""
+    out = []
+    year, month = today.year, today.month
+    keys = []
+    for _ in range(months):
+        keys.append(f"{year:04d}-{month:02d}")
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    for key in reversed(keys):
+        started = [e for e in episodes if e.start.isoformat()[:7] == key]
+        first_ok = [e.days_to_first_ok for e in started if e.first_ok]
+        out.append(
+            {
+                "month": key,
+                "deviations": len(started),
+                "fail_days": sum(e.fail_days for e in started),
+                "first_ok_median": _median(first_ok),
+                "unrecovered": sum(1 for e in started if e.first_ok is None),
+            }
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

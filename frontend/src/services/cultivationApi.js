@@ -5,6 +5,7 @@ const base = (habitId) => `/cultivation/habits/${habitId}`;
 export const fetchOverviewApi = () => apiClient.get('/cultivation/overview');
 export const fetchRankApi = () => apiClient.get('/cultivation/rank');
 export const fetchStatsApi = (days = 168) => apiClient.get(`/cultivation/stats?days=${days}`);
+export const fetchProgressApi = (days = 90) => apiClient.get(`/cultivation/progress?days=${days}`);
 export const fetchHabitsApi = (includeArchived = false) =>
   apiClient.get(`/cultivation/habits${includeArchived ? '?include_archived=true' : ''}`);
 export const fetchHabitApi = (habitId, historyDays = 90) =>

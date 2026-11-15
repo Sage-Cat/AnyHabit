@@ -2,12 +2,9 @@ import { Menu, Plus, Sprout } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppState } from '../../state/appState';
-import HabitCard from './HabitCard';
+import CultivationProgress from './CultivationProgress';
 import NewHabitModal from './NewHabitModal';
 import RankCard from './RankCard';
-import SleepEntryModal from './SleepEntryModal';
-import StageReasonModal from './StageReasonModal';
-import { useStageChange } from './useStageChange';
 import { DayStatusPill, StageBadge } from './common';
 import { BUTTON_PRIMARY, CARD_CLASS, formatPercent, useCultivationOverview } from './helpers';
 
@@ -39,8 +36,6 @@ function PracticePage() {
   const { setIsSidebarOpen } = useAppState();
   const { overview, error, isLoading, reload } = useCultivationOverview();
   const [isNewOpen, setIsNewOpen] = useState(false);
-  const [sleepHabit, setSleepHabit] = useState(null);
-  const stage = useStageChange(reload);
 
   useEffect(() => {
     document.title = 'Культивація — AnyHabit';
@@ -121,21 +116,7 @@ function PracticePage() {
                 </div>
               )}
 
-              {overview.active.length > 0 && (
-                <section className="space-y-4" aria-label="Активні звички" data-testid="active-habits">
-                  <h2 className="text-lg font-bold text-stone-900">Активні звички</h2>
-                  <div className="grid items-start gap-4 xl:grid-cols-2">
-                    {overview.active.map((habit) => (
-                      <HabitCard
-                        key={habit.id}
-                        habit={habit}
-                        onEnterSleep={setSleepHabit}
-                        onApplyRecommendation={stage.proposeRecommendation}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
+              {total > 0 && <CultivationProgress refreshKey={overview} />}
 
               <CompactList title="Інтегровані" habits={overview.integrated} testId="integrated-habits" />
               <CompactList title="Заплановані" habits={overview.planned} testId="planned-habits" />
@@ -145,13 +126,6 @@ function PracticePage() {
       </div>
 
       <NewHabitModal isOpen={isNewOpen} onClose={() => setIsNewOpen(false)} onCreated={reload} />
-      <SleepEntryModal
-        habit={sleepHabit}
-        timezone={overview?.timezone}
-        onClose={() => setSleepHabit(null)}
-        onSaved={reload}
-      />
-      <StageReasonModal pending={stage.pending} onClose={() => stage.setPending(null)} onDone={stage.notifyChanged} />
     </div>
   );
 }

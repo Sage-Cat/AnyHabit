@@ -1,18 +1,7 @@
 import { useMemo } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatChartDate } from '../../utils/labels';
-
-// Inline colours: the dark theme repaints the matching Tailwind classes.
-const STAGE_META = [
-  { key: 'planned', label: 'Заплановані', colour: '#a8a29e' },
-  { key: 'formation', label: 'Формування', colour: '#38bdf8' },
-  { key: 'stabilization', label: 'Стабілізація', colour: '#8b5cf6' },
-  { key: 'integrated', label: 'Інтегровані', colour: '#10b981' }
-];
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const toTime = (iso) => Date.parse(`${iso}T00:00:00Z`);
-const toIso = (time) => new Date(time).toISOString().slice(0, 10);
+import { DAY_MS, STAGE_META, toIso, toTime } from './stageMeta';
 
 /** «Прорив»: how far the way to the next rank is, in percent. */
 export function Breakthrough({ next }) {

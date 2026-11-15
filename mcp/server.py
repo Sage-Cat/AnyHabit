@@ -598,6 +598,17 @@ def get_cultivation_stats(days: int = 84) -> dict[str, Any]:
 
 
 @mcp.tool()
+def get_cultivation_progress(days: int = 90) -> dict[str, Any]:
+    """Cultivation progress over time: «Прорив» (percent to the next rank) per day,
+    each habit's readiness for its next stage with what still blocks it, its
+    stage path, and deviations per month with the median days to recovery.
+
+    days (7-366) is the length of the history.
+    """
+    return api.get("/cultivation/progress", params={"days": days})
+
+
+@mcp.tool()
 def get_cultivation_vocabulary() -> dict[str, Any]:
     """Stage and day-state labels, habit kinds and passport defaults."""
     return api.get("/cultivation/vocabulary")
