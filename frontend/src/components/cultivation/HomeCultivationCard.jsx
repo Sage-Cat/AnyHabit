@@ -101,6 +101,14 @@ function HomeTodayCard({ overview, onSleep, onChanged }) {
                     {habit.name} {(habit.mode || habit.today?.degraded) && <ModeBadge />}
                   </Link>
                   {requirement && requirement !== 'виконати' && <p className="text-xs text-gray-500">{requirement}</p>}
+                  {habit.today?.tolerance && (
+                    <p className="text-xs text-amber-700">Допуск з попередженням: {habit.today.tolerance}</p>
+                  )}
+                  {day?.warning && (
+                    <p className="text-xs text-amber-700" data-testid="home-habit-warning">
+                      {day.warning}
+                    </p>
+                  )}
                 </div>
                 <DayStatusPill day={day} />
                 {habit.kind === 'sleep' && (
@@ -140,9 +148,14 @@ function HomeTodayCard({ overview, onSleep, onChanged }) {
  * today's habits side by side. Stays quiet when the overview cannot be loaded,
  * so it never gets in the way of the home page.
  */
-function HomeCultivationCard() {
-  const { overview, isLoading, error, reload } = useCultivationOverview();
+function HomeCultivationCard({ onChanged }) {
+  const { overview, isLoading, error, reload: reloadOverview } = useCultivationOverview();
   const [sleepHabit, setSleepHabit] = useState(null);
+  // Other home widgets read the same days, so they refresh together.
+  const reload = async () => {
+    await reloadOverview();
+    onChanged?.();
+  };
 
   if (isLoading || error || !overview) return null;
 

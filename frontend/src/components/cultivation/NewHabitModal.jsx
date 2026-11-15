@@ -3,7 +3,7 @@ import { createHabitApi } from '../../services/cultivationApi';
 import { useAppState } from '../../state/appState';
 import Modal from '../ui/Modal';
 import LevelFields from './LevelFields';
-import { buildLevel, emptyLevel, hasLevelValue } from './levelHelpers';
+import { buildLevel, emptyLevel, hasLevelValue, levelKeys } from './levelHelpers';
 import { Field } from './common';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS, KIND_OPTIONS, STAGE_OPTIONS } from './helpers';
 
@@ -14,6 +14,8 @@ const initialState = () => ({
   level: emptyLevel(),
   withMinimum: false,
   minimum: emptyLevel(),
+  withTolerance: false,
+  tolerance: emptyLevel(),
   unit: '',
   priority: '',
   reason: ''
@@ -51,6 +53,9 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
     if (form.withMinimum && hasLevelValue(form.kind, form.minimum)) {
       spec.minimum = buildLevel(form.kind, form.minimum);
     }
+    if (form.withTolerance && hasLevelValue(form.kind, form.tolerance)) {
+      spec.tolerance = buildLevel(form.kind, form.tolerance);
+    }
     if (form.priority !== '') spec.priority = Number(form.priority);
 
     const payload = { kind: form.kind, spec };
@@ -71,7 +76,7 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
     }
   };
 
-  const canHaveMinimum = form.kind === 'sleep' || form.kind === 'build';
+  const canHaveMinimum = levelKeys(form.kind).length > 0;
 
   return (
     <Modal
@@ -147,6 +152,27 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
                 prefix="Мінімум: "
                 value={form.minimum}
                 onChange={(minimum) => setForm((c) => ({ ...c, minimum }))}
+              />
+            )}
+          </fieldset>
+        )}
+
+        {canHaveMinimum && (
+          <fieldset className="space-y-3">
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={form.withTolerance}
+                onChange={(event) => setForm((c) => ({ ...c, withTolerance: event.target.checked }))}
+              />
+              Додати допуск (поза ціллю, але зараховується з попередженням)
+            </label>
+            {form.withTolerance && (
+              <LevelFields
+                kind={form.kind}
+                prefix="Допуск: "
+                value={form.tolerance}
+                onChange={(tolerance) => setForm((c) => ({ ...c, tolerance }))}
               />
             )}
           </fieldset>

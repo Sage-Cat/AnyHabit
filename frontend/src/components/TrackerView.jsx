@@ -46,56 +46,60 @@ function TrackerView() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <TrackerHeader
-        selectedTracker={selectedTracker}
-        canManageTracker={canManageSelectedTracker}
-        dailyProgress={dailyProgress}
-        effectiveStartDate={effectiveStartDate}
-        setIsSidebarOpen={setIsSidebarOpen}
-        setSelectedCategory={setSelectedCategory}
-        setIsLogModalOpen={setIsLogModalOpen}
-        setLogFormData={setLogFormData}
-        onQuickBooleanLog={handleQuickBooleanLog}
-        handleResetTracker={handleResetTracker}
-        toggleTrackerStatus={handleToggleTrackerStatus}
-        archiveTracker={handleArchiveTracker}
-        unarchiveTracker={handleUnarchiveTracker}
-        openTrackerModal={openTrackerModal}
-        deleteTracker={handleDeleteTracker}
-      />
-
-      <TrackerStats
-        selectedTracker={selectedTracker}
-        dailyProgress={dailyProgress}
-        currentMath={currentMath}
-        streakStats={streakStats}
-        consistency={consistency}
-        shareStats={shareStats}
-      />
-
-      <div className="flex flex-col px-4 pb-10 md:px-10">
-        <TrackerCharts
+      {/* Capped and split into columns: full-width cards stretched charts thin
+          and left the heatmap in one corner on wide screens. */}
+      <div className="mx-auto w-full max-w-screen-2xl" data-testid="tracker-content">
+        <TrackerHeader
           selectedTracker={selectedTracker}
-          historicalChartData={historicalChartData}
-          buildHeatmap={buildHeatmap}
-          weekdayBreakdown={weekdayBreakdown}
-          habitLogs={habitLogs}
-          deleteLog={handleDeleteLog}
-          updateLog={updateLog}
+          canManageTracker={canManageSelectedTracker}
+          dailyProgress={dailyProgress}
+          effectiveStartDate={effectiveStartDate}
+          setIsSidebarOpen={setIsSidebarOpen}
+          setSelectedCategory={setSelectedCategory}
+          setIsLogModalOpen={setIsLogModalOpen}
+          setLogFormData={setLogFormData}
+          onQuickBooleanLog={handleQuickBooleanLog}
+          handleResetTracker={handleResetTracker}
+          toggleTrackerStatus={handleToggleTrackerStatus}
+          archiveTracker={handleArchiveTracker}
+          unarchiveTracker={handleUnarchiveTracker}
+          openTrackerModal={openTrackerModal}
+          deleteTracker={handleDeleteTracker}
         />
 
-        <TrackerLeaderboard shareStats={shareStats} />
-
-        <JournalSection
-          journalFormData={journalFormData}
-          setJournalFormData={setJournalFormData}
-          handleJournalSubmit={handleJournalSubmit}
-          journals={journals}
-          deleteJournal={handleDeleteJournal}
-          journalSearch={journalSearch}
-          setJournalSearch={setJournalSearch}
-          moodTrend={moodTrend}
+        <TrackerStats
+          selectedTracker={selectedTracker}
+          dailyProgress={dailyProgress}
+          currentMath={currentMath}
+          streakStats={streakStats}
+          consistency={consistency}
+          shareStats={shareStats}
         />
+
+        <div className="flex flex-col px-4 pb-10 md:px-10">
+          <TrackerCharts
+            selectedTracker={selectedTracker}
+            historicalChartData={historicalChartData}
+            buildHeatmap={buildHeatmap}
+            weekdayBreakdown={weekdayBreakdown}
+            habitLogs={habitLogs}
+            deleteLog={handleDeleteLog}
+            updateLog={updateLog}
+          />
+
+          <TrackerLeaderboard shareStats={shareStats} />
+
+          <JournalSection
+            journalFormData={journalFormData}
+            setJournalFormData={setJournalFormData}
+            handleJournalSubmit={handleJournalSubmit}
+            journals={journals}
+            deleteJournal={handleDeleteJournal}
+            journalSearch={journalSearch}
+            setJournalSearch={setJournalSearch}
+            moodTrend={moodTrend}
+          />
+        </div>
       </div>
     </div>
   );

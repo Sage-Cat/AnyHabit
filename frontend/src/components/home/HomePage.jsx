@@ -1,13 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  GripHorizontal,
-  Menu,
-  Plus,
-  RefreshCcw,
-  Settings,
-  Users,
-  X
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GripHorizontal, Menu, Plus, RefreshCcw, Settings, Users, X } from 'lucide-react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -16,6 +8,8 @@ import {
   fetchHomeDashboardApi,
   saveHomeDashboardApi
 } from '../../services/dashboardApi';
+import { fetchStatsApi } from '../../services/cultivationApi';
+import { HabitsChartWidget, HabitsHeatmapWidget, OverallStatsWidget } from './widgets/CultivationStatsWidgets';
 import { ApiExplorerWidget, EmbedWidget } from './widgets/DeveloperWidgets';
 import { ActivityFeedWidget, JournalFeedWidget, MoodTrendWidget, NotesWidget } from './widgets/FeedWidgets';
 import {
@@ -30,6 +24,7 @@ import { HeatmapWidget, QuickLogWidget, TrackerSpotlightWidget } from './widgets
 import { EMPTY_LAYOUTS, GRID_BREAKPOINTS, GRID_COLS, appendWidgetToLayouts, ensureLayouts } from './widgets/layout';
 import {
   ACTIVITY_WIDGET_TYPES,
+  STATS_WIDGET_TYPES,
   WIDGET_DEFINITIONS,
   WIDGET_TYPES,
   createWidgetId,
@@ -94,6 +89,8 @@ function HomePage() {
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [activity, setActivity] = useState(null);
   const [isLoadingActivity, setIsLoadingActivity] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   const [isWidgetPickerOpen, setIsWidgetPickerOpen] = useState(false);
   const [activeWidgetSettingsId, setActiveWidgetSettingsId] = useState(null);
@@ -199,10 +196,7 @@ function HomePage() {
 
   // Loaded only when a widget that needs it is on the board, so a dashboard
   // without feed widgets does not pay for the query.
-  const needsActivity = useMemo(
-    () => widgets.some((widget) => ACTIVITY_WIDGET_TYPES.has(widget.type)),
-    [widgets]
-  );
+  const needsActivity = useMemo(() => widgets.some((widget) => ACTIVITY_WIDGET_TYPES.has(widget.type)), [widgets]);
 
   useEffect(() => {
     if (!needsActivity) return undefined;
@@ -225,6 +219,38 @@ function HomePage() {
       cancelled = true;
     };
   }, [needsActivity, trackers, reportError]);
+
+  const needsStats = useMemo(() => widgets.some((widget) => STATS_WIDGET_TYPES.has(widget.type)), [widgets]);
+
+  const refreshStats = useCallback(async () => {
+    try {
+      setStats(await fetchStatsApi());
+    } catch (error) {
+      reportError(error);
+    }
+  }, [reportError]);
+
+  useEffect(() => {
+    if (!needsStats) return undefined;
+
+    let cancelled = false;
+    setIsLoadingStats(true);
+
+    fetchStatsApi()
+      .then((response) => {
+        if (!cancelled) setStats(response);
+      })
+      .catch((error) => {
+        if (!cancelled) reportError(error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingStats(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [needsStats, trackers, reportError]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -345,6 +371,7 @@ function HomePage() {
     if (needsActivity) {
       fetchActivityApi(25).then(setActivity).catch(reportError);
     }
+    if (needsStats) refreshStats();
   };
 
   const refreshDashboardSummary = async () => {
@@ -359,92 +386,102 @@ function HomePage() {
   return (
     <div className="home-page flex-1 flex flex-col overflow-hidden bg-[#fcfcfc]">
       <div className="px-4 md:px-10 pt-6 md:pt-10 pb-6 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-stone-500 hover:text-stone-900">
-              <Menu size={24} />
-            </button>
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-stone-900">Головна</h2>
-              <p className="text-sm text-gray-500 mt-1">Зберіть власну головну з потрібних віджетів.</p>
+        <div className="mx-auto w-full max-w-screen-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-stone-500 hover:text-stone-900">
+                <Menu size={24} />
+              </button>
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-stone-900">Головна</h2>
+                <p className="text-sm text-gray-500 mt-1">Зберіть власну головну з потрібних віджетів.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsGroupManagementOpen(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                <Users size={16} /> Групи
+                {groups.length > 0 && (
+                  <span className="text-xs font-bold bg-stone-100 px-2 py-0.5 rounded-full">{groups.length}</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openTrackerModal()}
+                className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                Створити звичку
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsWidgetPickerOpen(true)}
+                className="px-3 py-2 text-sm font-medium rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors inline-flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Додати віджет
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearDashboard}
+                className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors inline-flex items-center gap-2"
+              >
+                <RefreshCcw size={14} />
+                Очистити головну
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsGroupManagementOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
-            >
-              <Users size={16} /> Групи
-              {groups.length > 0 && <span className="text-xs font-bold bg-stone-100 px-2 py-0.5 rounded-full">{groups.length}</span>}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openTrackerModal()}
-              className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
-            >
-              Створити звичку
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsWidgetPickerOpen(true)}
-              className="px-3 py-2 text-sm font-medium rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors inline-flex items-center gap-2"
-            >
-              <Plus size={16} />
-              Додати віджет
-            </button>
-
-            <button
-              type="button"
-              onClick={handleClearDashboard}
-              className="px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 bg-white text-stone-700 hover:bg-stone-50 transition-colors inline-flex items-center gap-2"
-            >
-              <RefreshCcw size={14} />
-              Очистити головну
-            </button>
+          <div className="mt-3 min-h-5 text-xs text-gray-500 flex items-center gap-2">
+            {isSavingDashboard && <span>Збереження змін…</span>}
+            {!isSavingDashboard && dashboardSaveError && <span className="text-rose-600">{dashboardSaveError}</span>}
+            {!isSavingDashboard && !dashboardSaveError && isHydrated && <span>Усі зміни збережено на сервері.</span>}
           </div>
-        </div>
-
-        <div className="mt-3 min-h-5 text-xs text-gray-500 flex items-center gap-2">
-          {isSavingDashboard && <span>Збереження змін…</span>}
-          {!isSavingDashboard && dashboardSaveError && <span className="text-rose-600">{dashboardSaveError}</span>}
-          {!isSavingDashboard && !dashboardSaveError && isHydrated && <span>Усі зміни збережено на сервері.</span>}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 md:px-10 py-6" ref={gridContainerRef}>
-        <HomeCultivationCard />
-        {isLoadingDashboard ? (
-          <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Завантаження головної…</div>
-        ) : dashboardLoadError ? (
-          <div className="bg-white border border-rose-100 rounded-3xl p-10 text-center text-rose-600">
-            <p className="font-semibold">{dashboardLoadError}</p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors text-sm"
-            >
-              Повторити
-            </button>
-          </div>
-        ) : widgets.length === 0 ? (
-          <div className="bg-white border border-dashed border-gray-300 rounded-3xl p-10 text-center text-gray-500">
-            <p className="text-lg font-semibold text-stone-800">Ваша головна порожня</p>
-            <p className="text-sm mt-1">Додайте віджети, щоб зібрати власну головну.</p>
-            <button
-              type="button"
-              onClick={() => setIsWidgetPickerOpen(true)}
-              className="mt-4 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors"
-            >
-              Додати перший віджет
-            </button>
-          </div>
-        ) : (
-          !isGridMounted ? (
-            <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">Підготовка розкладки…</div>
+      <div className="flex-1 overflow-y-auto px-4 md:px-10 py-6">
+        {/* Capped so cards keep readable proportions on very wide screens; the
+            grid measures this element, not the full scroll area. */}
+        <div className="mx-auto w-full max-w-screen-2xl" ref={gridContainerRef} data-testid="home-content">
+          <HomeCultivationCard onChanged={needsStats ? refreshStats : undefined} />
+          {isLoadingDashboard ? (
+            <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">
+              Завантаження головної…
+            </div>
+          ) : dashboardLoadError ? (
+            <div className="bg-white border border-rose-100 rounded-3xl p-10 text-center text-rose-600">
+              <p className="font-semibold">{dashboardLoadError}</p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-4 px-4 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors text-sm"
+              >
+                Повторити
+              </button>
+            </div>
+          ) : widgets.length === 0 ? (
+            <div className="bg-white border border-dashed border-gray-300 rounded-3xl p-10 text-center text-gray-500">
+              <p className="text-lg font-semibold text-stone-800">Ваша головна порожня</p>
+              <p className="text-sm mt-1">Додайте віджети, щоб зібрати власну головну.</p>
+              <button
+                type="button"
+                onClick={() => setIsWidgetPickerOpen(true)}
+                className="mt-4 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors"
+              >
+                Додати перший віджет
+              </button>
+            </div>
+          ) : !isGridMounted ? (
+            <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">
+              Підготовка розкладки…
+            </div>
           ) : (
             <ResponsiveGridLayout
               className="home-grid"
@@ -517,7 +554,9 @@ function HomePage() {
                       <div className="flex-1 min-h-0 overflow-y-auto p-4">
                         {widget.type === 'impactSummary' && (
                           <ImpactSummaryWidget
-                            selectedTrackers={selectedTrackerIds.map((trackerId) => trackerMap[trackerId]).filter(Boolean)}
+                            selectedTrackers={selectedTrackerIds
+                              .map((trackerId) => trackerMap[trackerId])
+                              .filter(Boolean)}
                             impactRows={dashboardSummary?.impact_rows || []}
                             isRefreshing={isLoadingDashboard && !dashboardSummary}
                             onRefresh={refreshDashboardSummary}
@@ -526,7 +565,21 @@ function HomePage() {
                           />
                         )}
 
-                        {widget.type === 'trackerOverview' && <TrackerOverviewWidget overview={dashboardSummary?.overview} />}
+                        {widget.type === 'cultivationStats' && (
+                          <OverallStatsWidget stats={stats} isLoading={isLoadingStats} />
+                        )}
+
+                        {widget.type === 'cultivationChart' && (
+                          <HabitsChartWidget stats={stats} isLoading={isLoadingStats} config={widget.config || {}} />
+                        )}
+
+                        {widget.type === 'cultivationHeatmap' && (
+                          <HabitsHeatmapWidget stats={stats} isLoading={isLoadingStats} />
+                        )}
+
+                        {widget.type === 'trackerOverview' && (
+                          <TrackerOverviewWidget overview={dashboardSummary?.overview} />
+                        )}
 
                         {widget.type === 'categoryBreakdown' && (
                           <CategoryBreakdownWidget
@@ -578,11 +631,7 @@ function HomePage() {
                         )}
 
                         {widget.type === 'heatmap' && (
-                          <HeatmapWidget
-                            config={widget.config || {}}
-                            trackerMap={trackerMap}
-                            onError={reportError}
-                          />
+                          <HeatmapWidget config={widget.config || {}} trackerMap={trackerMap} onError={reportError} />
                         )}
 
                         {widget.type === 'activityFeed' && (
@@ -631,8 +680,8 @@ function HomePage() {
                 );
               })}
             </ResponsiveGridLayout>
-          )
-        )}
+          )}
+        </div>
       </div>
 
       {/* Both of these used to be hand-rolled overlays, which is why neither

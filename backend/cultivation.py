@@ -139,8 +139,9 @@ def _check_level(label: str, level) -> None:
         return
     if not isinstance(level, dict):
         raise PassportError(f"{label}: очікується об'єкт")
-    if level.get("wake_by") is not None:
-        parse_hhmm(level["wake_by"])
+    for key in ("wake_by", "done_by"):
+        if level.get(key) is not None:
+            parse_hhmm(level[key])
     bounds = {}
     for bound in ("min_sleep_h", "max_sleep_h"):
         if level.get(bound) is not None:
@@ -171,6 +172,7 @@ def validate_spec(kind: str, spec: dict) -> None:
         check_number("priority", spec["priority"])
     _check_level("level", spec.get("level"))
     _check_level("minimum", spec.get("minimum"))
+    _check_level("tolerance", spec.get("tolerance"))
     subgoals = spec.get("subgoals")
     if subgoals is not None and not isinstance(subgoals, list):
         raise PassportError("subgoals: очікується список")
@@ -273,7 +275,24 @@ def level_text(kind: str, level: dict | None, unit: str = "") -> str:
         return f"≥ {float(level['min_amount']):g} {unit}".strip()
     if kind == "quit":
         return "без зриву"
+    if kind == "boolean" and level.get("done_by") is not None:
+        return f"виконати до {level['done_by']}"
     return "виконати"
+
+
+def _hours_text(hours: float) -> str:
+    return f"{round(hours, 1):g}".replace(".", ",")
+
+
+def tolerance_defined(kind: str, tolerance: dict | None) -> bool:
+    """A tolerance band only makes sense with a threshold to compare against."""
+    if not tolerance:
+        return False
+    if kind == "boolean":
+        return tolerance.get("done_by") is not None
+    if kind == "build":
+        return tolerance.get("min_amount") is not None
+    return level_defined(kind, tolerance)
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +320,7 @@ class Observation:
     amount: float = 0.0  # build / boolean: sum of logs that day
     events: int = 0  # number of logs (or relapses for quit)
     notes: list[str] = field(default_factory=list)
+    first_at: time | None = None  # local time of the day's earliest log (not sleep)
 
 
 def parse_note(note: str) -> dict:
@@ -346,6 +366,7 @@ class Day:
     amount: float = 0.0
     events: int = 0
     marked: bool = False
+    warning: str = ""  # met only within the tolerance band: counts, but is flagged
 
     @property
     def met(self) -> bool | None:
@@ -370,6 +391,7 @@ class Day:
             "marked": self.marked,
             "amount": self.amount,
             "events": self.events,
+            "warning": self.warning,
         }
         if self.night:
             out["sleep"] = {
@@ -398,8 +420,31 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
         threshold = level.get("min_amount")
         return obs.amount + 1e-9 >= float(threshold) if threshold is not None else obs.events > 0
     if kind == "boolean":
-        return obs.events > 0
+        if obs.events == 0:
+            return False
+        if level.get("done_by") is None or obs.first_at is None:
+            return True
+        # Minute precision: "by 18:00" includes a tap at 18:00:40.
+        return obs.first_at.replace(second=0, microsecond=0) <= parse_hhmm(level["done_by"])
     return True
+
+
+def _actual_text(kind: str, obs: Observation, night: Night | None, unit: str = "") -> str:
+    if kind == "sleep" and night is not None:
+        return f"підйом {night.wake:%H:%M}, сон {_hours_text(night.hours)} год"
+    if kind == "boolean" and obs.first_at is not None:
+        return f"виконано о {obs.first_at:%H:%M}"
+    if kind == "build":
+        return f"{obs.amount:g} {unit}".strip()
+    return ""
+
+
+def tolerance_warning(kind: str, obs: Observation, night: Night | None, spec: dict) -> str:
+    actual = _actual_text(kind, obs, night)
+    target = level_text(kind, spec.get("level"))
+    allowed = level_text(kind, spec.get("tolerance"))
+    head = f"{actual} — " if actual else ""
+    return f"{head}поза ціллю ({target}), у межах допуску ({allowed})"
 
 
 def classify(
@@ -466,8 +511,12 @@ def classify(
     if not level_defined(kind, level):
         result.status = "unrated"
         return result
+    tolerance = spec.get("tolerance")
     if _meets(kind, obs, level, night):
         result.status = "success"
+    elif tolerance_defined(kind, tolerance) and _meets(kind, obs, tolerance, night):
+        result.status = "success"
+        result.warning = tolerance_warning(kind, obs, night, spec)
     elif spec.get("minimum") and level_defined(kind, spec.get("minimum")) and _meets(kind, obs, spec["minimum"], night):
         result.status = "minimum"
     else:
@@ -611,6 +660,7 @@ def rate(days: list[Day], window: int, until: date) -> dict:
         "until": until.isoformat(),
         "observed_days": judged,
         "counts": counts,
+        "warnings": sum(1 for day in selected if day.status == "success" and day.warning),
         "success_rate": counts["success"] / judged if judged else None,
         "acceptable_rate": (counts["success"] + counts["minimum"]) / judged if judged else None,
     }
@@ -1043,4 +1093,126 @@ def compute_rank(
         "history": history,
         "warnings": warnings,
         "grace_days": grace_days,
+    }
+
+
+# ---------------------------------------------------------------------------
+# All habits together (home statistics)
+# ---------------------------------------------------------------------------
+
+ROLLING_DAYS = 7
+JUDGED_STATUSES = ("success", "minimum", "fail")
+
+
+def _share(part: int, whole: int) -> float | None:
+    return part / whole if whole else None
+
+
+def _counts(days: list[Day]) -> dict:
+    counts = {status: 0 for status in DAY_STATUSES}
+    for day in days:
+        counts[day.status] += 1
+    judged = sum(counts[s] for s in JUDGED_STATUSES)
+    return {
+        "counts": counts,
+        "judged": judged,
+        "warnings": sum(1 for day in days if day.status == "success" and day.warning),
+        "success_rate": _share(counts["success"], judged),
+        "acceptable_rate": _share(counts["success"] + counts["minimum"], judged),
+    }
+
+
+def _window(by_date: dict[date, Day], end: date, length: int) -> list[Day]:
+    picked = (by_date.get(end - timedelta(days=offset)) for offset in range(length))
+    return [day for day in picked if day is not None]
+
+
+def _clean_streaks(by_habit: list[dict[date, Day]], today: date) -> tuple[int, int]:
+    """Days in a row with at least one judged habit and no habit broken.
+
+    A past day without any judged habit ends the run; today is still open, so
+    it only extends the run once something is recorded.
+    """
+    starts = [min(days) for days in by_habit if days]
+    if not starts:
+        return 0, 0
+    run = best = 0
+    current = min(starts)
+    while current <= today:
+        statuses = [days[current].status for days in by_habit if current in days]
+        judged = sum(1 for s in statuses if s in JUDGED_STATUSES)
+        if "fail" in statuses or (judged == 0 and current < today):
+            run = 0
+        elif judged:
+            run += 1
+        best = max(best, run)
+        current += timedelta(days=1)
+    return run, best
+
+
+def combined_stats(habits: list[dict], since: date, today: date) -> dict:
+    """Every habit's day states side by side, plus totals across them.
+
+    ``habits`` are dicts with ``id`` and their full ``days`` (Day objects);
+    other keys are passed through. Shares follow the per-habit rates: success
+    over judged days (success, minimum, fail) — a day without data is never a
+    failure, and the rolling share looks back across ``since`` as well.
+    """
+    dates = [since + timedelta(days=offset) for offset in range((today - since).days + 1)]
+    by_habit = [{day.date: day for day in habit["days"]} for habit in habits]
+
+    habit_rows = []
+    for habit, days in zip(habits, by_habit):
+        all_days = list(days.values())
+        habit_rows.append(
+            {
+                **{key: value for key, value in habit.items() if key != "days"},
+                "rates": {
+                    "7": _counts(_window(days, today, 7)),
+                    "30": _counts(_window(days, today, 30)),
+                    "all": _counts(all_days),
+                },
+                "series": [
+                    {
+                        "date": current.isoformat(),
+                        "status": days[current].status if current in days else None,
+                        "warning": days[current].warning if current in days else "",
+                        "rolling": _counts(_window(days, current, ROLLING_DAYS))["success_rate"],
+                    }
+                    for current in dates
+                ],
+            }
+        )
+
+    daily = []
+    for current in dates:
+        present = [days[current] for days in by_habit if current in days]
+        rolling = [day for days in by_habit for day in _window(days, current, ROLLING_DAYS)]
+        daily.append(
+            {
+                "date": current.isoformat(),
+                "habits": len(present),
+                **_counts(present),
+                "rolling": _counts(rolling)["success_rate"],
+            }
+        )
+
+    streak, best = _clean_streaks(by_habit, today)
+    today_days = [days[today] for days in by_habit if today in days]
+    return {
+        "since": since.isoformat(),
+        "until": today.isoformat(),
+        "habits": habit_rows,
+        "daily": daily,
+        "summary": {
+            "habits": len(habits),
+            "today": {**_counts(today_days), "pending": sum(1 for d in today_days if d.status == "no_data")},
+            "rates": {
+                key: _counts([day for days in by_habit for day in _window(days, today, length)])
+                for key, length in (("7", 7), ("30", 30))
+            }
+            | {"all": _counts([day for days in by_habit for day in days.values()])},
+            "clean_streak": streak,
+            "best_clean_streak": best,
+        },
     }

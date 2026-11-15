@@ -3,7 +3,6 @@ import { formatNumber } from '../../utils/number';
 import { PERIOD_NOUNS } from '../../constants/tracker';
 import { formatWindowLabel } from '../../utils/tracker';
 
-
 const cardClass = 'rounded-3xl border border-gray-100 bg-white p-6 shadow-sm';
 const cardHeadingClass = 'mb-2 flex items-center gap-2 text-sm font-medium text-gray-500';
 
@@ -16,8 +15,8 @@ function TrackerStats({ selectedTracker, dailyProgress, currentMath, streakStats
   const showsLifetime = isQuit && currentMath.lifetimeMainUnit !== currentMath.mainUnit;
 
   return (
-    <div className="flex flex-col px-4 pb-10 md:px-10">
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="flex flex-col px-4 md:px-10">
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div className={cardClass}>
           <div className={cardHeadingClass}>
             {isQuit ? <TrendingUp size={16} /> : <Activity size={16} />}
@@ -93,9 +92,7 @@ function TrackerStats({ selectedTracker, dailyProgress, currentMath, streakStats
             {shareStats?.groupStreakStats && (
               <div className="rounded-2xl border border-gray-100 bg-stone-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Група</div>
-                <div className="mt-1 text-3xl font-semibold text-stone-900">
-                  {shareStats.groupStreakStats.current}
-                </div>
+                <div className="mt-1 text-3xl font-semibold text-stone-900">{shareStats.groupStreakStats.current}</div>
                 <div className="mt-1 text-xs text-gray-500">{shareStats.groupStreakStats.periodLabel}</div>
               </div>
             )}

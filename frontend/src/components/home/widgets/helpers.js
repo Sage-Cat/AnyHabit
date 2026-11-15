@@ -19,3 +19,6 @@ export const FIELD_CLASS =
   'w-full rounded-xl border border-gray-200 bg-white p-2.5 text-sm text-stone-800 outline-none focus:border-stone-400';
 
 export const LABEL_CLASS = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500';
+
+/** Periods the all-habits chart can show, in days. */
+export const CHART_DAY_OPTIONS = [14, 30, 90];

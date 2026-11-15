@@ -5,7 +5,10 @@ import {
   Code2,
   Coins,
   Flame,
+  Gauge,
+  Grid3x3,
   Layers,
+  LineChart,
   MonitorPlay,
   NotebookPen,
   Smile,
@@ -16,6 +19,27 @@ import {
 import { toSafeNumber } from './helpers';
 
 export const WIDGET_DEFINITIONS = {
+  cultivationStats: {
+    label: 'Загальна статистика',
+    icon: Gauge,
+    description: 'Усі звички разом: сьогодні, 7 і 30 днів, дні без порушень, попередження.',
+    defaultSize: { w: 8, h: 7, minW: 4, minH: 5 },
+    defaultConfig: {}
+  },
+  cultivationChart: {
+    label: 'Графік усіх звичок',
+    icon: LineChart,
+    description: 'Кожна звичка своїм кольором і всі разом: частка успішних днів.',
+    defaultSize: { w: 7, h: 10, minW: 4, minH: 7 },
+    defaultConfig: { days: 30 }
+  },
+  cultivationHeatmap: {
+    label: 'Загальна теплова карта',
+    icon: Grid3x3,
+    description: 'Кожен день за 24 тижні: скільки звичок виконано.',
+    defaultSize: { w: 5, h: 7, minW: 3, minH: 6 },
+    defaultConfig: {}
+  },
   impactSummary: {
     label: 'Підсумки впливу',
     icon: Coins,
@@ -151,6 +175,9 @@ export const WIDGET_TYPES = Object.keys(WIDGET_DEFINITIONS);
 // Widgets served by /dashboard/activity rather than /dashboard/summary.
 export const ACTIVITY_WIDGET_TYPES = new Set(['activityFeed', 'journalFeed', 'moodTrend']);
 
+// Widgets served by /cultivation/stats: every habit together.
+export const STATS_WIDGET_TYPES = new Set(['cultivationStats', 'cultivationChart', 'cultivationHeatmap']);
+
 export const createWidgetId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -177,9 +204,12 @@ export const normalizeWidget = (rawWidget) => {
   const definition = WIDGET_DEFINITIONS[resolvedType];
   if (!definition) return null;
 
-  const id = typeof rawWidget.id === 'string' && rawWidget.id.trim() ? rawWidget.id : `${resolvedType}-${createWidgetId()}`;
+  const id =
+    typeof rawWidget.id === 'string' && rawWidget.id.trim() ? rawWidget.id : `${resolvedType}-${createWidgetId()}`;
   const title =
-    typeof rawWidget.title === 'string' && rawWidget.title.trim() && rawWidget.title.trim() !== LEGACY_TITLES[resolvedType]
+    typeof rawWidget.title === 'string' &&
+    rawWidget.title.trim() &&
+    rawWidget.title.trim() !== LEGACY_TITLES[resolvedType]
       ? rawWidget.title.trim()
       : definition.label;
 

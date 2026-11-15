@@ -1,4 +1,5 @@
-import { DAY_STATUS_LABELS, DAY_STATUS_STYLES, STAGE_OPTIONS, formatDay } from './helpers';
+import { TriangleAlert } from 'lucide-react';
+import { DAY_STATUS_LABELS, STAGE_OPTIONS, dayLabel, dayStyle, formatDay } from './helpers';
 
 const STAGE_STYLES = {
   planned: 'bg-stone-100 text-stone-600',
@@ -33,12 +34,19 @@ export function DayStatusPill({ day }) {
     return <span className="text-xs text-gray-400">Сьогодні ще без запису</span>;
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-700" data-testid="today-status">
-      <span
-        className={`h-2.5 w-2.5 rounded-full ${DAY_STATUS_STYLES[day.status] || 'bg-stone-200'}`}
-        aria-hidden="true"
-      />
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-700"
+      data-testid="today-status"
+      data-warning={day.warning ? 'true' : undefined}
+      title={day.warning || undefined}
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${dayStyle(day)}`} aria-hidden="true" />
       {day.status_label || DAY_STATUS_LABELS[day.status] || day.status}
+      {day.warning && (
+        <span className="inline-flex items-center gap-0.5 text-amber-700">
+          <TriangleAlert size={12} aria-hidden="true" /> попередження
+        </span>
+      )}
     </span>
   );
 }
@@ -49,14 +57,14 @@ export function StatusStrip({ days }) {
   return (
     <div className="flex flex-wrap gap-1" role="list" aria-label="Статуси останніх днів">
       {days.map((day) => {
-        const text = `${formatDay(day.date)} — ${day.status_label || DAY_STATUS_LABELS[day.status] || day.status}`;
+        const text = `${formatDay(day.date)} — ${dayLabel(day)}`;
         return (
           <span
             key={day.date}
             role="listitem"
             title={text}
             aria-label={text}
-            className={`h-4 w-4 rounded-[4px] ${DAY_STATUS_STYLES[day.status] || 'bg-stone-200'}`}
+            className={`h-4 w-4 rounded-[4px] ${dayStyle(day)}`}
           />
         );
       })}

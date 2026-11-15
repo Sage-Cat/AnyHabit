@@ -13,11 +13,12 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import HeatmapGrid from '../ui/HeatmapGrid';
 import { formatDate, formatTime } from '../../utils/date';
 import { formatNumber } from '../../utils/number';
 import { WEEKDAY_SHORT } from '../../utils/labels';
 
-const cardClass = 'mb-8 w-full rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6';
+const cardClass = 'w-full min-w-0 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6';
 const chartAxisTick = { fontSize: 11, fill: '#9ca3af' };
 
 const HEATMAP_SHADES = ['bg-stone-100', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-500'];
@@ -30,7 +31,15 @@ const shadeFor = (intensity) => {
   return HEATMAP_SHADES[4];
 };
 
-function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, weekdayBreakdown, habitLogs, deleteLog, updateLog }) {
+function TrackerCharts({
+  selectedTracker,
+  historicalChartData,
+  buildHeatmap,
+  weekdayBreakdown,
+  habitLogs,
+  deleteLog,
+  updateLog
+}) {
   const [editingLogId, setEditingLogId] = useState(null);
   const [draftAmount, setDraftAmount] = useState('');
 
@@ -38,7 +47,11 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
   const showsLogList = selectedTracker.type === 'build' || selectedTracker.type === 'boolean';
 
   const weekdayData = useMemo(
-    () => (weekdayBreakdown || []).map((entry) => ({ ...entry, short: WEEKDAY_SHORT[entry.weekday] ?? entry.label.slice(0, 3) })),
+    () =>
+      (weekdayBreakdown || []).map((entry) => ({
+        ...entry,
+        short: WEEKDAY_SHORT[entry.weekday] ?? entry.label.slice(0, 3)
+      })),
     [weekdayBreakdown]
   );
 
@@ -58,7 +71,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
   };
 
   return (
-    <>
+    <div className="mb-8 grid gap-6 xl:grid-cols-2" data-testid="tracker-charts">
       <div className={cardClass}>
         <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <h2 className="text-sm font-semibold text-stone-700">Історія прогресу</h2>
@@ -72,7 +85,14 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                 <XAxis dataKey="label" minTickGap={35} tick={chartAxisTick} />
                 <YAxis tick={chartAxisTick} allowDecimals={false} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#111827" strokeWidth={2.5} dot={false} name="Днів серії" />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#111827"
+                  strokeWidth={2.5}
+                  dot={false}
+                  name="Днів серії"
+                />
               </LineChart>
             ) : (
               <AreaChart data={historicalChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -94,7 +114,14 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
                   strokeWidth={2.2}
                   name="Щоденна кількість"
                 />
-                <Line type="monotone" dataKey="cumulative" stroke="#6b7280" strokeWidth={1.4} dot={false} name="Накопичено" />
+                <Line
+                  type="monotone"
+                  dataKey="cumulative"
+                  stroke="#6b7280"
+                  strokeWidth={1.4}
+                  dot={false}
+                  name="Накопичено"
+                />
               </AreaChart>
             )}
           </ResponsiveContainer>
@@ -104,38 +131,27 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
       {/* The heatmap now covers quit trackers too, where a red cell marks a
           relapse — the clearest view of a pattern the streak number hides. */}
       {buildHeatmap && (
-        <div className={`${cardClass} overflow-x-auto`}>
+        <div className={cardClass}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <h2 className="text-sm font-semibold text-stone-700">Теплова карта регулярності</h2>
             <p className="text-xs text-gray-400">Останні 24 тижні</p>
           </div>
 
-          <div className="flex min-w-max gap-[3px]">
-            {buildHeatmap.columns.map((week, weekIndex) => (
-              <div key={`week-${weekIndex}`} className="flex flex-col gap-[3px]">
-                {week.map((cell) => {
-                  const intensity = buildHeatmap.maxAmount > 0 ? cell.amount / buildHeatmap.maxAmount : 0;
-                  const shade = cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity);
-
-                  return (
-                    <div
-                      key={cell.date}
-                      title={
-                        cell.isRelapse
-                          ? `${cell.date}: записано зрив`
-                          : isQuit
-                            ? `${cell.date}: ${cell.amount > 0 ? 'день без зриву' : 'не відстежувалось'}`
-                            : `${cell.date}: ${formatNumber(cell.amount)} ${selectedTracker.unit}`
-                      }
-                      className={`h-3.5 w-3.5 rounded-[3px] border border-white/60 ${
-                        cell.isFiller ? 'opacity-0' : shade
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <HeatmapGrid
+            columns={buildHeatmap.columns}
+            testId="tracker-heatmap"
+            cellView={(cell) => {
+              const intensity = buildHeatmap.maxAmount > 0 ? cell.amount / buildHeatmap.maxAmount : 0;
+              return {
+                className: `border border-white/60 ${cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity)}`,
+                title: cell.isRelapse
+                  ? `${cell.date}: записано зрив`
+                  : isQuit
+                    ? `${cell.date}: ${cell.amount > 0 ? 'день без зриву' : 'не відстежувалось'}`
+                    : `${cell.date}: ${formatNumber(cell.amount)} ${selectedTracker.unit}`
+              };
+            }}
+          />
 
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
             <span>Менше</span>
@@ -177,7 +193,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
       )}
 
       {showsLogList && habitLogs.length > 0 && (
-        <div className="mb-8 w-full">
+        <div className="w-full min-w-0 xl:col-span-2">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Останні записи</h2>
           <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2">
             {habitLogs.map((log) => (
@@ -244,7 +260,7 @@ function TrackerCharts({ selectedTracker, historicalChartData, buildHeatmap, wee
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { pluralCount } from '../../../utils/plural';
-import { FIELD_CLASS, LABEL_CLASS, categoryLabel, normalizeCategory } from './helpers';
+import { CHART_DAY_OPTIONS, FIELD_CLASS, LABEL_CLASS, categoryLabel, normalizeCategory } from './helpers';
 import { normalizeImpactConfig } from './registry';
 import { TrackerMultiPicker, TrackerPicker } from './shared';
 
@@ -68,17 +68,36 @@ export function WidgetSettingsPanel({
         />
       )}
 
+      {widget.type === 'cultivationChart' && (
+        <div>
+          <label className={LABEL_CLASS} htmlFor="chart-days">
+            Період графіка
+          </label>
+          <select
+            id="chart-days"
+            value={CHART_DAY_OPTIONS.includes(widget.config?.days) ? widget.config.days : 30}
+            onChange={(event) => onConfigChange({ days: Number(event.target.value) })}
+            className={FIELD_CLASS}
+          >
+            {CHART_DAY_OPTIONS.map((days) => (
+              <option key={days} value={days}>
+                {pluralCount(days, ['день', 'дні', 'днів'])}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {widget.type === 'embed' && <EmbedSettings widget={widget} onConfigChange={onConfigChange} />}
 
       {widget.type === 'notes' && (
-        <p className="text-xs text-gray-500">
-          Пишіть прямо у віджеті на головній — текст зберігається сам.
-        </p>
+        <p className="text-xs text-gray-500">Пишіть прямо у віджеті на головній — текст зберігається сам.</p>
       )}
 
       {widget.type === 'apiExplorer' && (
         <p className="text-xs text-gray-500">
-          Кінцеву точку й мову оберіть у самому віджеті. Токен, який для цього потрібен, створіть у Налаштування → Для розробників.
+          Кінцеву точку й мову оберіть у самому віджеті. Токен, який для цього потрібен, створіть у Налаштування → Для
+          розробників.
         </p>
       )}
     </div>
@@ -141,7 +160,11 @@ function ImpactTrackerSourceSettings({ widget, trackerMap, impactCandidates, onC
     return impactCandidates.filter((tracker) => {
       const name = tracker.name.toLowerCase();
       const category = normalizeCategory(tracker.category).toLowerCase();
-      return name.includes(query) || category.includes(query) || categoryLabel(tracker.category).toLowerCase().includes(query);
+      return (
+        name.includes(query) ||
+        category.includes(query) ||
+        categoryLabel(tracker.category).toLowerCase().includes(query)
+      );
     });
   }, [impactCandidates, searchTerm]);
 

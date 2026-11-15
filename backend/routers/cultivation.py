@@ -246,6 +246,8 @@ def _observations(db: Session, habit: models.CultivatedHabit, user: models.User)
         obs.events += 1
         obs.amount += float(log.amount or 0)
         obs.notes.append(log.note or "")
+        if obs.first_at is None and habit.kind != "sleep":
+            obs.first_at = local.time()  # logs are ordered, so this is the earliest
         if habit.kind == "sleep" and log.amount and log.amount > 0:
             # Subtract in UTC: local wall-clock arithmetic is off by an hour across DST.
             # The amount is stored rounded to 0.01 h, so snap back to whole minutes.
@@ -274,7 +276,13 @@ def _tracker_info(db: Session, habit: models.CultivatedHabit) -> dict | None:
     tracker = db.query(models.Tracker).filter(models.Tracker.id == habit.tracker_id).first()
     if tracker is None:
         return None
-    return {"id": tracker.id, "name": tracker.name, "type": tracker.type, "unit": tracker.unit or ""}
+    return {
+        "id": tracker.id,
+        "name": tracker.name,
+        "type": tracker.type,
+        "unit": tracker.unit or "",
+        "color": tracker.color or "",
+    }
 
 
 def _version_out(version: dict, with_spec: bool = True) -> dict:
@@ -331,6 +339,9 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
             "requirement": cv.level_text(habit.kind, (today_spec or {}).get("level"), unit),
             "minimum": cv.level_text(habit.kind, (today_spec or {}).get("minimum"), unit)
             if (today_spec or {}).get("minimum")
+            else None,
+            "tolerance": cv.level_text(habit.kind, (today_spec or {}).get("tolerance"), unit)
+            if cv.tolerance_defined(habit.kind, (today_spec or {}).get("tolerance"))
             else None,
             "degraded": degraded_today,
             "day": today_day.as_dict() if today_day else None,
@@ -453,6 +464,55 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         "planned": [a for a in by_priority if a["stage"] == "planned"],
         "warnings": warnings,
         "rank": _rank(db, current_user),
+    }
+
+
+@router.get("/stats")
+def stats(
+    days: int = Query(84, ge=7, le=366, description="How many days of series to return"),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """All non-planned habits together: day states, 7-day rolling success and totals."""
+    today = _today(current_user)
+    habits = (
+        db.query(models.CultivatedHabit)
+        .filter(models.CultivatedHabit.user_id == current_user.id, models.CultivatedHabit.archived_at.is_(None))
+        .order_by(models.CultivatedHabit.id)
+        .all()
+    )
+    items = []
+    for habit in habits:
+        versions = _versions(db, habit)
+        spec = cv.latest_spec(versions) or {}
+        if spec.get("stage") == "planned":
+            continue
+        tracker = _tracker_info(db, habit)
+        items.append(
+            {
+                "id": habit.id,
+                "name": spec.get("name", ""),
+                "kind": habit.kind,
+                "stage": spec.get("stage"),
+                "stage_label": cv.STAGE_LABELS.get(spec.get("stage"), ""),
+                "tracker_id": tracker["id"] if tracker else None,
+                "color": tracker["color"] if tracker else "",
+                "days": cv.build_days(
+                    habit.kind,
+                    versions,
+                    _observations(db, habit, current_user),
+                    _marks(db, habit),
+                    _modes(db, habit),
+                    today,
+                    tracked=tracker is not None,
+                ),
+            }
+        )
+    since = today - timedelta(days=days - 1)
+    return {
+        "date": today.isoformat(),
+        "timezone": current_user.timezone or "UTC",
+        **cv.combined_stats(items, since, today),
     }
 
 

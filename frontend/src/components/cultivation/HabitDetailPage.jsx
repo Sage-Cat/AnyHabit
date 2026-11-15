@@ -28,6 +28,10 @@ import {
   INPUT_CLASS,
   KIND_LABELS,
   STAGE_OPTIONS,
+  WARNING_LABEL,
+  WARNING_STYLE,
+  dayLabel,
+  dayStyle,
   formatDay,
   formatDays,
   formatPercent
@@ -39,9 +43,9 @@ const todayIso = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 };
 
-function Section({ title, children, testId }) {
+function Section({ title, children, testId, className = '' }) {
   return (
-    <section className={CARD_CLASS} data-testid={testId}>
+    <section className={`${CARD_CLASS} min-w-0 ${className}`} data-testid={testId}>
       <h2 className="mb-3 text-base font-bold text-stone-900">{title}</h2>
       {children}
     </section>
@@ -104,7 +108,7 @@ function Calendar({ days, onPick }) {
   const first = days[0].date.split('-').map(Number);
   const offset = (new Date(first[0], first[1] - 1, first[2]).getDay() + 6) % 7;
   return (
-    <div>
+    <div className="max-w-md">
       <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] uppercase text-gray-400">
         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'].map((name) => (
           <span key={name}>{name}</span>
@@ -115,7 +119,7 @@ function Calendar({ days, onPick }) {
           <span key={`pad-${index}`} />
         ))}
         {days.map((day) => {
-          const label = `${formatDay(day.date)} — ${day.status_label || DAY_STATUS_LABELS[day.status] || day.status}`;
+          const label = `${formatDay(day.date)} — ${dayLabel(day)}`;
           return (
             <button
               key={day.date}
@@ -123,8 +127,9 @@ function Calendar({ days, onPick }) {
               title={label}
               aria-label={label}
               data-status={day.status}
+              data-warning={day.warning ? 'true' : undefined}
               onClick={() => onPick(day)}
-              className={`flex aspect-square items-center justify-center rounded-md text-[10px] ${DAY_STATUS_STYLES[day.status] || 'bg-stone-200'} ${
+              className={`flex aspect-square items-center justify-center rounded-md text-[10px] ${dayStyle(day)} ${
                 ['success', 'fail', 'invalid'].includes(day.status) ? 'text-white' : 'text-stone-700'
               }`}
             >
@@ -139,6 +144,9 @@ function Calendar({ days, onPick }) {
             <span className={`h-3 w-3 rounded-[3px] ${DAY_STATUS_STYLES[status]}`} /> {text}
           </li>
         ))}
+        <li className="flex items-center gap-1.5">
+          <span className={`h-3 w-3 rounded-[3px] ${WARNING_STYLE}`} /> {WARNING_LABEL}
+        </li>
       </ul>
     </div>
   );
@@ -164,6 +172,7 @@ function Rates({ rates }) {
             <p className="text-xs text-gray-500">
               З урахуванням мінімуму: {formatPercent(rate?.acceptable_rate)}
               {rate && ` · спостережень: ${rate.observed_days}`}
+              {rate?.warnings > 0 && ` · з попередженням: ${rate.warnings}`}
             </p>
           </div>
         );
@@ -244,6 +253,7 @@ function Passport({ habit }) {
     ['Етап', habit.stage_label],
     ['Вимога', habit.today?.requirement],
     ['Мінімум', habit.today?.minimum || (spec.minimum ? null : '—')],
+    ['Допуск (з попередженням)', habit.today?.tolerance || '—'],
     ['Одиниця', habit.kind === 'build' ? unit || '—' : null],
     ['Пріоритет', spec.priority != null ? String(spec.priority) : null],
     ['Опис', spec.description || null]
@@ -311,6 +321,7 @@ function EditPassport({ habit, onSaved }) {
   const [unit, setUnit] = useState('');
   const [level, setLevel] = useState(levelFromSpec());
   const [minimum, setMinimum] = useState(levelFromSpec());
+  const [tolerance, setTolerance] = useState(levelFromSpec());
   const [json, setJson] = useState('');
   const [reason, setReason] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
@@ -322,6 +333,7 @@ function EditPassport({ habit, onSaved }) {
     setUnit(spec.unit || '');
     setLevel(levelFromSpec(spec.level));
     setMinimum(levelFromSpec(spec.minimum));
+    setTolerance(levelFromSpec(spec.tolerance));
     setJson(JSON.stringify(spec, null, 2));
     setReason('');
     setEffectiveFrom('');
@@ -365,6 +377,8 @@ function EditPassport({ habit, onSaved }) {
       if (habit.kind === 'build') patch.unit = unit.trim();
       if (hasLevelValue(habit.kind, minimum)) patch.minimum = buildLevel(habit.kind, minimum, { nulls: true });
       else if (spec.minimum) patch.minimum = null;
+      if (hasLevelValue(habit.kind, tolerance)) patch.tolerance = buildLevel(habit.kind, tolerance, { nulls: true });
+      else if (spec.tolerance) patch.tolerance = null;
       payload.patch = patch;
     }
 
@@ -432,6 +446,14 @@ function EditPassport({ habit, onSaved }) {
                 Мінімум (порожньо — без мінімуму)
               </p>
               <LevelFields kind={habit.kind} prefix="Мінімум: " value={minimum} onChange={setMinimum} />
+            </div>
+          )}
+          {hasLevels && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Допуск: поза ціллю, але зараховується з попередженням (порожньо — без допуску)
+              </p>
+              <LevelFields kind={habit.kind} prefix="Допуск: " value={tolerance} onChange={setTolerance} />
             </div>
           )}
         </>
@@ -583,41 +605,43 @@ function HabitDetailPage() {
 
   const header = (
     <div className="border-b border-gray-100 bg-white/80 px-4 pb-5 pt-6 backdrop-blur-sm md:px-10 md:pt-10">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setIsSidebarOpen(true)}
-          className="text-stone-500 hover:text-stone-900 md:hidden"
-          aria-label="Відкрити навігацію"
-        >
-          <Menu size={24} />
-        </button>
-        <Link to="/practice" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-stone-900">
-          <ArrowLeft size={14} /> Культивація
-        </Link>
-      </div>
-      {habit && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl" data-testid="habit-title">
-              {habit.name}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StageBadge stage={habit.stage} label={habit.stage_label} />
-              {(habit.mode || habit.today?.degraded) && <ModeBadge />}
-              <span className="text-xs text-gray-400">{KIND_LABELS[habit.kind] || habit.kind}</span>
-              {habit.archived && (
-                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs text-amber-700">в архіві</span>
-              )}
-            </div>
-          </div>
-          {habit.tracker && habit.kind !== 'sleep' && (
-            <Link to={`/tracker/${habit.tracker.id}`} className={BUTTON_SECONDARY}>
-              Відкрити трекер
-            </Link>
-          )}
+      <div className="mx-auto w-full max-w-screen-2xl">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(true)}
+            className="text-stone-500 hover:text-stone-900 md:hidden"
+            aria-label="Відкрити навігацію"
+          >
+            <Menu size={24} />
+          </button>
+          <Link to="/practice" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-stone-900">
+            <ArrowLeft size={14} /> Культивація
+          </Link>
         </div>
-      )}
+        {habit && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl" data-testid="habit-title">
+                {habit.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StageBadge stage={habit.stage} label={habit.stage_label} />
+                {(habit.mode || habit.today?.degraded) && <ModeBadge />}
+                <span className="text-xs text-gray-400">{KIND_LABELS[habit.kind] || habit.kind}</span>
+                {habit.archived && (
+                  <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs text-amber-700">в архіві</span>
+                )}
+              </div>
+            </div>
+            {habit.tracker && habit.kind !== 'sleep' && (
+              <Link to={`/tracker/${habit.tracker.id}`} className={BUTTON_SECONDARY}>
+                Відкрити трекер
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -648,248 +672,262 @@ function HabitDetailPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#fcfcfc]">
       {header}
-      <div className="flex-1 space-y-5 overflow-y-auto px-4 py-6 md:px-10">
-        <Section title="Сьогодні" testId="today-block">
-          <p className="text-sm font-medium text-stone-800">{habit.today?.requirement || '—'}</p>
-          {habit.today?.minimum && <p className="text-xs text-gray-500">Мінімум: {habit.today.minimum}</p>}
-          <div className="mt-2">
-            <DayStatusPill day={habit.today?.day} />
-          </div>
-          {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
-          {habit.recommendation && (
-            <p className="mt-3 rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
-              <span className="font-semibold">Пропозиція:</span> {habit.recommendation.reason}{' '}
-              <span className="text-xs text-sky-700">(змінити етап можна нижче, у розділі «Керування»)</span>
-            </p>
-          )}
-          {habit.kind === 'sleep' && !habit.archived && (
-            <button
-              type="button"
-              onClick={() => setIsSleepOpen(true)}
-              className={`${BUTTON_PRIMARY} mt-3 inline-flex items-center`}
-            >
-              <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
-            </button>
-          )}
-        </Section>
+      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-10">
+        {/* Two columns on wide screens; passport and management keep the full width for their forms. */}
+        <div
+          className="mx-auto grid w-full max-w-screen-2xl items-start gap-5 xl:grid-cols-2"
+          data-testid="habit-content"
+        >
+          <Section title="Сьогодні" testId="today-block">
+            <p className="text-sm font-medium text-stone-800">{habit.today?.requirement || '—'}</p>
+            {habit.today?.minimum && <p className="text-xs text-gray-500">Мінімум: {habit.today.minimum}</p>}
+            {habit.today?.tolerance && (
+              <p className="text-xs text-amber-700">Допуск з попередженням: {habit.today.tolerance}</p>
+            )}
+            {habit.today?.day?.warning && (
+              <p className="mt-1 text-xs text-amber-700" data-testid="today-warning">
+                {habit.today.day.warning}
+              </p>
+            )}
+            <div className="mt-2">
+              <DayStatusPill day={habit.today?.day} />
+            </div>
+            {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
+            {habit.recommendation && (
+              <p className="mt-3 rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
+                <span className="font-semibold">Пропозиція:</span> {habit.recommendation.reason}{' '}
+                <span className="text-xs text-sky-700">(змінити етап можна нижче, у розділі «Керування»)</span>
+              </p>
+            )}
+            {habit.kind === 'sleep' && !habit.archived && (
+              <button
+                type="button"
+                onClick={() => setIsSleepOpen(true)}
+                className={`${BUTTON_PRIMARY} mt-3 inline-flex items-center`}
+              >
+                <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
+              </button>
+            )}
+          </Section>
 
-        <Section title="Останні 90 днів" testId="calendar-block">
-          <Calendar days={habit.days} onPick={(day) => setMark((current) => ({ ...current, date: day.date }))} />
-        </Section>
+          <Section title="Останні 90 днів" testId="calendar-block">
+            <Calendar days={habit.days} onPick={(day) => setMark((current) => ({ ...current, date: day.date }))} />
+          </Section>
 
-        <Section title="Показники" testId="rates-block">
-          <Rates rates={habit.rates} />
-        </Section>
+          <Section title="Показники" testId="rates-block">
+            <Rates rates={habit.rates} />
+          </Section>
 
-        <Section title="Критерії інтеграції" testId="integration-block">
-          <IntegrationList integration={habit.integration} />
-        </Section>
+          <Section title="Критерії інтеграції" testId="integration-block">
+            <IntegrationList integration={habit.integration} />
+          </Section>
 
-        <Section title="Відновлення" testId="recovery-block">
-          <Recovery recovery={habit.recovery} episodes={habit.episodes} />
-        </Section>
+          <Section title="Відновлення" testId="recovery-block">
+            <Recovery recovery={habit.recovery} episodes={habit.episodes} />
+          </Section>
 
-        <Section title="Паспорт" testId="passport-block">
-          <Passport habit={habit} />
-          {!habit.archived && <EditPassport key={habit.versions?.length} habit={habit} onSaved={load} />}
-          <h3 className="mt-5 text-sm font-semibold text-stone-800">Історія версій</h3>
-          <VersionHistory versions={habit.versions} />
-        </Section>
+          <Section title="Паспорт" testId="passport-block" className="xl:col-span-2">
+            <Passport habit={habit} />
+            {!habit.archived && <EditPassport key={habit.versions?.length} habit={habit} onSaved={load} />}
+            <h3 className="mt-5 text-sm font-semibold text-stone-800">Історія версій</h3>
+            <VersionHistory versions={habit.versions} />
+          </Section>
 
-        <Section title="Керування" testId="manage-block">
-          {habit.archived && (
-            <p className="mb-4 text-sm text-gray-500">
-              Звичка в архіві: щоб вносити дані чи змінювати паспорт, спершу поверніть її.
-            </p>
-          )}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {!habit.archived && (
-              <>
-                <ActionForm
-                  testId="mark-form"
-                  title="Позначити день вручну"
-                  submitLabel="Зберегти позначку"
-                  onSubmit={() =>
-                    run(
-                      () =>
-                        markDayApi(habit.id, {
-                          date: mark.date,
-                          status: mark.status,
-                          ...(markNeedsReason ? { reason: mark.reason.trim() } : {})
-                        }),
-                      mark.status === 'clear' ? 'Позначку знято' : 'День позначено'
-                    )
-                  }
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Дата">
-                      <input
-                        type="date"
-                        aria-label="Дата позначки"
-                        value={mark.date}
-                        onChange={(e) => setMark({ ...mark, date: e.target.value })}
-                        className={INPUT_CLASS}
-                        required
-                      />
-                    </Field>
-                    <Field label="Статус">
+          <Section title="Керування" testId="manage-block" className="xl:col-span-2">
+            {habit.archived && (
+              <p className="mb-4 text-sm text-gray-500">
+                Звичка в архіві: щоб вносити дані чи змінювати паспорт, спершу поверніть її.
+              </p>
+            )}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {!habit.archived && (
+                <>
+                  <ActionForm
+                    testId="mark-form"
+                    title="Позначити день вручну"
+                    submitLabel="Зберегти позначку"
+                    onSubmit={() =>
+                      run(
+                        () =>
+                          markDayApi(habit.id, {
+                            date: mark.date,
+                            status: mark.status,
+                            ...(markNeedsReason ? { reason: mark.reason.trim() } : {})
+                          }),
+                        mark.status === 'clear' ? 'Позначку знято' : 'День позначено'
+                      )
+                    }
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Дата">
+                        <input
+                          type="date"
+                          aria-label="Дата позначки"
+                          value={mark.date}
+                          onChange={(e) => setMark({ ...mark, date: e.target.value })}
+                          className={INPUT_CLASS}
+                          required
+                        />
+                      </Field>
+                      <Field label="Статус">
+                        <select
+                          aria-label="Статус позначки"
+                          value={mark.status}
+                          onChange={(e) => setMark({ ...mark, status: e.target.value })}
+                          className={INPUT_CLASS}
+                        >
+                          <option value="success">Успіх</option>
+                          <option value="minimum">Мінімум</option>
+                          <option value="fail">Порушення</option>
+                          <option value="exception">Виняток</option>
+                          <option value="clear">Зняти позначку</option>
+                        </select>
+                      </Field>
+                    </div>
+                    {markNeedsReason && (
+                      <Field label="Причина">
+                        <input
+                          type="text"
+                          aria-label="Причина позначки"
+                          value={mark.reason}
+                          onChange={(e) => setMark({ ...mark, reason: e.target.value })}
+                          className={INPUT_CLASS}
+                          required
+                        />
+                      </Field>
+                    )}
+                  </ActionForm>
+
+                  <div className="space-y-3" data-testid="mode-block">
+                    <h3 className="text-sm font-semibold text-stone-800">Режим мінімуму</h3>
+                    {habit.mode ? (
+                      <ActionForm
+                        title={`Діє з ${formatDay(habit.mode.start_date)}${habit.mode.reason ? ` — ${habit.mode.reason}` : ''}`}
+                        submitLabel="Завершити режим мінімуму"
+                        onSubmit={() =>
+                          run(
+                            () => endModeApi(habit.id, modeReason.trim() ? { reason: modeReason.trim() } : {}),
+                            'Режим мінімуму завершено'
+                          )
+                        }
+                      >
+                        <input
+                          type="text"
+                          aria-label="Причина завершення режиму"
+                          placeholder="Причина (необов'язково)"
+                          value={modeReason}
+                          onChange={(e) => setModeReason(e.target.value)}
+                          className={INPUT_CLASS}
+                        />
+                      </ActionForm>
+                    ) : (
+                      <ActionForm
+                        title="Вимогою на час режиму стає мінімум"
+                        submitLabel="Увімкнути режим мінімуму"
+                        onSubmit={() =>
+                          run(
+                            () =>
+                              startModeApi(habit.id, {
+                                reason: modeReason.trim(),
+                                ...(modeDate ? { start_date: modeDate } : {})
+                              }),
+                            'Режим мінімуму увімкнено'
+                          )
+                        }
+                      >
+                        <input
+                          type="text"
+                          aria-label="Причина режиму мінімуму"
+                          placeholder="Причина"
+                          value={modeReason}
+                          onChange={(e) => setModeReason(e.target.value)}
+                          className={INPUT_CLASS}
+                          required
+                        />
+                        <input
+                          type="date"
+                          aria-label="Початок режиму"
+                          value={modeDate}
+                          onChange={(e) => setModeDate(e.target.value)}
+                          className={INPUT_CLASS}
+                        />
+                      </ActionForm>
+                    )}
+                  </div>
+
+                  <ActionForm
+                    testId="stage-form"
+                    title="Змінити етап"
+                    submitLabel="Змінити етап"
+                    onSubmit={() =>
+                      run(
+                        () =>
+                          changeStageApi(habit.id, {
+                            stage: stageForm.stage,
+                            reason: stageForm.reason.trim(),
+                            ...(stageForm.effective_from ? { effective_from: stageForm.effective_from } : {})
+                          }),
+                        'Етап змінено'
+                      ).then(() => setStageForm((c) => ({ ...c, reason: '' })))
+                    }
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <select
-                        aria-label="Статус позначки"
-                        value={mark.status}
-                        onChange={(e) => setMark({ ...mark, status: e.target.value })}
+                        aria-label="Новий етап"
+                        value={stageForm.stage}
+                        onChange={(e) => setStageForm({ ...stageForm, stage: e.target.value })}
                         className={INPUT_CLASS}
                       >
-                        <option value="success">Успіх</option>
-                        <option value="minimum">Мінімум</option>
-                        <option value="fail">Порушення</option>
-                        <option value="exception">Виняток</option>
-                        <option value="clear">Зняти позначку</option>
+                        {STAGE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
-                    </Field>
-                  </div>
-                  {markNeedsReason && (
-                    <Field label="Причина">
-                      <input
-                        type="text"
-                        aria-label="Причина позначки"
-                        value={mark.reason}
-                        onChange={(e) => setMark({ ...mark, reason: e.target.value })}
-                        className={INPUT_CLASS}
-                        required
-                      />
-                    </Field>
-                  )}
-                </ActionForm>
-
-                <div className="space-y-3" data-testid="mode-block">
-                  <h3 className="text-sm font-semibold text-stone-800">Режим мінімуму</h3>
-                  {habit.mode ? (
-                    <ActionForm
-                      title={`Діє з ${formatDay(habit.mode.start_date)}${habit.mode.reason ? ` — ${habit.mode.reason}` : ''}`}
-                      submitLabel="Завершити режим мінімуму"
-                      onSubmit={() =>
-                        run(
-                          () => endModeApi(habit.id, modeReason.trim() ? { reason: modeReason.trim() } : {}),
-                          'Режим мінімуму завершено'
-                        )
-                      }
-                    >
-                      <input
-                        type="text"
-                        aria-label="Причина завершення режиму"
-                        placeholder="Причина (необов'язково)"
-                        value={modeReason}
-                        onChange={(e) => setModeReason(e.target.value)}
-                        className={INPUT_CLASS}
-                      />
-                    </ActionForm>
-                  ) : (
-                    <ActionForm
-                      title="Вимогою на час режиму стає мінімум"
-                      submitLabel="Увімкнути режим мінімуму"
-                      onSubmit={() =>
-                        run(
-                          () =>
-                            startModeApi(habit.id, {
-                              reason: modeReason.trim(),
-                              ...(modeDate ? { start_date: modeDate } : {})
-                            }),
-                          'Режим мінімуму увімкнено'
-                        )
-                      }
-                    >
-                      <input
-                        type="text"
-                        aria-label="Причина режиму мінімуму"
-                        placeholder="Причина"
-                        value={modeReason}
-                        onChange={(e) => setModeReason(e.target.value)}
-                        className={INPUT_CLASS}
-                        required
-                      />
                       <input
                         type="date"
-                        aria-label="Початок режиму"
-                        value={modeDate}
-                        onChange={(e) => setModeDate(e.target.value)}
+                        aria-label="Етап діє з"
+                        value={stageForm.effective_from}
+                        onChange={(e) => setStageForm({ ...stageForm, effective_from: e.target.value })}
                         className={INPUT_CLASS}
                       />
-                    </ActionForm>
-                  )}
-                </div>
-
-                <ActionForm
-                  testId="stage-form"
-                  title="Змінити етап"
-                  submitLabel="Змінити етап"
-                  onSubmit={() =>
-                    run(
-                      () =>
-                        changeStageApi(habit.id, {
-                          stage: stageForm.stage,
-                          reason: stageForm.reason.trim(),
-                          ...(stageForm.effective_from ? { effective_from: stageForm.effective_from } : {})
-                        }),
-                      'Етап змінено'
-                    ).then(() => setStageForm((c) => ({ ...c, reason: '' })))
-                  }
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <select
-                      aria-label="Новий етап"
-                      value={stageForm.stage}
-                      onChange={(e) => setStageForm({ ...stageForm, stage: e.target.value })}
-                      className={INPUT_CLASS}
-                    >
-                      {STAGE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    </div>
                     <input
-                      type="date"
-                      aria-label="Етап діє з"
-                      value={stageForm.effective_from}
-                      onChange={(e) => setStageForm({ ...stageForm, effective_from: e.target.value })}
+                      type="text"
+                      aria-label="Причина зміни етапу"
+                      placeholder="Причина"
+                      value={stageForm.reason}
+                      onChange={(e) => setStageForm({ ...stageForm, reason: e.target.value })}
                       className={INPUT_CLASS}
+                      required
                     />
-                  </div>
-                  <input
-                    type="text"
-                    aria-label="Причина зміни етапу"
-                    placeholder="Причина"
-                    value={stageForm.reason}
-                    onChange={(e) => setStageForm({ ...stageForm, reason: e.target.value })}
-                    className={INPUT_CLASS}
-                    required
-                  />
-                </ActionForm>
-              </>
-            )}
-
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-stone-800">Архів</h3>
-              {habit.archived ? (
-                <button
-                  type="button"
-                  onClick={() => run(() => unarchiveHabitApi(habit.id), 'Звичку повернено з архіву')}
-                  className={BUTTON_SECONDARY}
-                >
-                  Повернути з архіву
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={archive}
-                  className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
-                >
-                  Архівувати звичку
-                </button>
+                  </ActionForm>
+                </>
               )}
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-stone-800">Архів</h3>
+                {habit.archived ? (
+                  <button
+                    type="button"
+                    onClick={() => run(() => unarchiveHabitApi(habit.id), 'Звичку повернено з архіву')}
+                    className={BUTTON_SECONDARY}
+                  >
+                    Повернути з архіву
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={archive}
+                    className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    Архівувати звичку
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </Section>
+          </Section>
+        </div>
       </div>
 
       {isSleepOpen && (

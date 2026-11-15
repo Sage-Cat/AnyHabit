@@ -588,6 +588,16 @@ def get_cultivation_rank() -> dict[str, Any]:
 
 
 @mcp.tool()
+def get_cultivation_stats(days: int = 84) -> dict[str, Any]:
+    """All active habits together: per-day states, 7-day rolling success, warnings and totals.
+
+    days (7-366) is the length of the returned series. A day inside a habit's
+    tolerance band counts as a success and carries a warning.
+    """
+    return api.get("/cultivation/stats", params={"days": days})
+
+
+@mcp.tool()
 def get_cultivation_vocabulary() -> dict[str, Any]:
     """Stage and day-state labels, habit kinds and passport defaults."""
     return api.get("/cultivation/vocabulary")

@@ -1,16 +1,20 @@
 /** Empty level object for a given kind. */
-export const emptyLevel = () => ({ wake_by: '', min_sleep_h: '', max_sleep_h: '', min_amount: '' });
+export const emptyLevel = () => ({ wake_by: '', min_sleep_h: '', max_sleep_h: '', min_amount: '', done_by: '' });
 
 export const levelFromSpec = (level) => ({
   wake_by: level?.wake_by ?? '',
   min_sleep_h: level?.min_sleep_h ?? '',
   max_sleep_h: level?.max_sleep_h ?? '',
-  min_amount: level?.min_amount ?? ''
+  min_amount: level?.min_amount ?? '',
+  done_by: level?.done_by ?? ''
 });
 
 /** Fields that make sense for the kind, as API keys. */
-export const levelKeys = (kind) =>
-  kind === 'sleep' ? ['wake_by', 'min_sleep_h', 'max_sleep_h'] : kind === 'build' ? ['min_amount'] : [];
+const LEVEL_KEYS = { sleep: ['wake_by', 'min_sleep_h', 'max_sleep_h'], build: ['min_amount'], boolean: ['done_by'] };
+
+export const levelKeys = (kind) => LEVEL_KEYS[kind] || [];
+
+const TIME_KEYS = new Set(['wake_by', 'done_by']);
 
 /**
  * Turn form state into an API level. With `nulls`, cleared fields become
@@ -23,7 +27,7 @@ export function buildLevel(kind, state, { nulls = false } = {}) {
     if (raw === '' || raw === null || raw === undefined) {
       if (nulls) out[key] = null;
     } else {
-      out[key] = key === 'wake_by' ? String(raw) : Number(raw);
+      out[key] = TIME_KEYS.has(key) ? String(raw) : Number(raw);
     }
   }
   return out;

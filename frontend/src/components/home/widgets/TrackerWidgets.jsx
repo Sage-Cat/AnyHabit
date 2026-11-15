@@ -1,6 +1,7 @@
 import { CheckCircle2, ExternalLink, Flame, PlusCircle, RefreshCcw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTrackerAnalyticsApi } from '../../../services/trackerApi';
+import HeatmapGrid from '../../ui/HeatmapGrid';
 import { formatNumber } from '../../../utils/number';
 import { localizePeriodLabel } from '../../../utils/labels';
 import { accentFor, formatValue, categoryLabel } from './helpers';
@@ -64,16 +65,10 @@ export function TrackerSpotlightWidget({ config, trackerMap, onOpenTracker, onQu
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <button
-        type="button"
-        onClick={() => onOpenTracker(tracker)}
-        className="group text-left"
-      >
+      <button type="button" onClick={() => onOpenTracker(tracker)} className="group text-left">
         <span className="flex items-center gap-2">
           {accent && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />}
-          <span className="truncate text-sm font-semibold text-stone-900 group-hover:underline">
-            {tracker.name}
-          </span>
+          <span className="truncate text-sm font-semibold text-stone-900 group-hover:underline">{tracker.name}</span>
           <ExternalLink size={12} className="shrink-0 text-gray-400" />
         </span>
         <span className="mt-0.5 block text-xs text-gray-500">{categoryLabel(tracker.category)}</span>
@@ -177,9 +172,7 @@ export function QuickLogWidget({ config, trackerMap, onQuickLog, onError }) {
             disabled={busyId === tracker.id}
             onClick={() => handleLog(tracker)}
             className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all disabled:opacity-60 ${
-              isDone
-                ? 'border-emerald-300 bg-emerald-50'
-                : 'border-gray-200 hover:border-stone-300 hover:bg-stone-50'
+              isDone ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-stone-300 hover:bg-stone-50'
             }`}
           >
             <span className="flex w-full items-center gap-1.5">
@@ -188,7 +181,11 @@ export function QuickLogWidget({ config, trackerMap, onQuickLog, onError }) {
               {isDone && <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />}
             </span>
             <span className="text-xs text-gray-500">
-              {isDone ? 'Записано' : tracker.type === 'boolean' ? 'Торкніться, щоб позначити виконаним' : `+1 ${tracker.unit}`}
+              {isDone
+                ? 'Записано'
+                : tracker.type === 'boolean'
+                  ? 'Торкніться, щоб позначити виконаним'
+                  : `+1 ${tracker.unit}`}
             </span>
           </button>
         );
@@ -223,35 +220,18 @@ export function HeatmapWidget({ config, trackerMap, onError }) {
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <p className="text-xs text-gray-500">
-        {tracker.name} · останні 24 тижні
-      </p>
-      <div className="flex-1 overflow-x-auto">
-        <div className="flex min-w-max gap-[3px]">
-          {heatmap.columns.map((week, weekIndex) => (
-            <div key={`week-${weekIndex}`} className="flex flex-col gap-[3px]">
-              {week.map((cell) => {
-                const intensity = heatmap.maxAmount > 0 ? cell.amount / heatmap.maxAmount : 0;
-                const shade = cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity);
-
-                return (
-                  <div
-                    key={cell.date}
-                    title={
-                      cell.isRelapse
-                        ? `${cell.date}: зрив`
-                        : `${cell.date}: ${formatValue(cell.amount)} ${tracker.unit}`
-                    }
-                    className={`h-3 w-3 rounded-[2px] border border-white/60 ${
-                      cell.isFiller ? 'opacity-0' : shade
-                    }`}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
+      <p className="text-xs text-gray-500">{tracker.name} · останні 24 тижні</p>
+      <HeatmapGrid
+        columns={heatmap.columns}
+        maxCell={20}
+        cellView={(cell) => {
+          const intensity = heatmap.maxAmount > 0 ? cell.amount / heatmap.maxAmount : 0;
+          return {
+            className: `border border-white/60 ${cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity)}`,
+            title: cell.isRelapse ? `${cell.date}: зрив` : `${cell.date}: ${formatValue(cell.amount)} ${tracker.unit}`
+          };
+        }}
+      />
       <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
         <span>Менше</span>
         {HEATMAP_SHADES.map((shade) => (

@@ -62,6 +62,19 @@ function LevelFields({ kind, value, onChange, prefix = '' }) {
       </Field>
     );
   }
+  if (kind === 'boolean') {
+    return (
+      <Field label="Виконати до" hint="Порожньо — підходить будь-який час дня.">
+        <input
+          type="time"
+          aria-label={label('Виконати до')}
+          value={value.done_by}
+          onChange={set('done_by')}
+          className={INPUT_CLASS}
+        />
+      </Field>
+    );
+  }
   return <p className="text-sm text-gray-500">Для цього типу додаткових порогів не потрібно.</p>;
 }
 

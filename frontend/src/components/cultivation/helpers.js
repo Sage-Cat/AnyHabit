@@ -42,6 +42,18 @@ export const DAY_STATUS_LABELS = {
   invalid: 'Перевірити запис'
 };
 
+// A success inside the tolerance band counts, but is shown apart from a clean one.
+export const WARNING_STYLE = 'bg-amber-400';
+export const WARNING_LABEL = 'Успіх з попередженням';
+
+export const dayStyle = (day) =>
+  day?.status === 'success' && day?.warning ? WARNING_STYLE : DAY_STATUS_STYLES[day?.status] || 'bg-stone-200';
+
+export const dayLabel = (day) => {
+  const label = day?.status_label || DAY_STATUS_LABELS[day?.status] || day?.status;
+  return day?.status === 'success' && day?.warning ? `${WARNING_LABEL}: ${day.warning}` : label;
+};
+
 export const INPUT_CLASS =
   'w-full rounded-xl border border-gray-200 bg-stone-50 p-2.5 text-sm outline-none focus:border-stone-400';
 export const BUTTON_PRIMARY =
