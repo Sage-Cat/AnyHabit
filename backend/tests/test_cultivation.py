@@ -222,6 +222,16 @@ def main() -> int:
     days, vers = sleep_days(perfect, today, vers=versions((D0, formation)))
     rec = cv.recommendation(formation, days, cv.find_episodes(days, vers), today)
     check("formation → stabilization recommended", rec is not None and rec["to"] == "stabilization", str(rec))
+    slipping = {**SPEC, "stage": "integrated", "maintenance": {"window_days": 14, "min_success_rate": 0.6}}
+    late = [night(D0 + timedelta(i), "04:00", "12:00") for i in range(14)]
+    days, vers = sleep_days(late, today, vers=versions((D0, slipping)))
+    rec = cv.recommendation(slipping, days, cv.find_episodes(days, vers), today)
+    check(
+        "a slipping integrated habit goes back to stabilization",
+        rec is not None and rec["to"] == "stabilization",
+        str(rec),
+    )
+    check("the recovery stage is gone", "recovery" not in cv.STAGES)
 
     print("\n[4] Ranks")
 
@@ -252,25 +262,33 @@ def main() -> int:
     lone = {1: stage_versions(("integrated", 0))}
     check("ranks are climbed in order: a lone integrated habit", rank_name(lone, 0) == "Адепт другого рівня")
     check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Звичайна людина")
-    habits = {
-        1: stage_versions(("integrated", 0), ("recovery", 20)),
-        2: stage_versions(("integrated", 1)),
-        3: stage_versions(("integrated", 2)),
-        4: stage_versions(("integrated", 3)),
+    pair = {1: stage_versions(("integrated", 0)), 2: stage_versions(("integrated", 0))}
+    check("Magus rank 2 needs a habit held 1 month: 29 days", rank_name(pair, 28) == "Маг першого рангу")
+    check("Magus rank 2 needs a habit held 1 month: 30 days", rank_name(pair, 29) == "Маг другого рангу")
+    dropped = {
+        1: stage_versions(("integrated", 0), ("stabilization", 40), ("integrated", 50)),
+        2: stage_versions(("integrated", 0), ("stabilization", 40), ("integrated", 50)),
     }
-    within = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS - 1))
-    after = cv.compute_rank(habits, D0 + timedelta(days=20 + cv.RECOVERY_GRACE_DAYS))
-    check("recovery keeps rank within grace", within["name"] == "Маг третього рангу" and within["warnings"])
+    fallen = cv.compute_rank(dropped, D0 + timedelta(days=40))
     check(
-        "rank drops after grace, peak remembered",
-        after["name"] == "Маг другого рангу" and after["peak_name"] == "Маг третього рангу",
+        "a habit back in stabilization stops counting at once, peak remembered",
+        fallen["name"] == "Адепт третього рівня" and fallen["peak_name"] == "Маг другого рангу" and fallen["warnings"],
+        f"{fallen['name']} / {fallen['peak_name']}",
     )
+    again = cv.compute_rank(dropped, D0 + timedelta(days=60))
+    check(
+        "re-integration starts the hold again",
+        again["name"] == "Маг першого рангу" and {h["held_days"] for h in again["habits"]} == {11},
+        f"{again['name']} {[h['held_days'] for h in again['habits']]}",
+    )
+    check("the hold is earned again after a month", rank_name(dropped, 79) == "Маг другого рангу")
+    four = {i: stage_versions(("integrated", 0)) for i in range(1, 5)}
+    check("Magus rank 3 needs two habits held 2 months", rank_name(four, 58) == "Маг другого рангу")
+    check("Magus rank 3 after 60 days", rank_name(four, 59) == "Маг третього рангу")
+    ladder = cv.compute_rank(four, D0)["ladder"]
+    check("hold shown in months", "утримуються ≥ 2 міс." in ladder[6]["requirement"], ladder[6]["requirement"])
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
-    check(
-        "recovery without integration does not count",
-        rank_name({1: stage_versions(("recovery", 0))}, 0) == "Адепт першого рівня",
-    )
 
     print("\n[4b] Review regressions")
     dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
@@ -568,7 +586,7 @@ def main() -> int:
             json={"date": yesterday.isoformat(), "status": "fail", "reason": "late work"},
         )
         check("agent can record facts", agent_mark.status_code == 201)
-        profile = agent.put("/cultivation/profile", headers=headers, json={"recovery_grace_days": 1})
+        profile = agent.put("/cultivation/profile", headers=headers, json={"ranks": None})
         check("agent cannot change the rank system", profile.status_code == 403)
 
         from backend.security import ACCESS_COOKIE_NAME
@@ -579,7 +597,7 @@ def main() -> int:
         check("a token in the cookie still needs consent", sneaky.status_code == 409, sneaky.text[:200])
         check(
             "a token in the cookie cannot change ranks",
-            via_cookie.put("/cultivation/profile", json={"recovery_grace_days": 1}).status_code == 403,
+            via_cookie.put("/cultivation/profile", json={"ranks": None}).status_code == 403,
         )
         read_token = client.post("/developer/tokens", json={"name": "reader", "scope": "read"}).json()["token"]
         read_mark = agent.post(
