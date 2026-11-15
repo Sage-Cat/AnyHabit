@@ -287,6 +287,8 @@ def main() -> int:
     check("Magus rank 3 after 60 days", rank_name(four, 59) == "Маг третього рангу")
     ladder = cv.compute_rank(four, D0)["ladder"]
     check("hold shown in months", "утримуються ≥ 2 міс." in ladder[6]["requirement"], ladder[6]["requirement"])
+    check("hold shown in years", "≥ 20 утримуються ≥ 1 рік" in ladder[10]["requirement"], ladder[10]["requirement"])
+    check("5 years", "≥ 128 утримуються ≥ 5 років" in ladder[13]["requirement"], ladder[13]["requirement"])
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
 
