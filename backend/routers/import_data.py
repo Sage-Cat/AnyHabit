@@ -547,18 +547,12 @@ def _import_cultivation(
         except cv.PassportError as exc:
             warnings.append(f"Власну систему рангів пропущено: {exc}.")
             ranks = None
-        grace = raw_profile.get("recovery_grace_days")
-        try:
-            grace = cv.check_number("recovery_grace_days", grace, integer=True, low=0, high=3650) if grace is not None else None
-        except cv.PassportError:
-            grace = None
         if dry_run:
             return
         if profile is None:
             profile = models.CultivationProfile(user_id=user.id)
             db.add(profile)
         profile.ranks_json = json.dumps(ranks, ensure_ascii=False) if ranks else ""
-        profile.recovery_grace_days = grace
 
 
 @legacy_router.post("/import/", response_model=schemas.ImportSummary, include_in_schema=False)

@@ -541,7 +541,7 @@ def delete_group(group_id: int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 CultivationKind = Literal["sleep", "build", "boolean", "quit"]
-CultivationStage = Literal["planned", "formation", "stabilization", "integrated", "recovery"]
+CultivationStage = Literal["planned", "formation", "stabilization", "integrated"]
 DayMarkStatus = Literal["success", "minimum", "fail", "exception", "clear"]
 
 

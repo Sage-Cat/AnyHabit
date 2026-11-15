@@ -26,13 +26,12 @@ from datetime import date, datetime, time, timedelta, timezone
 # Vocabulary
 # ---------------------------------------------------------------------------
 
-STAGES = ("planned", "formation", "stabilization", "integrated", "recovery")
+STAGES = ("planned", "formation", "stabilization", "integrated")
 STAGE_LABELS = {
     "planned": "Запланована",
     "formation": "Формування",
     "stabilization": "Стабілізація",
     "integrated": "Інтегрована",
-    "recovery": "Потребує відновлення",
 }
 DAY_STATUSES = ("success", "minimum", "fail", "exception", "no_data", "unrated", "invalid")
 DAY_STATUS_LABELS = {
@@ -844,7 +843,7 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
                 ),
             }
         return None
-    if stage in ("stabilization", "recovery"):
+    if stage == "stabilization":
         check = integration_check(spec, days, episodes, today)
         if check["ready"]:
             return {"to": "integrated", "reason": "Усі автоматичні критерії інтеграції виконано."}
@@ -854,10 +853,10 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
         stats = rate(days, int(cfg["window_days"]), today)
         ongoing = next((e for e in episodes if e.confirmed is None), None)
         if ongoing and (today - ongoing.start).days > int(cfg["max_deviation_days"]):
-            return {"to": "recovery", "reason": f"Відхилення триває {(today - ongoing.start).days} дн."}
+            return {"to": "stabilization", "reason": f"Відхилення триває {(today - ongoing.start).days} дн."}
         if stats["success_rate"] is not None and stats["success_rate"] < float(cfg["min_success_rate"]):
             return {
-                "to": "recovery",
+                "to": "stabilization",
                 "reason": (f"За {cfg['window_days']} дн. успішних днів лише {stats['success_rate']:.0%}."),
             }
     return None
@@ -867,13 +866,13 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
 # Cultivation ranks (inspired by "Warlock of the Magus World")
 # ---------------------------------------------------------------------------
 
-RECOVERY_GRACE_DAYS = 60
-ACTIVE_STAGES = ("formation", "stabilization", "integrated", "recovery")
+ACTIVE_STAGES = ("formation", "stabilization", "integrated")
 
 # active — some habit is being worked on; stabilizing — how many habits have
 # reached stabilization or beyond (true means one); integrated — number of
 # integrated habits; durable — (count, days) integrated habits held without a
-# break that long.  ``confirmed`` marks the thresholds set by the user; the rest
+# break that long.  A habit that drops out of integration goes back to
+# stabilization and starts its run again.  ``confirmed`` marks the thresholds set by the user; the rest
 # are proposals and can be overridden.  Ranks are climbed in order: a rank also
 # needs every condition below it.
 DEFAULT_RANKS: list[dict] = [
@@ -882,15 +881,15 @@ DEFAULT_RANKS: list[dict] = [
     {"name": "Адепт другого рівня", "req": {"stabilizing": 1}, "confirmed": True},
     {"name": "Адепт третього рівня", "req": {"stabilizing": 2}, "confirmed": True},
     {"name": "Маг першого рангу", "req": {"integrated": 1}, "confirmed": True},
-    {"name": "Маг другого рангу", "req": {"integrated": 2}, "confirmed": True},
-    {"name": "Маг третього рангу", "req": {"integrated": 4}, "confirmed": True},
-    {"name": "Маг Нової Зірки", "req": {"integrated": 8}, "confirmed": True},
-    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16}, "confirmed": True},
-    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32}, "confirmed": True},
-    {"name": "Маг Законів", "req": {"integrated": 64}, "confirmed": True},
-    {"name": "Великий Маг Законів", "req": {"integrated": 128}, "confirmed": True},
-    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256}, "confirmed": True},
-    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512}, "confirmed": True},
+    {"name": "Маг другого рангу", "req": {"integrated": 2, "durable": [1, 30]}, "confirmed": True},
+    {"name": "Маг третього рангу", "req": {"integrated": 4, "durable": [2, 60]}, "confirmed": True},
+    {"name": "Маг Нової Зірки", "req": {"integrated": 8, "durable": [4, 120]}, "confirmed": True},
+    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 240]}, "confirmed": True},
+    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 480]}, "confirmed": True},
+    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [32, 960]}, "confirmed": True},
+    {"name": "Великий Маг Законів", "req": {"integrated": 128, "durable": [64, 1920]}, "confirmed": True},
+    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256, "durable": [128, 3840]}, "confirmed": True},
+    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512, "durable": [256, 7680]}, "confirmed": True},
 ]
 
 
@@ -900,16 +899,14 @@ class HabitRankState:
     name: str
     stage: str | None
     counted: bool = False  # counts as integrated
-    held_days: int = 0  # unbroken run of integrated (+ recovery within grace)
-    recovery_days: int = 0
+    held_days: int = 0  # unbroken run of integrated
 
 
-def simulate_stages(habit_id: int, versions: list[dict], until: date, grace_days: int) -> dict[date, HabitRankState]:
+def simulate_stages(habit_id: int, versions: list[dict], until: date) -> dict[date, HabitRankState]:
     out: dict[date, HabitRankState] = {}
     if not versions:
         return out
     held_since: date | None = None
-    recovery_since: date | None = None
     current = min(v["effective_from"] for v in versions)
     while current <= until:
         spec = spec_for(versions, current) or {}
@@ -917,19 +914,10 @@ def simulate_stages(habit_id: int, versions: list[dict], until: date, grace_days
         state = HabitRankState(habit_id, spec.get("name", ""), stage)
         if stage == "integrated":
             held_since = held_since or current
-            recovery_since = None
             state.counted = True
-        elif stage == "recovery" and held_since is not None:
-            recovery_since = recovery_since or current
-            state.recovery_days = (current - recovery_since).days + 1
-            if state.recovery_days <= grace_days:
-                state.counted = True
-            else:
-                held_since = None
-        else:
-            held_since = recovery_since = None
-        if state.counted:
             state.held_days = (current - held_since).days + 1
+        else:
+            held_since = None
         out[current] = state
         current += timedelta(days=1)
     return out
@@ -966,6 +954,12 @@ def rank_index(ranks: list[dict], states: list[HabitRankState]) -> int:
     return index
 
 
+def _hold_text(days: int) -> str:
+    """Hold periods are set in 30-day months."""
+    days = int(days)
+    return f"{days // 30} міс." if days % 30 == 0 else f"{days} дн."
+
+
 def rank_requirement_text(req: dict) -> str:
     if not req:
         return "початковий стан"
@@ -981,7 +975,7 @@ def rank_requirement_text(req: dict) -> str:
         parts.append(f"інтегрованих звичок ≥ {req['integrated']}")
     if req.get("durable"):
         count, days = req["durable"]
-        parts.append(f"з них ≥ {count} утримуються ≥ {days} дн.")
+        parts.append(f"з них ≥ {count} утримуються ≥ {_hold_text(days)}")
     return ", ".join(parts)
 
 
@@ -1009,7 +1003,7 @@ def rank_progress(req: dict, states: list[HabitRankState]) -> list[dict]:
         count, days = req["durable"]
         have = sum(s.counted and s.held_days >= int(days) for s in states)
         parts.append(
-            {"label": f"Утримуються ≥ {days} дн.", "have": have, "need": int(count), "done": have >= int(count)}
+            {"label": f"Утримуються ≥ {_hold_text(days)}", "have": have, "need": int(count), "done": have >= int(count)}
         )
     return parts
 
@@ -1018,10 +1012,9 @@ def compute_rank(
     habit_versions: dict[int, list[dict]],
     until: date,
     ranks: list[dict] | None = None,
-    grace_days: int = RECOVERY_GRACE_DAYS,
 ) -> dict:
     ranks = ranks or DEFAULT_RANKS
-    daily = {hid: simulate_stages(hid, versions, until, grace_days) for hid, versions in habit_versions.items()}
+    daily = {hid: simulate_stages(hid, versions, until) for hid, versions in habit_versions.items()}
     first = min((min(days) for days in daily.values() if days), default=until)
     history, previous, peak = [], 0, 0
     current = first
@@ -1045,16 +1038,10 @@ def compute_rank(
     nxt = ranks[index + 1] if index + 1 < len(ranks) else None
 
     warnings = []
-    for state in states:
-        if state.stage == "recovery" and state.counted:
-            warnings.append(
-                f"Ранг нестабільний: «{state.name}» у відновленні {state.recovery_days} дн., "
-                f"ще враховується {grace_days - state.recovery_days} дн."
-            )
-        elif state.stage == "recovery":
-            warnings.append(f"«{state.name}» у відновленні довше {grace_days} дн. і не враховується.")
     if index < peak:
-        warnings.append(f"Найвищий досягнутий ранг — {ranks[peak]['name']}; він повернеться після відновлення звичок.")
+        warnings.append(
+            f"Найвищий досягнутий ранг — {ranks[peak]['name']}; він повернеться, коли звички знову інтегруються."
+        )
 
     return {
         "index": index,
@@ -1086,13 +1073,11 @@ def compute_rank(
                 "stage": s.stage,
                 "counted": s.counted,
                 "held_days": s.held_days,
-                "recovery_days": s.recovery_days,
             }
             for s in states
         ],
         "history": history,
         "warnings": warnings,
-        "grace_days": grace_days,
     }
 
 

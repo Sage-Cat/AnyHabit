@@ -48,7 +48,7 @@ class PassportChange(BaseModel):
 
 
 class StageChange(BaseModel):
-    stage: Literal["planned", "formation", "stabilization", "integrated", "recovery"]
+    stage: Literal["planned", "formation", "stabilization", "integrated"]
     reason: str = Field(min_length=1, max_length=2000)
     effective_from: Optional[date] = None
     confirmed_by_user: bool = False
@@ -84,7 +84,6 @@ class SleepEntry(BaseModel):
 
 class ProfileUpdate(BaseModel):
     ranks: Optional[list[dict[str, Any]]] = Field(default=None, description="Rank ladder; null restores the default")
-    recovery_grace_days: Optional[int] = Field(default=None, ge=0, le=3650)
 
 
 # ---------------------------------------------------------------------------
@@ -256,13 +255,11 @@ def _observations(db: Session, habit: models.CultivatedHabit, user: models.User)
     return out
 
 
-def _profile(db: Session, user: models.User) -> tuple[list[dict], int, bool]:
+def _profile(db: Session, user: models.User) -> tuple[list[dict], bool]:
     row = db.query(models.CultivationProfile).filter(models.CultivationProfile.user_id == user.id).first()
-    if row is None:
-        return cv.DEFAULT_RANKS, cv.RECOVERY_GRACE_DAYS, False
-    ranks = json.loads(row.ranks_json) if row.ranks_json else cv.DEFAULT_RANKS
-    grace = row.recovery_grace_days if row.recovery_grace_days is not None else cv.RECOVERY_GRACE_DAYS
-    return ranks, grace, bool(row.ranks_json)
+    if row is None or not row.ranks_json:
+        return cv.DEFAULT_RANKS, False
+    return json.loads(row.ranks_json), True
 
 
 # ---------------------------------------------------------------------------
@@ -421,8 +418,8 @@ def _rank(db: Session, user: models.User) -> dict:
         .filter(models.CultivatedHabit.user_id == user.id, models.CultivatedHabit.archived_at.is_(None))
         .all()
     )
-    ranks, grace, custom = _profile(db, user)
-    report = cv.compute_rank({h.id: _versions(db, h) for h in habits}, _today(user), ranks, grace)
+    ranks, custom = _profile(db, user)
+    report = cv.compute_rank({h.id: _versions(db, h) for h in habits}, _today(user), ranks)
     report["custom_ladder"] = custom
     return report
 
@@ -452,14 +449,14 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
     warnings = []
     for item in analyses:
         rec = item["recommendation"]
-        if item["stage"] == "integrated" and rec and rec["to"] == "recovery":
+        if item["stage"] == "integrated" and rec and rec["to"] == "stabilization":
             warnings.append(
                 {"habit_id": item["id"], "message": f"«{item['name']}»: стійкість погіршується. {rec['reason']}"}
             )
     return {
         "date": _today(current_user).isoformat(),
         "timezone": current_user.timezone or "UTC",
-        "active": [a for a in by_priority if a["stage"] in ("formation", "stabilization", "recovery")],
+        "active": [a for a in by_priority if a["stage"] in ("formation", "stabilization")],
         "integrated": [a for a in by_priority if a["stage"] == "integrated"],
         "planned": [a for a in by_priority if a["stage"] == "planned"],
         "warnings": warnings,
@@ -889,8 +886,8 @@ def rank(current_user: models.User = Depends(get_current_user), db: Session = De
 
 @router.get("/profile")
 def get_profile(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ranks, grace, custom = _profile(db, current_user)
-    return {"ranks": ranks, "recovery_grace_days": grace, "custom_ladder": custom, "default_ranks": cv.DEFAULT_RANKS}
+    ranks, custom = _profile(db, current_user)
+    return {"ranks": ranks, "custom_ladder": custom, "default_ranks": cv.DEFAULT_RANKS}
 
 
 @router.put("/profile")
@@ -916,8 +913,6 @@ def update_profile(
         db.add(row)
     if "ranks" in payload.model_fields_set:
         row.ranks_json = json.dumps(ranks, ensure_ascii=False) if ranks else ""
-    if payload.recovery_grace_days is not None:
-        row.recovery_grace_days = payload.recovery_grace_days
     db.commit()
     return get_profile(current_user, db)
 
@@ -968,10 +963,7 @@ def export_cultivation(db: Session, user: models.User) -> dict:
             }
         )
     if profile is not None:
-        out["profile"] = {
-            "ranks": json.loads(profile.ranks_json) if profile.ranks_json else None,
-            "recovery_grace_days": profile.recovery_grace_days,
-        }
+        out["profile"] = {"ranks": json.loads(profile.ranks_json) if profile.ranks_json else None}
     return out
 
 

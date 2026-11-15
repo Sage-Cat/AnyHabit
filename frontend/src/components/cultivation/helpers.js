@@ -6,8 +6,7 @@ export const STAGE_OPTIONS = [
   { value: 'planned', label: 'Заплановано' },
   { value: 'formation', label: 'Формування' },
   { value: 'stabilization', label: 'Стабілізація' },
-  { value: 'integrated', label: 'Інтегровано' },
-  { value: 'recovery', label: 'Відновлення' }
+  { value: 'integrated', label: 'Інтегровано' }
 ];
 
 export const KIND_OPTIONS = [

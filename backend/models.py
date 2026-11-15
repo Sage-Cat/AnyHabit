@@ -249,12 +249,12 @@ class CultivationMode(Base):
 
 
 class CultivationProfile(Base):
-    """Per-user cultivation settings: rank ladder overrides and recovery grace."""
+    """Per-user cultivation settings: rank ladder overrides."""
 
     __tablename__ = "cultivation_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
     ranks_json = Column(Text, default="")
-    recovery_grace_days = Column(Integer, default=60)
+    recovery_grace_days = Column(Integer, default=60)  # unused since the recovery stage was removed
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -1,6 +1,5 @@
 import { Check, ChevronDown, Circle } from 'lucide-react';
 import { useState } from 'react';
-import { pluralCount } from '../../utils/plural';
 import { CARD_CLASS, formatDay } from './helpers';
 import RankEmblem from './RankEmblem';
 
@@ -69,7 +68,6 @@ function RankCard({ rank }) {
       {habitsCounted.length > 0 && (
         <p className="mt-3 text-xs text-gray-400">
           У рахунок ранга йдуть: {habitsCounted.map((habit) => habit.name).join(', ')}
-          {rank.grace_days != null && ` · допустима перерва: ${pluralCount(rank.grace_days, ['день', 'дні', 'днів'])}`}
         </p>
       )}
 
