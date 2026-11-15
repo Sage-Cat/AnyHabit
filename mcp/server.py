@@ -583,7 +583,7 @@ def get_habit_days(habit_id: int, start: str | None = None, end: str | None = No
 
 @mcp.tool()
 def get_cultivation_rank() -> dict[str, Any]:
-    """Current cultivation rank, progress to the next one, rank history and warnings."""
+    """Current cultivation rank, «Прорив» (percent to the next rank), habits per stage, rank history and warnings."""
     return api.get("/cultivation/rank")
 
 

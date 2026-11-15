@@ -862,6 +862,32 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
     return None
 
 
+def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> float | None:
+    """How close a habit is to its next stage, from 0 to 1 (None for other stages).
+
+    Formation is measured against the stabilization criteria, stabilization
+    against the integration ones: the share of the required observed days times
+    the share of the required success rate.  It reaches 1 only when the move is
+    recommended, so a criterion still unmet keeps it just below.
+    """
+    stage = spec.get("stage")
+    if stage == "formation":
+        cfg, target = section(spec, "stabilization", DEFAULT_STABILIZATION), "stabilization"
+    elif stage == "stabilization":
+        cfg, target = section(spec, "integration", DEFAULT_INTEGRATION), "integrated"
+    else:
+        return None
+    advice = recommendation(spec, days, episodes, today)
+    if advice and advice["to"] == target:
+        return 1.0
+    stats = rate(days, int(cfg["window_days"]), today)
+    need_days = int(cfg["min_observed_days"])
+    need_rate = float(cfg["min_success_rate"])
+    observed = min(stats["observed_days"] / need_days, 1.0) if need_days > 0 else 1.0
+    success = min((stats["success_rate"] or 0.0) / need_rate, 1.0) if need_rate > 0 else 1.0
+    return min(observed * success, 0.99)
+
+
 # ---------------------------------------------------------------------------
 # Cultivation ranks (inspired by "Warlock of the Magus World")
 # ---------------------------------------------------------------------------
@@ -988,47 +1014,99 @@ def rank_requirement_text(req: dict) -> str:
     return ", ".join(parts)
 
 
-def rank_progress(req: dict, states: list[HabitRankState]) -> list[dict]:
+def _best(values: list[float], count: int) -> float:
+    return sum(sorted(values, reverse=True)[: max(count, 0)])
+
+
+def rank_progress(
+    req: dict, states: list[HabitRankState], readiness: dict[int, float | None] | None = None
+) -> list[dict]:
+    """Conditions of a rank, each with ``fraction`` — how much of it is done.
+
+    Habits one stage short add their readiness for the next stage, and held
+    habits add the share of the hold period already behind them.
+    """
+    readiness = readiness or {}
+
+    def ready(stage: str) -> list[float]:
+        return [readiness.get(s.habit_id) or 0.0 for s in states if s.stage == stage]
+
     parts = []
     if req.get("active"):
-        parts.append({"label": "Звичка в роботі", "done": any(s.stage in ACTIVE_STAGES for s in states)})
+        done = any(s.stage in ACTIVE_STAGES for s in states)
+        parts.append({"label": "Звичка в роботі", "done": done, "fraction": 1.0 if done else 0.0})
     need = _stabilizing_need(req)
-    if need == 1:
-        parts.append({"label": "Звичка у стабілізації", "done": _stabilizing_have(states) >= 1})
-    elif need > 1:
+    if need:
         have = _stabilizing_have(states)
-        parts.append({"label": "Звички у стабілізації чи далі", "have": have, "need": need, "done": have >= need})
+        fraction = min((have + _best(ready("formation"), need - have)) / need, 1.0)
+        if need == 1:
+            parts.append({"label": "Звичка у стабілізації", "done": have >= 1, "fraction": fraction})
+        else:
+            parts.append(
+                {
+                    "label": "Звички у стабілізації чи далі",
+                    "have": have,
+                    "need": need,
+                    "done": have >= need,
+                    "fraction": fraction,
+                }
+            )
     if "integrated" in req:
+        need = int(req["integrated"])
         have = sum(s.counted for s in states)
+        fraction = min((have + _best(ready("stabilization"), need - have)) / need, 1.0) if need else 1.0
         parts.append(
-            {
-                "label": "Інтегровані звички",
-                "have": have,
-                "need": int(req["integrated"]),
-                "done": have >= int(req["integrated"]),
-            }
+            {"label": "Інтегровані звички", "have": have, "need": need, "done": have >= need, "fraction": fraction}
         )
     if req.get("durable"):
-        count, days = req["durable"]
-        have = sum(s.counted and s.held_days >= int(days) for s in states)
+        count, days = (int(v) for v in req["durable"])
+        have = sum(s.counted and s.held_days >= days for s in states)
+        held = [min(s.held_days / days, 1.0) for s in states if s.counted]
         parts.append(
-            {"label": f"Утримуються ≥ {_hold_text(days)}", "have": have, "need": int(count), "done": have >= int(count)}
+            {
+                "label": f"Утримуються ≥ {_hold_text(days)}",
+                "have": have,
+                "need": count,
+                "done": have >= count,
+                "fraction": _best(held, count) / count if count else 1.0,
+            }
         )
     return parts
+
+
+def breakthrough(parts: list[dict]) -> int:
+    """«Прорив»: percent of the way to the next rank, the mean of its conditions, rounded down."""
+    if not parts:
+        return 100
+    return int(sum(part["fraction"] for part in parts) / len(parts) * 100)
+
+
+def _stage_counts(states: list[HabitRankState]) -> dict[str, int]:
+    counts = {stage: 0 for stage in STAGES}
+    for state in states:
+        if state.stage in counts:
+            counts[state.stage] += 1
+    return counts
 
 
 def compute_rank(
     habit_versions: dict[int, list[dict]],
     until: date,
     ranks: list[dict] | None = None,
+    readiness: dict[int, float | None] | None = None,
 ) -> dict:
+    """Rank on ``until`` with its history; ``readiness`` (habit id → 0..1) feeds the «Прорив» percent."""
     ranks = ranks or DEFAULT_RANKS
     daily = {hid: simulate_stages(hid, versions, until) for hid, versions in habit_versions.items()}
     first = min((min(days) for days in daily.values() if days), default=until)
-    history, previous, peak = [], 0, 0
+    history, timeline, previous, peak = [], [], 0, 0
     current = first
     while current <= until:
-        index = rank_index(ranks, [days[current] for days in daily.values() if current in days])
+        on_day = [days[current] for days in daily.values() if current in days]
+        index = rank_index(ranks, on_day)
+        counts = _stage_counts(on_day)
+        if not timeline or any(timeline[-1][stage] != counts[stage] for stage in STAGES):
+            timeline.append({"date": current.isoformat(), **counts})
         if index != previous:
             history.append(
                 {
@@ -1043,8 +1121,11 @@ def compute_rank(
         peak = max(peak, index)
         current += timedelta(days=1)
     states = [days[until] for days in daily.values() if until in days]
+    if timeline and timeline[-1]["date"] != until.isoformat():
+        timeline.append({"date": until.isoformat(), **_stage_counts(states)})
     index = rank_index(ranks, states)
     nxt = ranks[index + 1] if index + 1 < len(ranks) else None
+    progress = rank_progress(nxt["req"], states, readiness) if nxt else []
 
     warnings = []
     if index < peak:
@@ -1063,7 +1144,8 @@ def compute_rank(
             "index": index + 1,
             "name": nxt["name"],
             "requirement": rank_requirement_text(nxt["req"]),
-            "progress": rank_progress(nxt["req"], states),
+            "progress": progress,
+            "breakthrough": breakthrough(progress),
             "confirmed": nxt.get("confirmed", False),
         },
         "ladder": [
@@ -1085,6 +1167,8 @@ def compute_rank(
             }
             for s in states
         ],
+        "stages": _stage_counts(states),
+        "timeline": timeline,
         "history": history,
         "warnings": warnings,
     }

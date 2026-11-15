@@ -376,6 +376,7 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
         "monthly": cv.monthly(episodes, days),
         "integration": integration,
         "recommendation": cv.recommendation(spec, days, episodes, today) if spec else None,
+        "readiness": cv.stage_readiness(spec, days, episodes, today) if spec else None,
         "days": [d.as_dict() for d in days[-history_days:]] if history_days else [],
     }
 
@@ -393,6 +394,7 @@ def _compact(analysis: dict) -> dict:
         "mode",
         "recommendation",
         "integration",
+        "readiness",
     )
     out = {key: analysis[key] for key in keep}
     out["success_rate_30"] = analysis["rates"]["30"]["success_rate"]
@@ -412,14 +414,16 @@ def _compact(analysis: dict) -> dict:
     return out
 
 
-def _rank(db: Session, user: models.User) -> dict:
+def _rank(db: Session, user: models.User, readiness: dict[int, float | None] | None = None) -> dict:
     habits = (
         db.query(models.CultivatedHabit)
         .filter(models.CultivatedHabit.user_id == user.id, models.CultivatedHabit.archived_at.is_(None))
         .all()
     )
     ranks, custom = _profile(db, user)
-    report = cv.compute_rank({h.id: _versions(db, h) for h in habits}, _today(user), ranks)
+    if readiness is None:
+        readiness = {h.id: _analyse(db, user, h, history_days=0)["readiness"] for h in habits}
+    report = cv.compute_rank({h.id: _versions(db, h) for h in habits}, _today(user), ranks, readiness)
     report["custom_ladder"] = custom
     return report
 
@@ -460,7 +464,7 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         "integrated": [a for a in by_priority if a["stage"] == "integrated"],
         "planned": [a for a in by_priority if a["stage"] == "planned"],
         "warnings": warnings,
-        "rank": _rank(db, current_user),
+        "rank": _rank(db, current_user, {a["id"]: a["readiness"] for a in analyses}),
     }
 
 

@@ -2,6 +2,7 @@ import { Check, ChevronDown, Circle } from 'lucide-react';
 import { useState } from 'react';
 import { CARD_CLASS, formatDay } from './helpers';
 import RankEmblem from './RankEmblem';
+import { Breakthrough, StageCounts, StageTimeline } from './RankStats';
 
 function RankCard({ rank }) {
   const [showLadder, setShowLadder] = useState(false);
@@ -12,64 +13,78 @@ function RankCard({ rank }) {
 
   return (
     <section className={CARD_CLASS} aria-label="Ранг" data-testid="rank-card">
-      <div className="flex items-center gap-4">
-        <RankEmblem index={rank.index} size="lg" />
+      <div className="grid gap-6 xl:grid-cols-2">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ранг</p>
-          <h2 className="mt-1 text-3xl font-bold tracking-tight text-stone-900" data-testid="rank-name">
-            {rank.name}
-          </h2>
-        </div>
-      </div>
-      {peakHigher && <p className="mt-1 text-sm text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>}
+          <div className="flex items-center gap-4">
+            <RankEmblem index={rank.index} size="lg" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ранг</p>
+              <h2 className="mt-1 text-3xl font-bold tracking-tight text-stone-900" data-testid="rank-name">
+                {rank.name}
+              </h2>
+            </div>
+          </div>
+          {peakHigher && <p className="mt-1 text-sm text-gray-500">Найвищий досягнутий: {rank.peak_name}</p>}
 
-      {rank.next && (
-        <div className="mt-4 rounded-xl bg-stone-50 p-4">
-          <p className="text-sm font-semibold text-stone-800">Далі: {rank.next.name}</p>
-          {rank.next.requirement && <p className="mt-1 text-sm text-gray-600">{rank.next.requirement}</p>}
-          {rank.next.confirmed === false && (
-            <p className="mt-1 text-xs text-amber-700">Умова — пропозиція, ще не підтверджена вами</p>
-          )}
-          {rank.next.progress?.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {rank.next.progress.map((item) => (
-                <li key={item.label} className="flex items-start gap-2 text-sm">
-                  {item.done ? (
-                    <Check size={16} className="mt-0.5 shrink-0 text-emerald-600" aria-label="виконано" />
-                  ) : (
-                    <Circle size={16} className="mt-0.5 shrink-0 text-gray-300" aria-label="не виконано" />
-                  )}
-                  <span className={item.done ? 'text-stone-700' : 'text-gray-600'}>
-                    {item.label}
-                    {item.have != null && item.need != null && (
-                      <span className="ml-1 text-gray-400">
-                        ({item.have} з {item.need})
+          {rank.next && (
+            <div className="mt-4 rounded-xl bg-stone-50 p-4">
+              <Breakthrough next={rank.next} />
+              <p className="mt-3 text-sm font-semibold text-stone-800">Далі: {rank.next.name}</p>
+              {rank.next.requirement && <p className="mt-1 text-sm text-gray-600">{rank.next.requirement}</p>}
+              {rank.next.confirmed === false && (
+                <p className="mt-1 text-xs text-amber-700">Умова — пропозиція, ще не підтверджена вами</p>
+              )}
+              {rank.next.progress?.length > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {rank.next.progress.map((item) => (
+                    <li key={item.label} className="flex items-start gap-2 text-sm">
+                      {item.done ? (
+                        <Check size={16} className="mt-0.5 shrink-0 text-emerald-600" aria-label="виконано" />
+                      ) : (
+                        <Circle size={16} className="mt-0.5 shrink-0 text-gray-300" aria-label="не виконано" />
+                      )}
+                      <span className={item.done ? 'text-stone-700' : 'text-gray-600'}>
+                        {item.label}
+                        {item.have != null && item.need != null && (
+                          <span className="ml-1 text-gray-400">
+                            ({item.have} з {item.need})
+                          </span>
+                        )}
+                        {item.fraction != null && !item.done && (
+                          <span className="ml-1 text-gray-400">· {Math.floor(item.fraction * 100)}%</span>
+                        )}
                       </span>
-                    )}
-                  </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {!rank.next && <p className="mt-3 text-sm text-gray-500">Це найвищий ранг у списку.</p>}
+
+          {rank.warnings?.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {rank.warnings.map((warning) => (
+                <li key={warning} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {warning}
                 </li>
               ))}
             </ul>
           )}
+
+          {habitsCounted.length > 0 && (
+            <p className="mt-3 text-xs text-gray-400">
+              У рахунок ранга йдуть: {habitsCounted.map((habit) => habit.name).join(', ')}
+            </p>
+          )}
         </div>
-      )}
-      {!rank.next && <p className="mt-3 text-sm text-gray-500">Це найвищий ранг у списку.</p>}
 
-      {rank.warnings?.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {rank.warnings.map((warning) => (
-            <li key={warning} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {warning}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {habitsCounted.length > 0 && (
-        <p className="mt-3 text-xs text-gray-400">
-          У рахунок ранга йдуть: {habitsCounted.map((habit) => habit.name).join(', ')}
-        </p>
-      )}
+        <div className="min-w-0 space-y-4" data-testid="rank-stage-stats">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Звички за етапами</p>
+          <StageCounts stages={rank.stages} />
+          <StageTimeline timeline={rank.timeline} height={160} />
+        </div>
+      </div>
 
       <button
         type="button"

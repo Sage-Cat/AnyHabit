@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { createBooleanLogApi } from '../../services/trackerApi';
 import { useAppState } from '../../state/appState';
 import RankEmblem from './RankEmblem';
+import { Breakthrough, StageCounts, StageTimeline } from './RankStats';
 import SleepEntryModal from './SleepEntryModal';
 import { DayStatusPill, ModeBadge } from './common';
 import { BUTTON_SECONDARY, useCultivationOverview } from './helpers';
@@ -11,7 +12,7 @@ import { BUTTON_SECONDARY, useCultivationOverview } from './helpers';
 const CARD = 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm';
 const LABEL = 'text-[11px] font-semibold uppercase tracking-wider text-gray-400';
 
-/** The cultivation rank on its own: emblem, name, the next step and the whole ladder at a glance. */
+/** The cultivation rank: emblem, name, «Прорив» to the next one, habits per stage and the whole ladder. */
 function HomeRankCard({ rank }) {
   if (!rank) return null;
   return (
@@ -35,6 +36,9 @@ function HomeRankCard({ rank }) {
       ) : (
         <p className="text-sm text-gray-500">Це найвищий ранг у списку.</p>
       )}
+      <Breakthrough next={rank.next} />
+      <StageCounts stages={rank.stages} />
+      <StageTimeline timeline={rank.timeline} height={96} />
       {rank.ladder?.length > 0 && (
         <ol className="flex flex-wrap items-center gap-1.5" aria-label="Шлях рангів">
           {rank.ladder.map((step) => (
