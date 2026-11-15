@@ -344,6 +344,116 @@ def main() -> int:
     )
     check("rank ladder gets req filled in", cv.validate_ranks([{"name": "A"}]) == [{"name": "A", "req": {}}])
 
+    print("\n[4c] Tolerance band and all habits together")
+    tolerant = {
+        **SPEC,
+        "level": {"wake_by": "08:00", "min_sleep_h": 7.5, "max_sleep_h": 9.5},
+        "tolerance": {"wake_by": "08:00", "min_sleep_h": 6.5, "max_sleep_h": 10.5},
+        "minimum": {"wake_by": "09:00", "min_sleep_h": 6.5, "max_sleep_h": 10.5},
+    }
+    cv.validate_spec("sleep", tolerant)
+    tv = versions((D0, tolerant))
+    short = sleep_days([night(d, "01:00", "08:00")], d, vers=tv)[0][-1]
+    check(
+        "7 h inside the tolerance counts as success with a warning",
+        (short.status, short.met, bool(short.warning)) == ("success", True, True),
+        f"{short.status} {short.warning!r}",
+    )
+    check("warning names what happened", "сон 7 год" in short.warning and "допуску" in short.warning, short.warning)
+    check(
+        "warning travels with the day",
+        short.as_dict()["warning"] == short.warning and short.as_dict()["status"] == "success",
+    )
+    long = sleep_days([night(d, "21:30", "07:30")], d, vers=tv)[0][-1]
+    check("10 h is still allowed with a warning", long.status == "success" and long.warning, long.status)
+    on_target = sleep_days([night(d, "23:00", "07:30")], d, vers=tv)[0][-1]
+    check("target night has no warning", on_target.status == "success" and not on_target.warning)
+    too_short = sleep_days([night(d, "02:00", "08:00")], d, vers=tv)[0][-1]
+    check("6 h is below the tolerance and the minimum", too_short.status == "fail", too_short.status)
+    late = sleep_days([night(d, "00:00", "08:40")], d, vers=tv)[0][-1]
+    check("late wake inside the minimum stays minimum", (late.status, late.warning) == ("minimum", ""), late.status)
+    check(
+        "rates count warnings without leaving success",
+        cv.rate([short, on_target], 7, d)["warnings"] == 1 and cv.rate([short], 7, d)["success_rate"] == 1,
+    )
+
+    work = {
+        "name": "Work",
+        "stage": "formation",
+        "start_date": D0.isoformat(),
+        "level": {"done_by": "18:00"},
+        "tolerance": {"done_by": "19:00"},
+    }
+    cv.validate_spec("boolean", work)
+    check("boolean deadline text", cv.level_text("boolean", work["level"]) == "виконати до 18:00")
+    check("tolerance defined only with a deadline", not cv.tolerance_defined("boolean", {}))
+
+    def done_at(clock: str) -> cv.Day:
+        hour, minute, *rest = (int(part) for part in clock.split(":"))
+        obs = cv.Observation(
+            amount=1,
+            events=1,
+            first_at=datetime.min.time().replace(hour=hour, minute=minute, second=rest[0] if rest else 0),
+        )
+        return cv.build_days("boolean", versions((D0, work)), {d: obs}, {}, [], d)[-1]
+
+    results = {clock: done_at(clock) for clock in ("17:55", "18:00:40", "18:30", "19:00:59", "19:01")}
+    check(
+        "boolean deadline and tolerance by the minute",
+        [(r.status, bool(r.warning)) for r in results.values()]
+        == [("success", False), ("success", False), ("success", True), ("success", True), ("fail", False)],
+        str([(c, r.status, r.warning) for c, r in results.items()]),
+    )
+    check("boolean warning names the time", "виконано о 18:30" in results["18:30"].warning, results["18:30"].warning)
+    try:
+        cv.validate_spec("boolean", {**work, "tolerance": {"done_by": "19h"}})
+        check("bad deadline rejected", False)
+    except cv.PassportError:
+        check("bad deadline rejected", True)
+
+    sleep_hist = sleep_days(
+        [night(D0 + timedelta(days=i), "23:00", "07:00") for i in (0, 1, 3)]
+        + [night(D0 + timedelta(days=2), "04:00", "11:30")],
+        D0 + timedelta(days=4),
+    )[0]
+    work_hist = cv.build_days(
+        "boolean",
+        versions((D0, work)),
+        {D0 + timedelta(days=i): cv.Observation(amount=1, events=1) for i in (0, 1, 2)},
+        {},
+        [],
+        D0 + timedelta(days=4),
+    )
+    combined = cv.combined_stats(
+        [{"id": 1, "name": "Sleep", "days": sleep_hist}, {"id": 2, "name": "Work", "days": work_hist}],
+        D0 + timedelta(days=1),
+        D0 + timedelta(days=4),
+    )
+    check("series cover the window", [len(h["series"]) for h in combined["habits"]] == [4, 4])
+    check(
+        "habit metadata passes through", combined["habits"][1]["name"] == "Work" and "days" not in combined["habits"][1]
+    )
+    day3 = combined["daily"][1]  # D0+2: sleep failed, work done
+    check(
+        "daily totals across habits",
+        (day3["judged"], day3["counts"]["fail"], day3["success_rate"]) == (2, 1, 0.5),
+        str(day3),
+    )
+    last = combined["daily"][-1]  # D0+4: nothing recorded yet
+    check("an open day without data is not a failure", last["judged"] == 0 and last["success_rate"] is None)
+    first_roll = combined["habits"][0]["series"][0]["rolling"]
+    check("rolling share looks back before the window", first_roll == 1.0, str(first_roll))
+    summary = combined["summary"]
+    check(
+        "clean streak counts days without a failure",
+        (summary["clean_streak"], summary["best_clean_streak"]) == (1, 2),
+        f"{summary['clean_streak']} {summary['best_clean_streak']}",
+    )
+    check("7-day totals add every habit", summary["rates"]["7"]["judged"] == 7, str(summary["rates"]["7"]))
+    check("today's pending habits", summary["today"]["pending"] == 2, str(summary["today"]))
+    empty = cv.combined_stats([], D0, D0)
+    check("no habits: empty statistics", empty["summary"]["clean_streak"] == 0 and empty["daily"][0]["habits"] == 0)
+
     print("\n[5] API")
     workdir = Path(tempfile.mkdtemp(prefix="anyhabit-cultivation-"))
     os.environ["ANYHABIT_DATA_DIR"] = str(workdir / "data")
@@ -679,6 +789,62 @@ def main() -> int:
         check("malformed cultivation section is a warning, not an error", restore(third, odd).status_code == 200)
         odd["cultivation"] = {"habits": [{"kind": "sleep", "versions": 3}]}
         check("malformed versions are skipped", restore(third, odd).json()["cultivation_habits_skipped"] == 1)
+
+        workday = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Finish work",
+                    "stage": "formation",
+                    "level": {"done_by": "18:00"},
+                    "tolerance": {"done_by": "19:00"},
+                    "start_date": (local_today - timedelta(days=3)).isoformat(),
+                },
+                "reason": "deadline habit",
+                "effective_from": (local_today - timedelta(days=3)).isoformat(),
+            },
+        )
+        check("boolean habit with a deadline created", workday.status_code == 201, workday.text[:300])
+        work_id, work_tracker = workday.json()["id"], workday.json()["tracker"]["id"]
+        late_log = client.post(
+            f"/trackers/{work_tracker}/logs/",
+            json={
+                "amount": 1,
+                "timestamp": datetime.combine(
+                    yesterday, datetime.min.time().replace(hour=18, minute=40), TZ
+                ).isoformat(),
+            },
+        )
+        check("late completion logged", late_log.status_code in (200, 201), late_log.text[:200])
+        work_days = client.get(f"/cultivation/habits/{work_id}/days").json()
+        late_day = next((x for x in work_days if x["date"] == yesterday.isoformat()), {})
+        check(
+            "completion inside the tolerance is a success with a warning",
+            late_day.get("status") == "success" and "18:40" in late_day.get("warning", ""),
+            str(late_day)[:300],
+        )
+        detail = client.get(f"/cultivation/habits/{work_id}").json()
+        check(
+            "today shows the deadline and the tolerance",
+            detail["today"]["requirement"] == "виконати до 18:00"
+            and detail["today"]["tolerance"] == "виконати до 19:00",
+            str(detail["today"])[:300],
+        )
+        stats = client.get("/cultivation/stats", params={"days": 14})
+        body = stats.json()
+        check("combined statistics served", stats.status_code == 200 and len(body["daily"]) == 14, stats.text[:200])
+        check(
+            "statistics list active habits with their tracker colour field",
+            work_id in {h["id"] for h in body["habits"]} and all("color" in h for h in body["habits"]),
+            str([h.get("id") for h in body["habits"]]),
+        )
+        check(
+            "statistics count the warning",
+            body["summary"]["rates"]["7"]["warnings"] >= 1,
+            str(body["summary"]["rates"]["7"]),
+        )
+        check("days are bounded", client.get("/cultivation/stats", params={"days": 2}).status_code == 422)
 
         lost = json.loads(json.dumps(exported))
         lost["trackers"][0]["type"] = "mystery"

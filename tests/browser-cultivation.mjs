@@ -284,6 +284,133 @@ try {
   await page.locator('[data-testid="mark-form"]').waitFor({ timeout: 10000 });
   check('unarchived habit is writable again', (await header.locator('text=в архіві').count()) === 0);
 
+  console.log('\n[9] Tolerance band and all habits together');
+  const workName = `Робота ${Date.now()}`;
+  const work = await page.evaluate(async (name) => {
+    // Days and clock times are judged in the user's timezone, which another
+    // suite may have changed, so "yesterday at 18:30" is built in that zone.
+    const { timezone } = await (await fetch('/cultivation/overview', { credentials: 'include' })).json();
+    const partsOf = (date) =>
+      Object.fromEntries(
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: timezone,
+          hourCycle: 'h23',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+          .formatToParts(date)
+          .map((part) => [part.type, part.value])
+      );
+    const now = partsOf(new Date());
+    const today = Date.UTC(+now.year, +now.month - 1, +now.day);
+    const day = (offset) => new Date(today - offset * 86400000).toISOString().slice(0, 10);
+    const guess = today - 86400000 + (18 * 60 + 30) * 60000;
+    const seen = partsOf(new Date(guess));
+    const shift = Date.UTC(+seen.year, +seen.month - 1, +seen.day, +seen.hour, +seen.minute) - guess;
+    const late = new Date(guess - shift);
+    const created = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'boolean',
+        spec: {
+          name,
+          stage: 'formation',
+          start_date: day(3),
+          level: { done_by: '18:00' },
+          tolerance: { done_by: '19:00' }
+        },
+        effective_from: day(3),
+        reason: 'e2e'
+      })
+    });
+    if (!created.ok) throw new Error(await created.text());
+    const habit = await created.json();
+    const logged = await fetch(`/trackers/${habit.tracker.id}/logs/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: 1, timestamp: late.toISOString() })
+    });
+    if (!logged.ok) throw new Error(await logged.text());
+    return { id: habit.id, trackerId: habit.tracker.id, day: day(1) };
+  }, workName);
+
+  await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="day-calendar"]');
+  const lateCell = page.locator('[data-testid="day-calendar"] button[data-warning="true"]');
+  check('late completion inside the tolerance is flagged in the calendar', (await lateCell.count()) === 1);
+  check(
+    'flagged day still counts as a success',
+    (await lateCell.first().getAttribute('data-status')) === 'success' &&
+      (await lateCell.first().getAttribute('aria-label')).includes('18:30')
+  );
+  check(
+    'passport shows the tolerance',
+    (await page.locator('[data-testid="passport-view"]').innerText()).includes('виконати до 19:00')
+  );
+
+  await page.evaluate(async () => {
+    const widgets = [
+      { id: 'e2e-stats', type: 'cultivationStats', title: 'Загальна статистика', config: {} },
+      { id: 'e2e-chart', type: 'cultivationChart', title: 'Графік усіх звичок', config: { days: 30 } },
+      { id: 'e2e-heat', type: 'cultivationHeatmap', title: 'Загальна теплова карта', config: {} }
+    ];
+    const saved = await fetch('/dashboard/home', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ widgets, layouts: {} })
+    });
+    if (!saved.ok) throw new Error(await saved.text());
+  });
+  await page.setViewportSize({ width: 2560, height: 1300 });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="overall-stats"]', { timeout: 10000 });
+  check(
+    'overall statistics count the warning',
+    Number((await page.locator('[data-testid="stats-warnings"] p').nth(1).innerText()).trim()) >= 1
+  );
+  check(
+    'the chart has a line and a legend entry for the new habit',
+    (await page.locator('[data-testid="habits-chart-legend"]').innerText()).includes(workName)
+  );
+  check(
+    'the combined heatmap draws days',
+    (await page.locator('[data-testid="habits-heatmap-grid"] [data-date]').count()) >= 7
+  );
+  const homeWidth = (await page.locator('[data-testid="home-content"]').boundingBox()).width;
+  check('home content is capped on a wide screen', homeWidth <= 1536, String(homeWidth));
+
+  await page.goto(`${BASE}/tracker/${work.trackerId}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="tracker-heatmap"]');
+  const [history, heatmapCard] = await page
+    .locator('[data-testid="tracker-charts"] > div')
+    .evaluateAll((nodes) => nodes.slice(0, 2).map((node) => node.getBoundingClientRect().toJSON()));
+  check(
+    'tracker charts sit side by side on a wide screen',
+    Math.abs(history.top - heatmapCard.top) < 2 && heatmapCard.left > history.left,
+    JSON.stringify([history, heatmapCard])
+  );
+  const heatmapWidth = (await page.locator('[data-testid="tracker-heatmap"]').boundingBox()).width;
+  check(
+    'the heatmap fills its card',
+    heatmapWidth > heatmapCard.width * 0.6,
+    `${heatmapWidth} of ${heatmapCard.width}`
+  );
+
+  await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="calendar-block"]');
+  const [todayBox, calendarBox] = await Promise.all(
+    ['today-block', 'calendar-block'].map((id) => page.locator(`[data-testid="${id}"]`).boundingBox())
+  );
+  check('habit page uses two columns on a wide screen', Math.abs(todayBox.y - calendarBox.y) < 2);
+  await page.setViewportSize({ width: 1400, height: 900 });
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);

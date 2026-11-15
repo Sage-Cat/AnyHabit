@@ -74,6 +74,9 @@ try {
 
   console.log('\n[2] Every widget type renders');
   const widgetLabels = [
+    'Загальна статистика',
+    'Графік усіх звичок',
+    'Загальна теплова карта',
     'Підсумки впливу',
     'Огляд звичок',
     'Розподіл за категоріями',
@@ -97,7 +100,7 @@ try {
   await page.waitForTimeout(1500);
 
   const cards = await page.locator('.home-widget-card').count();
-  check('all 15 widgets on the board', cards === widgetLabels.length, `rendered ${cards}`);
+  check(`all ${widgetLabels.length} widgets on the board`, cards === widgetLabels.length, `rendered ${cards}`);
   check('no crash overlay', !(await page.locator('text=/Щось пішло не так/i').first().isVisible().catch(() => false)));
 
   console.log('\n[3] Widgets prompt for the config they need');

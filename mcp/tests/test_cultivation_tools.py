@@ -59,3 +59,8 @@ def test_facts_are_recorded_without_confirmation(server):
     server.mark_habit_day(2, "2026-11-12", "exception", "illness")
     paths = [path for _, path, _ in server.calls]
     assert paths == ["/cultivation/habits/2/sleep", "/cultivation/habits/2/marks"]
+
+
+def test_stats_pass_the_window(server):
+    server.get_cultivation_stats(30)
+    assert server.calls[-1] == ("GET", "/cultivation/stats", {"params": {"days": 30}})
