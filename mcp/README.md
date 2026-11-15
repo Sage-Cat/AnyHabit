@@ -155,6 +155,7 @@ to `backend:8000`.
 - `get_habit_days`
 - `get_cultivation_rank`
 - `get_cultivation_stats`
+- `get_cultivation_progress`
 - `get_cultivation_vocabulary`
 - `export_cultivation`
 - `log_sleep`
