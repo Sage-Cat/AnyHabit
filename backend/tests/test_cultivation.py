@@ -222,6 +222,12 @@ def main() -> int:
     days, vers = sleep_days(perfect, today, vers=versions((D0, formation)))
     rec = cv.recommendation(formation, days, cv.find_episodes(days, vers), today)
     check("formation → stabilization recommended", rec is not None and rec["to"] == "stabilization", str(rec))
+    ready = cv.stage_readiness(formation, days, cv.find_episodes(days, vers), today)
+    check("readiness is full once the move is recommended", ready == 1.0, str(ready))
+    days, vers = sleep_days(perfect[:5], D0 + timedelta(days=4), vers=versions((D0, formation)))
+    ready = cv.stage_readiness(formation, days, cv.find_episodes(days, vers), D0 + timedelta(days=4))
+    check("readiness: 5 of 10 observed days, rate above the bar", ready == 0.5, str(ready))
+    check("no readiness for an integrated habit", cv.stage_readiness({"stage": "integrated"}, days, [], today) is None)
     slipping = {**SPEC, "stage": "integrated", "maintenance": {"window_days": 14, "min_success_rate": 0.6}}
     late = [night(D0 + timedelta(i), "04:00", "12:00") for i in range(14)]
     days, vers = sleep_days(late, today, vers=versions((D0, slipping)))
@@ -286,6 +292,28 @@ def main() -> int:
     check("Magus rank 3 needs two habits held 2 months", rank_name(four, 58) == "Маг другого рангу")
     check("Magus rank 3 after 60 days", rank_name(four, 59) == "Маг третього рангу")
     ladder = cv.compute_rank(four, D0)["ladder"]
+    starting = {1: stage_versions(("formation", 0))}
+    check("Прорив without readiness is 0", cv.compute_rank(starting, D0)["next"]["breakthrough"] == 0)
+    half = cv.compute_rank(starting, D0, readiness={1: 0.5})["next"]
+    check("Прорив counts readiness for the next stage", half["breakthrough"] == 50, str(half))
+    holding = cv.compute_rank(pair, D0 + timedelta(days=14))["next"]
+    check(
+        "Прорив counts the hold already behind: 2 of 2 integrated, 15 of 30 days",
+        holding["name"] == "Маг другого рангу" and holding["breakthrough"] == 75,
+        str(holding),
+    )
+    report = cv.compute_rank(dropped, D0 + timedelta(days=60))
+    check(
+        "habits per stage today",
+        report["stages"] == {"planned": 0, "formation": 0, "stabilization": 0, "integrated": 2},
+        str(report["stages"]),
+    )
+    check(
+        "stage timeline keeps only the changes and today",
+        [t["date"] for t in report["timeline"]] == [(D0 + timedelta(days=n)).isoformat() for n in (0, 40, 50, 60)]
+        and report["timeline"][1]["stabilization"] == 2,
+        str(report["timeline"]),
+    )
     check("hold shown in months", "утримуються ≥ 2 міс." in ladder[6]["requirement"], ladder[6]["requirement"])
     check("hold shown in years", "≥ 20 утримуються ≥ 1 рік" in ladder[10]["requirement"], ladder[10]["requirement"])
     check("5 years", "≥ 128 утримуються ≥ 5 років" in ladder[13]["requirement"], ladder[13]["requirement"])
@@ -686,6 +714,19 @@ def main() -> int:
         overview = client.get("/cultivation/overview").json()
         check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
         check("overview carries the rank", overview["rank"]["name"] == "Адепт другого рівня", overview["rank"]["name"])
+        check(
+            "overview rank carries Прорив and habits per stage",
+            isinstance(overview["rank"]["next"]["breakthrough"], int)
+            and overview["rank"]["stages"]["stabilization"] == 1
+            and overview["rank"]["timeline"],
+            str(overview["rank"].get("stages")),
+        )
+        alone = client.get("/cultivation/rank").json()
+        check(
+            "rank endpoint gives the same Прорив",
+            alone["next"]["breakthrough"] == overview["rank"]["next"]["breakthrough"],
+            str(alone["next"]),
+        )
 
         exported = client.get("/export/?data_type=all&format=json").json()
         cult = exported.get("cultivation", {})

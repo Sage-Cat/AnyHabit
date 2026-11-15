@@ -63,6 +63,16 @@ try {
     'no data yet is reported as such',
     (await card.locator('[data-testid="today-status"]').innerText()).trim() === 'Немає даних'
   );
+  const practiceRank = page.locator('[data-testid="rank-card"]');
+  const percent = practiceRank.locator('[data-testid="breakthrough-percent"]');
+  await percent.waitFor({ timeout: 10000 });
+  check(
+    'rank card shows Прорив in percent',
+    /^\d{1,2}%$/.test((await percent.innerText()).trim()),
+    await percent.innerText()
+  );
+  const formationCount = await practiceRank.locator('[data-testid="stage-count-formation"]').innerText();
+  check('rank card counts habits per stage', Number(formationCount.match(/\d+/)?.[0]) >= 1, formationCount);
 
   console.log('\n[3] Quick sleep entry');
   await card.getByRole('button', { name: 'Внести сон' }).click();
@@ -201,6 +211,14 @@ try {
     'rank card does not carry habit actions',
     (await rankCard.getByRole('button', { name: 'Внести сон' }).count()) === 0
   );
+  check(
+    'home rank card shows Прорив',
+    (await rankCard.locator('[data-testid="breakthrough"]').innerText()).includes('Прорив')
+  );
+  check(
+    'home rank card counts habits per stage',
+    (await rankCard.locator('[data-testid="stage-counts"]').count()) === 1
+  );
   const todayHabit = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', { hasText: habitName });
   check('today card lists the active habit', (await todayHabit.count()) === 1);
 
@@ -237,6 +255,10 @@ try {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
   const header = page.locator('[data-testid="habit-title"]').locator('xpath=..');
+  check(
+    'the recovery stage is no longer offered',
+    (await page.getByLabel('Новий етап').locator('option[value="recovery"]').count()) === 0
+  );
   await page.getByLabel('Новий етап').selectOption('stabilization');
   await page.getByLabel('Причина зміни етапу').fill('Перевірка етапу');
   await page.getByRole('button', { name: 'Змінити етап', exact: true }).click();
