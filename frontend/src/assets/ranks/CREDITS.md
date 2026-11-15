@@ -10,7 +10,7 @@ CSS masks.
 | `00-person.svg` | person | Delapouite |
 | `01-high-kick.svg` | high-kick | Delapouite |
 | `02-pikeman.svg` | pikeman | Delapouite |
-| `03-rune-sword.svg` | rune-sword | Lorc |
+| `03-relic-blade.svg` | relic-blade | Lorc |
 | `04-bolt-spell-cast.svg` | bolt-spell-cast | Delapouite |
 | `05-fire-silhouette.svg` | fire-silhouette | Lorc |
 | `06-juggler.svg` | juggler | Lorc |
