@@ -451,7 +451,10 @@ Manage habit trackers.
   
 - **historical_chart_data**: 120-day historical data for charts
   
-- **build_heatmap**: GitHub-style contribution heatmap for 24 weeks
+- **build_heatmap**: GitHub-style contribution heatmap for 24 weeks. When the tracker feeds a
+  cultivated habit, each cell also carries `status` (the habit's day state: `success`, `minimum`,
+  `fail`, `exception`, `no_data`…) and `warning` (non-empty for a success inside the tolerance);
+  both are `null`/empty for plain trackers and for days before the habit started.
 
 ---
 
