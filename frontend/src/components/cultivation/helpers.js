@@ -78,6 +78,24 @@ export const formatDay = (value, options = { day: 'numeric', month: 'long' }) =>
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString('uk-UA', options);
 };
 
+// The heatmap of a cultivated habit is coloured by how each day was judged, not
+// by the amount logged: a late wake still logs hours of sleep, yet it failed.
+
+/** True when heatmap cells carry day states, i.e. the tracker feeds a cultivated habit. */
+export const hasDayStates = (columns) => Boolean(columns?.some((week) => week.some((cell) => cell.status)));
+
+/** HeatmapGrid `cellView` for a day state; `amountText` is appended to the tooltip. */
+export function dayStateCell(cell, amountText = '') {
+  if (!cell.status) {
+    return { className: 'bg-stone-100', title: `${formatDay(cell.date)}: до початку культивації` };
+  }
+  return {
+    className: dayStyle(cell),
+    title: `${formatDay(cell.date)} — ${dayLabel(cell)}${amountText ? ` · ${amountText}` : ''}`,
+    state: cell.status
+  };
+}
+
 /** Load the overview and expose a reload. Errors are kept, not thrown. */
 export function useCultivationOverview() {
   const [overview, setOverview] = useState(null);

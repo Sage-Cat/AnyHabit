@@ -13,6 +13,8 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import DayStateLegend from '../cultivation/DayStateLegend';
+import { dayStateCell, hasDayStates } from '../cultivation/helpers';
 import HeatmapGrid from '../ui/HeatmapGrid';
 import { formatDate, formatTime } from '../../utils/date';
 import { formatNumber } from '../../utils/number';
@@ -56,6 +58,7 @@ function TrackerCharts({
   );
 
   const hasWeekdayData = weekdayData.some((entry) => entry.entries > 0);
+  const habitStates = hasDayStates(buildHeatmap?.columns);
 
   const startEditing = (log) => {
     setEditingLogId(log.id);
@@ -129,11 +132,14 @@ function TrackerCharts({
       </div>
 
       {/* The heatmap now covers quit trackers too, where a red cell marks a
-          relapse — the clearest view of a pattern the streak number hides. */}
+          relapse — the clearest view of a pattern the streak number hides.
+          A cultivated habit's map shows how each day was judged instead. */}
       {buildHeatmap && (
         <div className={cardClass}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-sm font-semibold text-stone-700">Теплова карта регулярності</h2>
+            <h2 className="text-sm font-semibold text-stone-700">
+              {habitStates ? 'Теплова карта успіхів і порушень' : 'Теплова карта регулярності'}
+            </h2>
             <p className="text-xs text-gray-400">Останні 24 тижні</p>
           </div>
 
@@ -141,6 +147,13 @@ function TrackerCharts({
             columns={buildHeatmap.columns}
             testId="tracker-heatmap"
             cellView={(cell) => {
+              if (habitStates) {
+                const amount =
+                  selectedTracker.type === 'build' && cell.amount > 0
+                    ? `${formatNumber(cell.amount)} ${selectedTracker.unit}`
+                    : '';
+                return dayStateCell(cell, amount);
+              }
               const intensity = buildHeatmap.maxAmount > 0 ? cell.amount / buildHeatmap.maxAmount : 0;
               return {
                 className: `border border-white/60 ${cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity)}`,
@@ -153,19 +166,23 @@ function TrackerCharts({
             }}
           />
 
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
-            <span>Менше</span>
-            {HEATMAP_SHADES.map((shade) => (
-              <span key={shade} className={`h-3.5 w-3.5 rounded-[3px] border border-white/60 ${shade}`} />
-            ))}
-            <span>Більше</span>
-            {isQuit && (
-              <>
-                <span className="ml-3 h-3.5 w-3.5 rounded-[3px] border border-white/60 bg-rose-400" />
-                <span>Зрив</span>
-              </>
-            )}
-          </div>
+          {habitStates ? (
+            <DayStateLegend columns={buildHeatmap.columns} className="mt-4" />
+          ) : (
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+              <span>Менше</span>
+              {HEATMAP_SHADES.map((shade) => (
+                <span key={shade} className={`h-3.5 w-3.5 rounded-[3px] border border-white/60 ${shade}`} />
+              ))}
+              <span>Більше</span>
+              {isQuit && (
+                <>
+                  <span className="ml-3 h-3.5 w-3.5 rounded-[3px] border border-white/60 bg-rose-400" />
+                  <span>Зрив</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

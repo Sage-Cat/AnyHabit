@@ -3,7 +3,8 @@
  * the card up to `maxCell` pixels, so a wide card is filled instead of leaving
  * a small grid in one corner, and a narrow one still fits without scrolling.
  *
- * `cellView(cell)` returns `{ className, style, title }` for one cell.
+ * `cellView(cell)` returns `{ className, style, title, state }` for one cell;
+ * `state` lands in `data-state`, so a cell's meaning can be checked without its colour.
  */
 function HeatmapGrid({ columns, cellView, maxCell = 22, testId }) {
   if (!columns?.length) return null;
@@ -23,6 +24,7 @@ function HeatmapGrid({ columns, cellView, maxCell = 22, testId }) {
                 key={cell.date}
                 title={view.title}
                 data-date={cell.date}
+                data-state={view.state}
                 className={`aspect-square w-full rounded-[3px] ${view.className || ''}`}
                 style={view.style}
               />

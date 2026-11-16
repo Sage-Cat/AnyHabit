@@ -25,6 +25,10 @@ const SHADES = [
   { test: () => true, colour: '#f43f5e', label: 'нічого' }
 ];
 
+// A day with a failure keeps its shade and gets a dark ring: two of three habits
+// done still reads as «більшість», but the failed one is no longer hidden.
+const FAIL_RING = 'inset 0 0 0 2px #881337';
+
 function Gate({ stats, isLoading, children }) {
   if (isLoading && !stats) return <WidgetLoading />;
   if (!stats) return <WidgetEmptyState title="Статистика недоступна" hint="Спробуйте оновити сторінку." />;
@@ -195,7 +199,7 @@ function HabitsChart({ stats, days }) {
   );
 }
 
-/** Every day coloured by how many of the habits judged that day were a success. */
+/** Every day coloured by how many of the habits judged that day were a success; a ring marks failures. */
 export function HabitsHeatmapWidget({ stats, isLoading }) {
   return (
     <Gate stats={stats} isLoading={isLoading}>
@@ -212,11 +216,16 @@ function HabitsHeatmap({ stats }) {
       return { className: 'bg-stone-100', title: `${head}: немає оцінених звичок` };
     }
     const shade = SHADES.find((item) => item.test(day.success_rate));
+    const failed = day.counts.fail > 0;
     const parts = [`успіх ${day.counts.success} з ${day.judged}`];
     if (day.counts.minimum) parts.push(`мінімум ${day.counts.minimum}`);
-    if (day.counts.fail) parts.push(`порушень ${day.counts.fail}`);
+    if (failed) parts.push(`порушень ${day.counts.fail}`);
     if (day.warnings) parts.push(`з попередженням ${day.warnings}`);
-    return { style: { backgroundColor: shade.colour }, title: `${head}: ${parts.join(', ')}` };
+    return {
+      style: { backgroundColor: shade.colour, boxShadow: failed ? FAIL_RING : undefined },
+      title: `${head}: ${parts.join(', ')}`,
+      state: failed ? 'fail' : undefined
+    };
   };
 
   return (
@@ -234,6 +243,9 @@ function HabitsHeatmap({ stats }) {
             <span className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: item.colour }} /> {item.label}
           </li>
         ))}
+        <li className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-[3px] bg-stone-100" style={{ boxShadow: FAIL_RING }} /> є порушення
+        </li>
       </ul>
     </div>
   );

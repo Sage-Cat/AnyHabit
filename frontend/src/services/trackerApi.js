@@ -125,7 +125,9 @@ export function normalizeTrackerAnalytics(data) {
               date: cell.date,
               amount: toNumber(cell.amount),
               isFiller: Boolean(cell.is_filler),
-              isRelapse: Boolean(cell.is_relapse)
+              isRelapse: Boolean(cell.is_relapse),
+              status: cell.status ?? null,
+              warning: cell.warning ?? ''
             }))
           )
         }

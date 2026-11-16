@@ -324,6 +324,10 @@ class TrackerHeatmapCell(BaseModel):
     amount: float
     is_filler: bool = False
     is_relapse: bool = False
+    # Day state of the habit cultivated on this tracker (success, minimum, fail…);
+    # None for a plain tracker. The amount alone hides a failure.
+    status: Optional[str] = None
+    warning: str = ""
 
 
 class TrackerHeatmap(BaseModel):

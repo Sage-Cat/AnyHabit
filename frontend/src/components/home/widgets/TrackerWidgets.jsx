@@ -1,6 +1,8 @@
 import { CheckCircle2, ExternalLink, Flame, PlusCircle, RefreshCcw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTrackerAnalyticsApi } from '../../../services/trackerApi';
+import DayStateLegend from '../../cultivation/DayStateLegend';
+import { dayStateCell, hasDayStates } from '../../cultivation/helpers';
 import HeatmapGrid from '../../ui/HeatmapGrid';
 import { formatNumber } from '../../../utils/number';
 import { localizePeriodLabel } from '../../../utils/labels';
@@ -218,13 +220,25 @@ export function HeatmapWidget({ config, trackerMap, onError }) {
     return <WidgetEmptyState title="Поки що немає що показувати" hint="Додайте записи — і вони з'являться тут." />;
   }
 
+  // A cultivated habit's map shows how each day was judged, failures included.
+  const habitStates = hasDayStates(heatmap.columns);
+
   return (
     <div className="flex h-full flex-col gap-3">
-      <p className="text-xs text-gray-500">{tracker.name} · останні 24 тижні</p>
+      <p className="text-xs text-gray-500">
+        {tracker.name} · {habitStates ? 'успіхи й порушення за 24 тижні' : 'останні 24 тижні'}
+      </p>
       <HeatmapGrid
         columns={heatmap.columns}
         maxCell={20}
+        testId="widget-heatmap"
         cellView={(cell) => {
+          if (habitStates) {
+            return dayStateCell(
+              cell,
+              tracker.type === 'build' && cell.amount > 0 ? `${formatValue(cell.amount)} ${tracker.unit}` : ''
+            );
+          }
           const intensity = heatmap.maxAmount > 0 ? cell.amount / heatmap.maxAmount : 0;
           return {
             className: `border border-white/60 ${cell.isRelapse ? 'bg-rose-400' : shadeFor(intensity)}`,
@@ -232,13 +246,17 @@ export function HeatmapWidget({ config, trackerMap, onError }) {
           };
         }}
       />
-      <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-        <span>Менше</span>
-        {HEATMAP_SHADES.map((shade) => (
-          <span key={shade} className={`h-3 w-3 rounded-[2px] border border-white/60 ${shade}`} />
-        ))}
-        <span>Більше</span>
-      </div>
+      {habitStates ? (
+        <DayStateLegend columns={heatmap.columns} />
+      ) : (
+        <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+          <span>Менше</span>
+          {HEATMAP_SHADES.map((shade) => (
+            <span key={shade} className={`h-3 w-3 rounded-[2px] border border-white/60 ${shade}`} />
+          ))}
+          <span>Більше</span>
+        </div>
+      )}
     </div>
   );
 }

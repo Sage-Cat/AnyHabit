@@ -17,6 +17,7 @@ from ..access import (
 from ..analytics import build_tracker_analytics
 from ..deps import get_current_user, get_db, get_period_context
 from ..time_utils import PeriodContext, to_utc, utcnow
+from .cultivation import tracker_day_states
 
 router = APIRouter(prefix="/trackers", tags=["trackers"])
 
@@ -199,6 +200,12 @@ def _analytics_for(
         member_journals=dict(journals_by_user),
         context=context,
     )
+    if analytics.build_heatmap is not None:
+        states = tracker_day_states(db, current_user, tracker.id)
+        for week in analytics.build_heatmap.columns:
+            for cell in week:
+                if not cell.is_filler and cell.date in states:
+                    cell.status, cell.warning = states[cell.date]
     return analytics, habit_logs, journal_entries
 
 
