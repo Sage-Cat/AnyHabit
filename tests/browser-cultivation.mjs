@@ -380,7 +380,14 @@ try {
       body: JSON.stringify({ amount: 1, timestamp: late.toISOString() })
     });
     if (!logged.ok) throw new Error(await logged.text());
-    return { id: habit.id, trackerId: habit.tracker.id, day: day(1) };
+    const marked = await fetch(`/cultivation/habits/${habit.id}/marks`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: day(2), status: 'fail', reason: 'e2e' })
+    });
+    if (!marked.ok) throw new Error(await marked.text());
+    return { id: habit.id, trackerId: habit.tracker.id, day: day(1), failDay: day(2) };
   }, workName);
 
   await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });
@@ -397,11 +404,12 @@ try {
     (await page.locator('[data-testid="passport-view"]').innerText()).includes('виконати до 19:00')
   );
 
-  await page.evaluate(async () => {
+  await page.evaluate(async (trackerId) => {
     const widgets = [
       { id: 'e2e-stats', type: 'cultivationStats', title: 'Загальна статистика', config: {} },
       { id: 'e2e-chart', type: 'cultivationChart', title: 'Графік усіх звичок', config: { days: 30 } },
-      { id: 'e2e-heat', type: 'cultivationHeatmap', title: 'Загальна теплова карта', config: {} }
+      { id: 'e2e-heat', type: 'cultivationHeatmap', title: 'Загальна теплова карта', config: {} },
+      { id: 'e2e-habit-heat', type: 'heatmap', title: 'Теплова карта звички', config: { trackerId } }
     ];
     const saved = await fetch('/dashboard/home', {
       method: 'PUT',
@@ -410,7 +418,7 @@ try {
       body: JSON.stringify({ widgets, layouts: {} })
     });
     if (!saved.ok) throw new Error(await saved.text());
-  });
+  }, work.trackerId);
   await page.setViewportSize({ width: 2560, height: 1300 });
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="overall-stats"]', { timeout: 10000 });
@@ -426,6 +434,15 @@ try {
     'the combined heatmap draws days',
     (await page.locator('[data-testid="habits-heatmap-grid"] [data-date]').count()) >= 7
   );
+  check(
+    'the combined heatmap marks the failed day',
+    (await page
+      .locator(`[data-testid="habits-heatmap-grid"] [data-date="${work.failDay}"][data-state="fail"]`)
+      .count()) === 1
+  );
+  const habitWidgetFail = page.locator(`[data-testid="widget-heatmap"] [data-date="${work.failDay}"]`);
+  await habitWidgetFail.waitFor({ timeout: 10000 });
+  check("a habit's heatmap widget shows its failed day", (await habitWidgetFail.getAttribute('data-state')) === 'fail');
   const homeWidth = (await page.locator('[data-testid="home-content"]').boundingBox()).width;
   check('home content is capped on a wide screen', homeWidth <= 1536, String(homeWidth));
 
@@ -444,6 +461,29 @@ try {
     'the heatmap fills its card',
     heatmapWidth > heatmapCard.width * 0.6,
     `${heatmapWidth} of ${heatmapCard.width}`
+  );
+  const chartsText = await page.locator('[data-testid="tracker-charts"]').innerText();
+  check(
+    "a habit's tracker shows a success and failure map, not regularity",
+    chartsText.includes('Теплова карта успіхів і порушень') && !chartsText.includes('Теплова карта регулярності')
+  );
+  const failCell = page.locator(`[data-testid="tracker-heatmap"] [data-date="${work.failDay}"]`);
+  check(
+    'the tracker heatmap paints the failed day red',
+    (await failCell.getAttribute('data-state')) === 'fail' &&
+      (await failCell.getAttribute('class')).includes('bg-rose-500'),
+    await failCell.getAttribute('class')
+  );
+  const lateDay = page.locator(`[data-testid="tracker-heatmap"] [data-date="${work.day}"]`);
+  check(
+    'a day inside the tolerance is a success with a warning',
+    (await lateDay.getAttribute('data-state')) === 'success' &&
+      (await lateDay.getAttribute('class')).includes('bg-amber-400'),
+    await lateDay.getAttribute('class')
+  );
+  check(
+    'the tracker heatmap legend names the day states',
+    ['Успіх', 'Порушення', 'Успіх з попередженням'].every((label) => chartsText.includes(label))
   );
 
   await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });

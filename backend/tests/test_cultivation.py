@@ -621,6 +621,33 @@ def main() -> int:
         )
         check("day marked", marked.status_code == 201 and marked.json()["status"] == "exception", marked.text[:200])
 
+        failed_day = local_today - timedelta(days=2)
+        client.post(
+            f"/cultivation/habits/{hid}/marks",
+            json={"date": failed_day.isoformat(), "status": "fail", "reason": "пізно ліг"},
+        )
+        heatmap = client.get(f"/trackers/{habit['tracker']['id']}/analytics").json()["build_heatmap"]
+        cells = {cell["date"]: cell for week in heatmap["columns"] for cell in week if not cell["is_filler"]}
+        check(
+            "tracker heatmap shows the failed day",
+            cells[failed_day.isoformat()]["status"] == "fail",
+            str(cells.get(failed_day.isoformat())),
+        )
+        check(
+            "tracker heatmap carries the other day states",
+            cells[yesterday.isoformat()]["status"] == "success"
+            and cells[local_today.isoformat()]["status"] == "exception",
+            str([cells.get(yesterday.isoformat()), cells.get(local_today.isoformat())]),
+        )
+        before_start = (local_today - timedelta(days=10)).isoformat()
+        check("days before the habit have no state", cells[before_start]["status"] is None, str(cells[before_start]))
+        bundle = client.get(f"/trackers/{habit['tracker']['id']}/bundle").json()
+        bundle_cells = [cell for week in bundle["analytics"]["build_heatmap"]["columns"] for cell in week]
+        check(
+            "tracker bundle carries the same failure",
+            [c["date"] for c in bundle_cells if c["status"] == "fail"] == [failed_day.isoformat()],
+        )
+
         changed = client.post(
             f"/cultivation/habits/{hid}/versions", json={"patch": {"level": {"min_sleep_h": 7.5}}, "reason": "stricter"}
         )
