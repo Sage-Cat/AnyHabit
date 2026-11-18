@@ -625,6 +625,11 @@ function HabitDetailPage() {
               <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl" data-testid="habit-title">
                 {habit.name}
               </h1>
+              {habit.passport?.description && (
+                <p className="mt-1 max-w-2xl text-sm text-stone-600" data-testid="habit-description">
+                  {habit.passport.description}
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StageBadge stage={habit.stage} label={habit.stage_label} />
                 {(habit.mode || habit.today?.degraded) && <ModeBadge />}
@@ -679,7 +684,9 @@ function HabitDetailPage() {
           data-testid="habit-content"
         >
           <Section title="Сьогодні" testId="today-block">
-            <p className="text-sm font-medium text-stone-800">{habit.today?.requirement || '—'}</p>
+            <p className="text-sm text-gray-500">
+              Ціль: <span className="font-semibold text-stone-900">{habit.today?.requirement || '—'}</span>
+            </p>
             {habit.today?.minimum && <p className="text-xs text-gray-500">Мінімум: {habit.today.minimum}</p>}
             {habit.today?.tolerance && (
               <p className="text-xs text-amber-700">Допуск з попередженням: {habit.today.tolerance}</p>

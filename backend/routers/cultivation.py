@@ -410,6 +410,7 @@ def _compact(analysis: dict) -> dict:
         )
     }
     out["priority"] = analysis["passport"].get("priority")
+    out["description"] = analysis["passport"].get("description") or ""
     out["days"] = analysis["days"][-14:]
     return out
 

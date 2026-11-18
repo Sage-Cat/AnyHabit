@@ -1,4 +1,5 @@
 import { useAppState } from '../state/appState';
+import TrackerHabitCard from './cultivation/TrackerHabitCard';
 import JournalSection from './tracker/JournalSection';
 import TrackerCharts from './tracker/TrackerCharts';
 import TrackerHeader from './tracker/TrackerHeader';
@@ -66,6 +67,8 @@ function TrackerView() {
           openTrackerModal={openTrackerModal}
           deleteTracker={handleDeleteTracker}
         />
+
+        <TrackerHabitCard trackerId={selectedTracker.id} trackerDescription={selectedTracker.description} />
 
         <TrackerStats
           selectedTracker={selectedTracker}
