@@ -98,7 +98,11 @@ export function StageTimeline({ timeline, height = 140 }) {
               tick={{ fontSize: 10, fill: '#9ca3af' }}
             />
             <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-            <Tooltip labelFormatter={(time) => formatChartDate(toIso(time))} />
+            {/* Listed as the areas stack, planned at the bottom; Recharts sorts by name by default. */}
+            <Tooltip
+              labelFormatter={(time) => formatChartDate(toIso(time))}
+              itemSorter={(item) => -STAGE_META.findIndex((stage) => stage.key === item.dataKey)}
+            />
             {STAGE_META.map((stage) => (
               <Area
                 key={stage.key}
