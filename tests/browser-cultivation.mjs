@@ -90,6 +90,15 @@ try {
   );
   const formationCount = await practiceRank.locator('[data-testid="stage-count-formation"]').innerText();
   check('rank card counts habits per stage', Number(formationCount.match(/\d+/)?.[0]) >= 1, formationCount);
+  await practiceRank.locator('[data-testid="stage-timeline"] .recharts-surface').hover();
+  const stageTip = practiceRank.locator('[data-testid="stage-timeline"] .recharts-tooltip-item-name');
+  await stageTip.first().waitFor({ timeout: 5000 });
+  const tipOrder = await stageTip.allInnerTexts();
+  check(
+    'stage tooltip lists stages as they stack',
+    tipOrder.join('|') === 'Інтегровані|Стабілізація|Формування|Заплановані',
+    tipOrder.join('|')
+  );
 
   await row.getByRole('link', { name: habitName }).click();
   await page.waitForURL(/\/practice\/\d+$/);
