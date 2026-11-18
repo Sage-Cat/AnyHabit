@@ -569,6 +569,7 @@ def main() -> int:
                 "kind": "sleep",
                 "spec": {
                     "name": "Sleep",
+                    "description": "Wake rested",
                     "stage": "formation",
                     "level": {"wake_by": "08:00", "min_sleep_h": 7},
                     "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
@@ -786,6 +787,7 @@ def main() -> int:
 
         overview = client.get("/cultivation/overview").json()
         check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
+        check("overview says what the habit is about", overview["active"][0]["description"] == "Wake rested")
         check("overview carries the rank", overview["rank"]["name"] == "Адепт другого рівня", overview["rank"]["name"])
         check(
             "overview rank carries Прорив and habits per stage",

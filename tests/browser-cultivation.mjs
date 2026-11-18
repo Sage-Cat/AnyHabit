@@ -371,6 +371,7 @@ try {
         kind: 'boolean',
         spec: {
           name,
+          description: 'Закрити ноутбук і робочий чат.',
           stage: 'formation',
           start_date: day(3),
           level: { done_by: '18:00' },
@@ -411,6 +412,10 @@ try {
   check(
     'passport shows the tolerance',
     (await page.locator('[data-testid="passport-view"]').innerText()).includes('виконати до 19:00')
+  );
+  check(
+    'the habit page says what the habit is about',
+    (await page.locator('[data-testid="habit-description"]').innerText()) === 'Закрити ноутбук і робочий чат.'
   );
 
   await page.evaluate(async (trackerId) => {
@@ -470,6 +475,23 @@ try {
     'the heatmap fills its card',
     heatmapWidth > heatmapCard.width * 0.6,
     `${heatmapWidth} of ${heatmapCard.width}`
+  );
+  const habitCard = page.locator('[data-testid="tracker-habit-card"]');
+  await habitCard.waitFor({ timeout: 10000 });
+  const habitCardText = await habitCard.innerText();
+  check(
+    "a habit's tracker page shows its goal and tolerance",
+    ['виконати до 18:00', 'виконати до 19:00'].every((text) => habitCardText.includes(text)),
+    habitCardText
+  );
+  check(
+    'the description is shown once, in the tracker header',
+    (await page.locator('[data-testid="tracker-content"]').innerText()).split('Закрити ноутбук і робочий чат.')
+      .length === 2
+  );
+  check(
+    "the habit card links to the habit's page",
+    (await habitCard.getByRole('link', { name: 'Паспорт і керування' }).getAttribute('href')) === `/practice/${work.id}`
   );
   const chartsText = await page.locator('[data-testid="tracker-charts"]').innerText();
   check(
