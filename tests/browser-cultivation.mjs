@@ -171,6 +171,34 @@ try {
   check('calendar renders day cells', dayCells >= 1, String(dayCells));
   const todayCell = await page.locator('[data-testid="day-calendar"] button').last().getAttribute('aria-label');
   check('calendar marks today with the status', todayCell.endsWith(statusLabel), todayCell);
+  check('a sleep day is named as the night before it', /^ніч \d.*–/.test(todayCell), todayCell);
+  const todayCellText = (await page.locator('[data-testid="day-calendar"] button').last().innerText()).trim();
+  check('the sleep calendar shows both dates of the night', /^\d{1,2}–\d{1,2}$/.test(todayCellText), todayCellText);
+
+  const sleepTrackerId = await page.evaluate(
+    async (id) => (await (await fetch(`/cultivation/habits/${id}`, { credentials: 'include' })).json()).tracker.id,
+    habitId
+  );
+  await page.goto(`${BASE}/tracker/${sleepTrackerId}`, { waitUntil: 'networkidle' });
+  const sleepRow = page.locator('[data-testid="recent-logs"] [data-testid="recent-log"]').first();
+  await sleepRow.waitFor({ timeout: 10000 });
+  const headers = await page.locator('[data-testid="recent-logs"] th').allInnerTexts();
+  check(
+    'sleep entries are listed by night, bedtime and wake',
+    ['Ніч', 'Заснув', 'Підйом', 'Сон'].every((name) =>
+      headers.some((text) => text.trim().toLowerCase() === name.toLowerCase())
+    ),
+    headers.join('|')
+  );
+  const [nightText, bedText, wakeText] = (await sleepRow.locator('td').allInnerTexts()).map((text) => text.trim());
+  const minutes = (text) => Number(text.slice(0, 2)) * 60 + Number(text.slice(3, 5));
+  check(
+    'a sleep entry spans the night it was slept',
+    nightText.includes('–') && (minutes(wakeText) - minutes(bedText) + 1440) % 1440 === 480,
+    `${nightText} ${bedText} ${wakeText}`
+  );
+  await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="integration-block"]');
 
   const criteria = page.locator('[data-testid="integration-block"] li[data-status]');
   const criteriaCount = await criteria.count();
