@@ -1021,6 +1021,35 @@ def main() -> int:
             any("трекер не знайдено" in w for w in preview["warnings"]),
             str(preview["warnings"]),
         )
+
+        later = fourth.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Later",
+                    "stage": "formation",
+                    "start_date": (local_today + timedelta(days=2)).isoformat(),
+                },
+                "reason": "starts later",
+            },
+        ).json()
+        later_map = fourth.get(f"/trackers/{later['tracker']['id']}/analytics").json()["build_heatmap"]
+        check(
+            "a habit that has not started yet still has a map of day states",
+            later_map["day_states"] is True
+            and not any(cell["status"] for week in later_map["columns"] for cell in week),
+            str(later_map.get("day_states")),
+        )
+        plain = fourth.post(
+            "/trackers/", json={"name": "Read", "category": "Learning", "type": "build", "unit": "Pages"}
+        ).json()
+        plain_map = fourth.get(f"/trackers/{plain['id']}/analytics").json()["build_heatmap"]
+        check(
+            "a plain tracker keeps the regularity map",
+            plain_map["day_states"] is False,
+            str(plain_map.get("day_states")),
+        )
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

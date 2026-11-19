@@ -576,6 +576,30 @@ try {
     ['Успіх', 'Порушення', 'Успіх з попередженням'].every((label) => chartsText.includes(label))
   );
 
+  const laterTrackerId = await page.evaluate(async () => {
+    const start = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const created = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'boolean',
+        spec: { name: `Пізніше ${Date.now()}`, stage: 'formation', start_date: start },
+        reason: 'e2e'
+      })
+    });
+    if (!created.ok) throw new Error(await created.text());
+    return (await created.json()).tracker.id;
+  });
+  await page.goto(`${BASE}/tracker/${laterTrackerId}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="tracker-heatmap"]');
+  const laterCharts = await page.locator('[data-testid="tracker-charts"]').innerText();
+  check(
+    'a habit that has not started yet already shows the success and failure map',
+    laterCharts.includes('Теплова карта успіхів і порушень') && laterCharts.includes('Порушення'),
+    laterCharts.slice(0, 200)
+  );
+
   await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="calendar-block"]');
   const [todayBox, calendarBox] = await Promise.all(
