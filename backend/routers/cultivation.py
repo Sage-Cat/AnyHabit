@@ -173,6 +173,9 @@ def _versions(db: Session, habit: models.CultivatedHabit) -> list[dict]:
     ]
 
 
+RECENT_MARKS = 10  # as many as the tracker's recent entries table shows
+
+
 def _marks(db: Session, habit: models.CultivatedHabit) -> dict[date, dict]:
     out: dict[date, dict] = {}
     rows = (
@@ -302,11 +305,12 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
     tracker = _tracker_info(db, habit)
     unit = (tracker or {}).get("unit", "")
     modes = _modes(db, habit)
+    marks = _marks(db, habit)
     days = cv.build_days(
         habit.kind,
         versions,
         _observations(db, habit, user),
-        _marks(db, habit),
+        marks,
         modes,
         today,
         tracked=tracker is not None,
@@ -378,6 +382,11 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
         "recommendation": cv.recommendation(spec, days, episodes, today) if spec else None,
         "readiness": cv.stage_readiness(spec, days, episodes, today) if spec else None,
         "days": [d.as_dict() for d in days[-history_days:]] if history_days else [],
+        # A day marked by hand has no log, so the tracker's recent entries list these beside its logs.
+        "recent_marks": [
+            {"date": day.isoformat(), "status": mark["status"], "reason": mark["reason"]}
+            for day, mark in sorted(marks.items(), reverse=True)[:RECENT_MARKS]
+        ],
     }
 
 
@@ -395,6 +404,7 @@ def _compact(analysis: dict) -> dict:
         "recommendation",
         "integration",
         "readiness",
+        "recent_marks",
     )
     out = {key: analysis[key] for key in keep}
     out["success_rate_30"] = analysis["rates"]["30"]["success_rate"]

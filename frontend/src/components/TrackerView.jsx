@@ -89,6 +89,7 @@ function TrackerView() {
             weekdayBreakdown={weekdayBreakdown}
             habitLogs={habitLogs}
             habitKind={trackerHabit?.kind}
+            habitMarks={trackerHabit?.recent_marks}
             deleteLog={handleDeleteLog}
             updateLog={updateLog}
           />

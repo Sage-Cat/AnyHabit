@@ -1,4 +1,4 @@
-import { CheckCircle2, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle2, Pencil, Trash2, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   Area,
@@ -14,7 +14,7 @@ import {
   YAxis
 } from 'recharts';
 import DayStateLegend from '../cultivation/DayStateLegend';
-import { dayStateCell, formatNight, hasDayStates } from '../cultivation/helpers';
+import { DAY_STATUS_LABELS, dayStateCell, formatDay, formatNight, hasDayStates } from '../cultivation/helpers';
 import HeatmapGrid from '../ui/HeatmapGrid';
 import { formatDate, formatTime, parseApiDate } from '../../utils/date';
 import { formatNumber } from '../../utils/number';
@@ -47,6 +47,25 @@ const shadeFor = (intensity) => {
   return HEATMAP_SHADES[4];
 };
 
+/** What a day marked by hand on the habit's page says, worded like a log's «Виконано». */
+function MarkLabel({ status }) {
+  if (status === 'fail') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-rose-600">
+        <XCircle size={14} className="shrink-0" /> Не виконано
+      </span>
+    );
+  }
+  if (status === 'success') {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <CheckCircle2 size={14} className="shrink-0 text-emerald-600" /> Виконано
+      </span>
+    );
+  }
+  return <span>{DAY_STATUS_LABELS[status] || status}</span>;
+}
+
 function TrackerCharts({
   selectedTracker,
   historicalChartData,
@@ -54,6 +73,7 @@ function TrackerCharts({
   weekdayBreakdown,
   habitLogs,
   habitKind,
+  habitMarks,
   deleteLog,
   updateLog
 }) {
@@ -76,6 +96,17 @@ function TrackerCharts({
   );
 
   const hasWeekdayData = weekdayData.some((entry) => entry.entries > 0);
+
+  // Logs and the days marked by hand, newest first. A mark has a day but no
+  // time, so it is placed at the end of its day.
+  const recentRows = useMemo(() => {
+    const logs = habitLogs.map((log) => ({ log, time: parseApiDate(log.timestamp)?.getTime() ?? 0 }));
+    const marks = (habitMarks || []).map((mark) => {
+      const [year, month, day] = mark.date.split('-').map(Number);
+      return { mark, time: new Date(year, month - 1, day, 23, 59, 59).getTime() };
+    });
+    return [...logs, ...marks].sort((a, b) => b.time - a.time).slice(0, RECENT_LOGS);
+  }, [habitLogs, habitMarks]);
   const habitStates = hasDayStates(buildHeatmap?.columns);
 
   const startEditing = (log) => {
@@ -227,7 +258,7 @@ function TrackerCharts({
         </div>
       )}
 
-      {showsLogList && habitLogs.length > 0 && (
+      {showsLogList && recentRows.length > 0 && (
         <div className={`${cardClass} xl:col-span-2`} data-testid="recent-logs">
           <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <h2 className="text-sm font-semibold text-stone-700">Останні записи</h2>
@@ -258,81 +289,104 @@ function TrackerCharts({
                 </tr>
               </thead>
               <tbody>
-                {habitLogs.slice(0, RECENT_LOGS).map((log) => (
-                  <tr key={log.id} className="border-t border-gray-100 align-middle" data-testid="recent-log">
-                    {isSleep ? (
-                      <>
-                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
-                          {formatNight(localDay(log.timestamp), 'short')}
-                        </td>
-                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(bedtimeOf(log))}</td>
-                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
-                          {formatDate(log.timestamp, { weekday: 'short', day: 'numeric', month: 'short' })}
-                        </td>
-                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
-                      </>
-                    )}
-                    <td className="whitespace-nowrap py-2 pr-4 font-medium text-stone-900">
-                      {editingLogId === log.id ? (
-                        <span className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            step="any"
-                            value={draftAmount}
-                            onChange={(event) => setDraftAmount(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') saveEdit(log.id);
-                              if (event.key === 'Escape') setEditingLogId(null);
-                            }}
-                            className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-stone-400"
-                            aria-label="Кількість"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(log.id)}
-                            className="rounded-lg bg-stone-900 px-2 py-1 text-xs font-medium text-white"
-                          >
-                            Зберегти
-                          </button>
-                        </span>
-                      ) : isBoolean ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <CheckCircle2 size={14} className="shrink-0 text-emerald-600" /> Виконано
-                        </span>
+                {recentRows.map(({ log, mark }) =>
+                  mark ? (
+                    <tr
+                      key={`mark-${mark.date}`}
+                      className="border-t border-gray-100 align-middle"
+                      data-testid="recent-log"
+                      data-mark={mark.status}
+                      title="Позначено вручну"
+                    >
+                      <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                        {isSleep
+                          ? formatNight(mark.date, 'short')
+                          : formatDay(mark.date, { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </td>
+                      {isSleep && <td className="py-2 pr-4 text-gray-400">—</td>}
+                      <td className="py-2 pr-4 text-gray-400">—</td>
+                      <td className="whitespace-nowrap py-2 pr-4 font-medium text-stone-900">
+                        <MarkLabel status={mark.status} />
+                      </td>
+                      <td className="py-2 pr-4 text-gray-500">{mark.reason || '—'}</td>
+                      <td className="py-2" />
+                    </tr>
+                  ) : (
+                    <tr key={log.id} className="border-t border-gray-100 align-middle" data-testid="recent-log">
+                      {isSleep ? (
+                        <>
+                          <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                            {formatNight(localDay(log.timestamp), 'short')}
+                          </td>
+                          <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(bedtimeOf(log))}</td>
+                          <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                        </>
                       ) : (
-                        `${formatNumber(log.amount)} ${selectedTracker.unit}`
+                        <>
+                          <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                            {formatDate(log.timestamp, { weekday: 'short', day: 'numeric', month: 'short' })}
+                          </td>
+                          <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                        </>
                       )}
-                    </td>
-                    <td className="py-2 pr-4 text-gray-500">{log.note || '—'}</td>
-                    <td className="py-2">
-                      <span className="flex justify-end gap-2">
-                        {!isBoolean && (
+                      <td className="whitespace-nowrap py-2 pr-4 font-medium text-stone-900">
+                        {editingLogId === log.id ? (
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="any"
+                              value={draftAmount}
+                              onChange={(event) => setDraftAmount(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') saveEdit(log.id);
+                                if (event.key === 'Escape') setEditingLogId(null);
+                              }}
+                              className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-stone-400"
+                              aria-label="Кількість"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveEdit(log.id)}
+                              className="rounded-lg bg-stone-900 px-2 py-1 text-xs font-medium text-white"
+                            >
+                              Зберегти
+                            </button>
+                          </span>
+                        ) : isBoolean ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <CheckCircle2 size={14} className="shrink-0 text-emerald-600" /> Виконано
+                          </span>
+                        ) : (
+                          `${formatNumber(log.amount)} ${selectedTracker.unit}`
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-gray-500">{log.note || '—'}</td>
+                      <td className="py-2">
+                        <span className="flex justify-end gap-2">
+                          {!isBoolean && (
+                            <button
+                              type="button"
+                              onClick={() => startEditing(log)}
+                              className="text-gray-400 hover:text-stone-700"
+                              aria-label="Редагувати цей запис"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => startEditing(log)}
-                            className="text-gray-400 hover:text-stone-700"
-                            aria-label="Редагувати цей запис"
+                            onClick={() => deleteLog(log.id)}
+                            className="text-gray-400 hover:text-rose-500"
+                            aria-label="Видалити цей запис"
                           >
-                            <Pencil size={14} />
+                            <Trash2 size={14} />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => deleteLog(log.id)}
-                          className="text-gray-400 hover:text-rose-500"
-                          aria-label="Видалити цей запис"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>
