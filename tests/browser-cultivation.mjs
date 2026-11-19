@@ -537,6 +537,12 @@ try {
     (await recentLogs.count()) === 10,
     String(await recentLogs.count())
   );
+  const failRow = page.locator(`[data-testid="recent-logs"] [data-testid="recent-log"][data-mark="fail"]`);
+  check(
+    'a day marked as failed is listed as not done, with its reason',
+    (await failRow.count()) === 1 && /Не виконано\s+e2e/.test(await failRow.innerText()),
+    (await failRow.count()) ? await failRow.innerText() : 'no row'
+  );
   const newestTime = await page.evaluate(
     (iso) => new Date(iso).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }),
     work.lateAt

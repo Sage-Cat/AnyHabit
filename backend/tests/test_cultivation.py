@@ -627,6 +627,16 @@ def main() -> int:
             f"/cultivation/habits/{hid}/marks",
             json={"date": failed_day.isoformat(), "status": "fail", "reason": "пізно ліг"},
         )
+        listed = next(h for h in client.get("/cultivation/habits").json() if h["id"] == hid)
+        check(
+            "the habit lists its marked days, newest first",
+            listed["recent_marks"]
+            == [
+                {"date": local_today.isoformat(), "status": "exception", "reason": "поїздка"},
+                {"date": failed_day.isoformat(), "status": "fail", "reason": "пізно ліг"},
+            ],
+            str(listed.get("recent_marks")),
+        )
         heatmap = client.get(f"/trackers/{habit['tracker']['id']}/analytics").json()["build_heatmap"]
         cells = {cell["date"]: cell for week in heatmap["columns"] for cell in week if not cell["is_filler"]}
         check(
