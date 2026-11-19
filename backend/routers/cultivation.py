@@ -703,10 +703,12 @@ def habit_days(
     return [d.as_dict() for d in days if (start is None or d.date >= start)]
 
 
-def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> dict[str, tuple[str, str]]:
+def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> Optional[dict[str, tuple[str, str]]]:
     """``{date: (status, warning)}`` of the user's habit on this tracker, for its heatmap.
 
     The amount alone hides a failure: a late wake still logs hours of sleep.
+    None when no readable habit feeds the tracker; a habit that has not
+    started yet gives an empty dict, and its map is still one of day states.
     """
     habit = (
         db.query(models.CultivatedHabit)
@@ -715,7 +717,7 @@ def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> dict[
         .first()
     )
     if habit is None:
-        return {}
+        return None
     try:
         days = cv.build_days(
             habit.kind,
@@ -726,7 +728,7 @@ def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> dict[
             _today(user),
         )
     except (cv.PassportError, ValueError, TypeError, KeyError):
-        return {}  # an unreadable passport must not break the tracker page
+        return None  # an unreadable passport must not break the tracker page
     return {day.date.isoformat(): (day.status, day.warning) for day in days}
 
 

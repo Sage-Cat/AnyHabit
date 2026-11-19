@@ -221,7 +221,7 @@ export function HeatmapWidget({ config, trackerMap, onError }) {
   }
 
   // A cultivated habit's map shows how each day was judged, failures included.
-  const habitStates = hasDayStates(heatmap.columns);
+  const habitStates = hasDayStates(heatmap);
 
   return (
     <div className="flex h-full flex-col gap-3">

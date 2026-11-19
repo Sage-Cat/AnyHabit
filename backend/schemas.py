@@ -333,6 +333,9 @@ class TrackerHeatmapCell(BaseModel):
 class TrackerHeatmap(BaseModel):
     columns: list[list[TrackerHeatmapCell]]
     max_amount: float = 0.0
+    # True when a cultivated habit feeds the tracker, even before its first day:
+    # the map then shows day states rather than amounts.
+    day_states: bool = False
 
 
 class TrackerAnalytics(BaseModel):

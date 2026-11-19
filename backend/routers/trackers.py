@@ -202,9 +202,10 @@ def _analytics_for(
     )
     if analytics.build_heatmap is not None:
         states = tracker_day_states(db, current_user, tracker.id)
+        analytics.build_heatmap.day_states = states is not None
         for week in analytics.build_heatmap.columns:
             for cell in week:
-                if not cell.is_filler and cell.date in states:
+                if not cell.is_filler and cell.date in (states or {}):
                     cell.status, cell.warning = states[cell.date]
     return analytics, habit_logs, journal_entries
 

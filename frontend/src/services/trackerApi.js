@@ -120,6 +120,7 @@ export function normalizeTrackerAnalytics(data) {
     buildHeatmap: data?.build_heatmap
       ? {
           maxAmount: toNumber(data.build_heatmap.max_amount),
+          dayStates: Boolean(data.build_heatmap.day_states),
           columns: (data.build_heatmap.columns ?? []).map((week) =>
             week.map((cell) => ({
               date: cell.date,

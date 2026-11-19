@@ -107,7 +107,7 @@ function TrackerCharts({
     });
     return [...logs, ...marks].sort((a, b) => b.time - a.time).slice(0, RECENT_LOGS);
   }, [habitLogs, habitMarks]);
-  const habitStates = hasDayStates(buildHeatmap?.columns);
+  const habitStates = hasDayStates(buildHeatmap);
 
   const startEditing = (log) => {
     setEditingLogId(log.id);

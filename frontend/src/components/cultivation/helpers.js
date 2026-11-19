@@ -99,8 +99,9 @@ export const formatHabitDay = (kind, value) => (kind === 'sleep' ? `ніч ${for
 // The heatmap of a cultivated habit is coloured by how each day was judged, not
 // by the amount logged: a late wake still logs hours of sleep, yet it failed.
 
-/** True when heatmap cells carry day states, i.e. the tracker feeds a cultivated habit. */
-export const hasDayStates = (columns) => Boolean(columns?.some((week) => week.some((cell) => cell.status)));
+/** True when the tracker feeds a cultivated habit, so its map shows day states — even before the first day. */
+export const hasDayStates = (heatmap) =>
+  Boolean(heatmap?.dayStates || heatmap?.columns?.some((week) => week.some((cell) => cell.status)));
 
 /** HeatmapGrid `cellView` for a day state; `amountText` is appended to the tooltip, `kind` names sleep days as nights. */
 export function dayStateCell(cell, amountText = '', kind = '') {
