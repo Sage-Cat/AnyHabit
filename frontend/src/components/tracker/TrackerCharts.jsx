@@ -22,6 +22,7 @@ import { WEEKDAY_SHORT } from '../../utils/labels';
 
 const cardClass = 'w-full min-w-0 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6';
 const chartAxisTick = { fontSize: 11, fill: '#9ca3af' };
+const RECENT_LOGS = 10;
 
 const HEATMAP_SHADES = ['bg-stone-100', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-500'];
 
@@ -46,6 +47,7 @@ function TrackerCharts({
   const [draftAmount, setDraftAmount] = useState('');
 
   const isQuit = selectedTracker.type === 'quit';
+  const isBoolean = selectedTracker.type === 'boolean';
   const showsLogList = selectedTracker.type === 'build' || selectedTracker.type === 'boolean';
 
   const weekdayData = useMemo(
@@ -210,70 +212,90 @@ function TrackerCharts({
       )}
 
       {showsLogList && habitLogs.length > 0 && (
-        <div className="w-full min-w-0 xl:col-span-2">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Останні записи</h2>
-          <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2">
-            {habitLogs.map((log) => (
-              <div
-                key={log.id}
-                className="group flex flex-shrink-0 items-center gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-3 transition-all hover:border-gray-200"
-              >
-                <div className="min-w-0">
-                  {editingLogId === log.id ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        step="any"
-                        value={draftAmount}
-                        onChange={(event) => setDraftAmount(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') saveEdit(log.id);
-                          if (event.key === 'Escape') setEditingLogId(null);
-                        }}
-                        className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-stone-400"
-                        aria-label="Кількість"
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(log.id)}
-                        className="rounded-lg bg-stone-900 px-2 py-1 text-xs font-medium text-white"
-                      >
-                        Зберегти
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 font-medium text-stone-800">
-                      <CheckCircle2 size={14} className="shrink-0 text-stone-400" />
-                      {selectedTracker.type === 'boolean' ? 'Виконано' : `${log.amount} ${selectedTracker.unit}`}
-                    </div>
-                  )}
-                  <div className="mt-0.5 whitespace-nowrap text-xs text-gray-400">
-                    {formatDate(log.timestamp, { month: 'short', day: 'numeric' })} · {formatTime(log.timestamp)}
-                  </div>
-                  {log.note && <div className="mt-1 max-w-[14rem] truncate text-xs text-stone-500">{log.note}</div>}
-                </div>
-
-                <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  {selectedTracker.type !== 'boolean' && (
-                    <button
-                      onClick={() => startEditing(log)}
-                      className="text-gray-300 hover:text-stone-600"
-                      aria-label="Редагувати цей запис"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => deleteLog(log.id)}
-                    className="text-gray-300 hover:text-rose-500"
-                    aria-label="Видалити цей запис"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+        <div className={`${cardClass} xl:col-span-2`} data-testid="recent-logs">
+          <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <h2 className="text-sm font-semibold text-stone-700">Останні записи</h2>
+            <p className="text-xs text-gray-400">До {RECENT_LOGS} найновіших</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wider text-gray-400">
+                <tr>
+                  <th className="py-1.5 pr-4 font-medium">Дата</th>
+                  <th className="py-1.5 pr-4 font-medium">Час</th>
+                  <th className="py-1.5 pr-4 font-medium">{isBoolean ? 'Запис' : 'Кількість'}</th>
+                  <th className="py-1.5 pr-4 font-medium">Нотатка</th>
+                  <th className="py-1.5 font-medium">
+                    <span className="sr-only">Дії</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {habitLogs.slice(0, RECENT_LOGS).map((log) => (
+                  <tr key={log.id} className="border-t border-gray-100 align-middle" data-testid="recent-log">
+                    <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                      {formatDate(log.timestamp, { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                    <td className="whitespace-nowrap py-2 pr-4 font-medium text-stone-900">
+                      {editingLogId === log.id ? (
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="any"
+                            value={draftAmount}
+                            onChange={(event) => setDraftAmount(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') saveEdit(log.id);
+                              if (event.key === 'Escape') setEditingLogId(null);
+                            }}
+                            className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-stone-400"
+                            aria-label="Кількість"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveEdit(log.id)}
+                            className="rounded-lg bg-stone-900 px-2 py-1 text-xs font-medium text-white"
+                          >
+                            Зберегти
+                          </button>
+                        </span>
+                      ) : isBoolean ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="shrink-0 text-emerald-600" /> Виконано
+                        </span>
+                      ) : (
+                        `${formatNumber(log.amount)} ${selectedTracker.unit}`
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-gray-500">{log.note || '—'}</td>
+                    <td className="py-2">
+                      <span className="flex justify-end gap-2">
+                        {!isBoolean && (
+                          <button
+                            type="button"
+                            onClick={() => startEditing(log)}
+                            className="text-gray-400 hover:text-stone-700"
+                            aria-label="Редагувати цей запис"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteLog(log.id)}
+                          className="text-gray-400 hover:text-rose-500"
+                          aria-label="Видалити цей запис"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
