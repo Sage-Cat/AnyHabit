@@ -390,6 +390,16 @@ try {
       body: JSON.stringify({ amount: 1, timestamp: late.toISOString() })
     });
     if (!logged.ok) throw new Error(await logged.text());
+    // Older entries, before the habit started, so the recent-entries table has more than it shows.
+    for (let offset = 4; offset < 15; offset += 1) {
+      const older = await fetch(`/trackers/${habit.tracker.id}/logs/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1, timestamp: `${day(offset)}T09:00:00Z` })
+      });
+      if (!older.ok) throw new Error(await older.text());
+    }
     const marked = await fetch(`/cultivation/habits/${habit.id}/marks`, {
       method: 'POST',
       credentials: 'include',
@@ -397,7 +407,7 @@ try {
       body: JSON.stringify({ date: day(2), status: 'fail', reason: 'e2e' })
     });
     if (!marked.ok) throw new Error(await marked.text());
-    return { id: habit.id, trackerId: habit.tracker.id, day: day(1), failDay: day(2) };
+    return { id: habit.id, trackerId: habit.tracker.id, day: day(1), failDay: day(2), lateAt: late.toISOString() };
   }, workName);
 
   await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });
@@ -492,6 +502,21 @@ try {
   check(
     "the habit card links to the habit's page",
     (await habitCard.getByRole('link', { name: 'Паспорт і керування' }).getAttribute('href')) === `/practice/${work.id}`
+  );
+  const recentLogs = page.locator('[data-testid="recent-logs"] [data-testid="recent-log"]');
+  check(
+    'recent entries are a table of the ten newest',
+    (await recentLogs.count()) === 10,
+    String(await recentLogs.count())
+  );
+  const newestTime = await page.evaluate(
+    (iso) => new Date(iso).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }),
+    work.lateAt
+  );
+  check(
+    'the newest entry comes first',
+    (await recentLogs.first().locator('td').nth(1).innerText()).trim() === newestTime,
+    `${await recentLogs.first().innerText()} vs ${newestTime}`
   );
   const chartsText = await page.locator('[data-testid="tracker-charts"]').innerText();
   check(
