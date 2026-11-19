@@ -34,6 +34,7 @@ import {
   dayStyle,
   formatDay,
   formatDays,
+  formatHabitDay,
   formatPercent
 } from './helpers';
 
@@ -102,7 +103,7 @@ function IntegrationList({ integration }) {
   );
 }
 
-function Calendar({ days, onPick }) {
+function Calendar({ days, kind, onPick }) {
   if (!days?.length) return null;
   // Monday-first grid, padded so each column is a weekday.
   const first = days[0].date.split('-').map(Number);
@@ -119,7 +120,8 @@ function Calendar({ days, onPick }) {
           <span key={`pad-${index}`} />
         ))}
         {days.map((day) => {
-          const label = `${formatDay(day.date)} — ${dayLabel(day)}`;
+          const label = `${formatHabitDay(kind, day.date)} — ${dayLabel(day)}`;
+          const [year, month, date] = day.date.split('-').map(Number);
           return (
             <button
               key={day.date}
@@ -133,7 +135,8 @@ function Calendar({ days, onPick }) {
                 ['success', 'fail', 'invalid'].includes(day.status) ? 'text-white' : 'text-stone-700'
               }`}
             >
-              {Number(day.date.slice(8))}
+              {/* A sleep day is the night before it. */}
+              {kind === 'sleep' ? `${new Date(year, month - 1, date - 1).getDate()}–${date}` : date}
             </button>
           );
         })}
@@ -718,7 +721,11 @@ function HabitDetailPage() {
           </Section>
 
           <Section title="Останні 90 днів" testId="calendar-block">
-            <Calendar days={habit.days} onPick={(day) => setMark((current) => ({ ...current, date: day.date }))} />
+            <Calendar
+              days={habit.days}
+              kind={habit.kind}
+              onPick={(day) => setMark((current) => ({ ...current, date: day.date }))}
+            />
           </Section>
 
           <Section title="Показники" testId="rates-block">

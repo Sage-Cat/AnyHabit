@@ -1,4 +1,5 @@
 import { useAppState } from '../state/appState';
+import { useTrackerHabit } from '../hooks/useTrackerHabit';
 import TrackerHabitCard from './cultivation/TrackerHabitCard';
 import JournalSection from './tracker/JournalSection';
 import TrackerCharts from './tracker/TrackerCharts';
@@ -42,6 +43,7 @@ function TrackerView() {
     journalSearch,
     setJournalSearch
   } = useAppState();
+  const trackerHabit = useTrackerHabit(selectedTracker?.id);
 
   if (!selectedTracker) return null;
 
@@ -68,7 +70,7 @@ function TrackerView() {
           deleteTracker={handleDeleteTracker}
         />
 
-        <TrackerHabitCard trackerId={selectedTracker.id} trackerDescription={selectedTracker.description} />
+        <TrackerHabitCard habit={trackerHabit} trackerDescription={selectedTracker.description} />
 
         <TrackerStats
           selectedTracker={selectedTracker}
@@ -86,6 +88,7 @@ function TrackerView() {
             buildHeatmap={buildHeatmap}
             weekdayBreakdown={weekdayBreakdown}
             habitLogs={habitLogs}
+            habitKind={trackerHabit?.kind}
             deleteLog={handleDeleteLog}
             updateLog={updateLog}
           />

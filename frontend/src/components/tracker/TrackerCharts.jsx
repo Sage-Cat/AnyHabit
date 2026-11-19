@@ -14,15 +14,28 @@ import {
   YAxis
 } from 'recharts';
 import DayStateLegend from '../cultivation/DayStateLegend';
-import { dayStateCell, hasDayStates } from '../cultivation/helpers';
+import { dayStateCell, formatNight, hasDayStates } from '../cultivation/helpers';
 import HeatmapGrid from '../ui/HeatmapGrid';
-import { formatDate, formatTime } from '../../utils/date';
+import { formatDate, formatTime, parseApiDate } from '../../utils/date';
 import { formatNumber } from '../../utils/number';
 import { WEEKDAY_SHORT } from '../../utils/labels';
 
 const cardClass = 'w-full min-w-0 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm md:p-6';
 const chartAxisTick = { fontSize: 11, fill: '#9ca3af' };
 const RECENT_LOGS = 10;
+
+const pad = (value) => String(value).padStart(2, '0');
+/** The viewer's calendar day of an API timestamp, as `YYYY-MM-DD`. */
+const localDay = (value) => {
+  const date = parseApiDate(value);
+  return date ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` : '';
+};
+/** When a sleep began: the wake time less the hours slept, to the nearest minute. */
+const bedtimeOf = (log) => {
+  const wake = parseApiDate(log.timestamp);
+  if (!wake) return null;
+  return new Date(Math.round((wake.getTime() - log.amount * 3600000) / 60000) * 60000);
+};
 
 const HEATMAP_SHADES = ['bg-stone-100', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-500'];
 
@@ -40,6 +53,7 @@ function TrackerCharts({
   buildHeatmap,
   weekdayBreakdown,
   habitLogs,
+  habitKind,
   deleteLog,
   updateLog
 }) {
@@ -48,6 +62,8 @@ function TrackerCharts({
 
   const isQuit = selectedTracker.type === 'quit';
   const isBoolean = selectedTracker.type === 'boolean';
+  // A sleep log is stamped at the wake time with the hours slept, and its day is the night before it.
+  const isSleep = habitKind === 'sleep';
   const showsLogList = selectedTracker.type === 'build' || selectedTracker.type === 'boolean';
 
   const weekdayData = useMemo(
@@ -154,7 +170,7 @@ function TrackerCharts({
                   selectedTracker.type === 'build' && cell.amount > 0
                     ? `${formatNumber(cell.amount)} ${selectedTracker.unit}`
                     : '';
-                return dayStateCell(cell, amount);
+                return dayStateCell(cell, amount, habitKind);
               }
               const intensity = buildHeatmap.maxAmount > 0 ? cell.amount / buildHeatmap.maxAmount : 0;
               return {
@@ -221,9 +237,20 @@ function TrackerCharts({
             <table className="w-full min-w-[480px] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-gray-400">
                 <tr>
-                  <th className="py-1.5 pr-4 font-medium">Дата</th>
-                  <th className="py-1.5 pr-4 font-medium">Час</th>
-                  <th className="py-1.5 pr-4 font-medium">{isBoolean ? 'Запис' : 'Кількість'}</th>
+                  {isSleep ? (
+                    <>
+                      <th className="py-1.5 pr-4 font-medium">Ніч</th>
+                      <th className="py-1.5 pr-4 font-medium">Заснув</th>
+                      <th className="py-1.5 pr-4 font-medium">Підйом</th>
+                      <th className="py-1.5 pr-4 font-medium">Сон</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="py-1.5 pr-4 font-medium">Дата</th>
+                      <th className="py-1.5 pr-4 font-medium">Час</th>
+                      <th className="py-1.5 pr-4 font-medium">{isBoolean ? 'Запис' : 'Кількість'}</th>
+                    </>
+                  )}
                   <th className="py-1.5 pr-4 font-medium">Нотатка</th>
                   <th className="py-1.5 font-medium">
                     <span className="sr-only">Дії</span>
@@ -233,10 +260,22 @@ function TrackerCharts({
               <tbody>
                 {habitLogs.slice(0, RECENT_LOGS).map((log) => (
                   <tr key={log.id} className="border-t border-gray-100 align-middle" data-testid="recent-log">
-                    <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
-                      {formatDate(log.timestamp, { weekday: 'short', day: 'numeric', month: 'short' })}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                    {isSleep ? (
+                      <>
+                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                          {formatNight(localDay(log.timestamp), 'short')}
+                        </td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(bedtimeOf(log))}</td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">
+                          {formatDate(log.timestamp, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-stone-800">{formatTime(log.timestamp)}</td>
+                      </>
+                    )}
                     <td className="whitespace-nowrap py-2 pr-4 font-medium text-stone-900">
                       {editingLogId === log.id ? (
                         <span className="flex items-center gap-2">

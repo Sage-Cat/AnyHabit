@@ -78,20 +78,39 @@ export const formatDay = (value, options = { day: 'numeric', month: 'long' }) =>
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString('uk-UA', options);
 };
 
+/**
+ * A sleep day is named after the morning it ends on, so 2026-11-19 is the
+ * night of 18–19 November.
+ */
+export const formatNight = (value, month = 'long') => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  if (!match) return '—';
+  const end = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1);
+  const endText = end.toLocaleDateString('uk-UA', { day: 'numeric', month });
+  return start.getMonth() === end.getMonth()
+    ? `${start.getDate()}–${endText}`
+    : `${start.toLocaleDateString('uk-UA', { day: 'numeric', month })} – ${endText}`;
+};
+
+/** A habit's day as the user thinks of it: the night for sleep, the date otherwise. */
+export const formatHabitDay = (kind, value) => (kind === 'sleep' ? `ніч ${formatNight(value)}` : formatDay(value));
+
 // The heatmap of a cultivated habit is coloured by how each day was judged, not
 // by the amount logged: a late wake still logs hours of sleep, yet it failed.
 
 /** True when heatmap cells carry day states, i.e. the tracker feeds a cultivated habit. */
 export const hasDayStates = (columns) => Boolean(columns?.some((week) => week.some((cell) => cell.status)));
 
-/** HeatmapGrid `cellView` for a day state; `amountText` is appended to the tooltip. */
-export function dayStateCell(cell, amountText = '') {
+/** HeatmapGrid `cellView` for a day state; `amountText` is appended to the tooltip, `kind` names sleep days as nights. */
+export function dayStateCell(cell, amountText = '', kind = '') {
+  const day = formatHabitDay(kind, cell.date);
   if (!cell.status) {
-    return { className: 'bg-stone-100', title: `${formatDay(cell.date)}: до початку культивації` };
+    return { className: 'bg-stone-100', title: `${day}: до початку культивації` };
   }
   return {
     className: dayStyle(cell),
-    title: `${formatDay(cell.date)} — ${dayLabel(cell)}${amountText ? ` · ${amountText}` : ''}`,
+    title: `${day} — ${dayLabel(cell)}${amountText ? ` · ${amountText}` : ''}`,
     state: cell.status
   };
 }

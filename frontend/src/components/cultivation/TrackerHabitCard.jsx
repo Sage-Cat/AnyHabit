@@ -1,7 +1,5 @@
 import { Sprout } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchHabitsApi } from '../../services/cultivationApi';
 import { StageBadge } from './common';
 import { BUTTON_SECONDARY, CARD_CLASS } from './helpers';
 
@@ -10,22 +8,7 @@ import { BUTTON_SECONDARY, CARD_CLASS } from './helpers';
  * The tracker itself only knows its schedule, so without this the page says
  * nothing about the goal or the deadline. Stays empty for a plain tracker.
  */
-function TrackerHabitCard({ trackerId, trackerDescription = '' }) {
-  const [habit, setHabit] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setHabit(null);
-    fetchHabitsApi()
-      .then((habits) => {
-        if (!cancelled) setHabit(habits.find((item) => item.tracker?.id === trackerId) || null);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [trackerId]);
-
+function TrackerHabitCard({ habit, trackerDescription = '' }) {
   if (!habit) return null;
   const { requirement, tolerance, minimum } = habit.today || {};
   const rules = [
