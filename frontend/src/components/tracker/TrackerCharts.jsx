@@ -16,6 +16,7 @@ import {
 import DayStateLegend from '../cultivation/DayStateLegend';
 import { DAY_STATUS_LABELS, dayStateCell, formatDay, formatNight, hasDayStates } from '../cultivation/helpers';
 import HeatmapGrid from '../ui/HeatmapGrid';
+import HabitDaysChart from './HabitDaysChart';
 import { formatDate, formatTime, parseApiDate } from '../../utils/date';
 import { formatNumber } from '../../utils/number';
 import { WEEKDAY_SHORT } from '../../utils/labels';
@@ -74,6 +75,8 @@ function TrackerCharts({
   habitLogs,
   habitKind,
   habitMarks,
+  habitLevel,
+  habitTolerance,
   deleteLog,
   updateLog
 }) {
@@ -108,6 +111,8 @@ function TrackerCharts({
     return [...logs, ...marks].sort((a, b) => b.time - a.time).slice(0, RECENT_LOGS);
   }, [habitLogs, habitMarks]);
   const habitStates = hasDayStates(buildHeatmap);
+  // A habit judged by an amount compares its days with the goal instead of totalling weekdays.
+  const showsHabitDays = habitStates && (habitKind === 'build' || habitKind === 'sleep');
 
   const startEditing = (log) => {
     setEditingLogId(log.id);
@@ -235,7 +240,18 @@ function TrackerCharts({
         </div>
       )}
 
-      {!isQuit && hasWeekdayData && (
+      {showsHabitDays && (
+        <HabitDaysChart
+          columns={buildHeatmap.columns}
+          kind={habitKind}
+          level={habitLevel}
+          tolerance={habitTolerance}
+          unit={selectedTracker.unit}
+          className={cardClass}
+        />
+      )}
+
+      {!isQuit && !showsHabitDays && hasWeekdayData && (
         <div className={cardClass}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <h2 className="text-sm font-semibold text-stone-700">У які дні ви найактивніші</h2>

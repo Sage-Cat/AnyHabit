@@ -90,6 +90,8 @@ function TrackerView() {
             habitLogs={habitLogs}
             habitKind={trackerHabit?.kind}
             habitMarks={trackerHabit?.recent_marks}
+            habitLevel={trackerHabit?.level}
+            habitTolerance={trackerHabit?.tolerance}
             deleteLog={handleDeleteLog}
             updateLog={updateLog}
           />

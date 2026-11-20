@@ -45,6 +45,20 @@ export const DAY_STATUS_LABELS = {
 export const WARNING_STYLE = 'bg-amber-400';
 export const WARNING_LABEL = 'Успіх з попередженням';
 
+// The same colours as fills, for charts that cannot take a class.
+export const DAY_STATUS_FILLS = {
+  success: '#10b981',
+  minimum: '#bef264',
+  fail: '#f43f5e',
+  exception: '#7dd3fc',
+  no_data: '#e7e5e4',
+  unrated: '#fde68a',
+  invalid: '#a8a29e'
+};
+export const WARNING_FILL = '#fbbf24';
+export const dayFill = (day) =>
+  day?.status === 'success' && day?.warning ? WARNING_FILL : DAY_STATUS_FILLS[day?.status] || DAY_STATUS_FILLS.no_data;
+
 export const dayStyle = (day) =>
   day?.status === 'success' && day?.warning ? WARNING_STYLE : DAY_STATUS_STYLES[day?.status] || 'bg-stone-200';
 

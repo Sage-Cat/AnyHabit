@@ -421,6 +421,9 @@ def _compact(analysis: dict) -> dict:
     }
     out["priority"] = analysis["passport"].get("priority")
     out["description"] = analysis["passport"].get("description") or ""
+    # The current thresholds, for the charts that draw them against the days.
+    out["level"] = analysis["passport"].get("level") or {}
+    out["tolerance"] = analysis["passport"].get("tolerance") or {}
     out["days"] = analysis["days"][-14:]
     return out
 
