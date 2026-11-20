@@ -197,6 +197,18 @@ try {
     nightText.includes('–') && (minutes(wakeText) - minutes(bedText) + 1440) % 1440 === 480,
     `${nightText} ${bedText} ${wakeText}`
   );
+  const sleepDays = page.locator('[data-testid="habit-days-chart"]');
+  await sleepDays.waitFor({ timeout: 10000 });
+  const sleepDaysText = await sleepDays.evaluate((node) => node.textContent);
+  check(
+    'sleep nights are drawn against the hours of the goal',
+    sleepDaysText.includes('Ціль від 7 год') && sleepDaysText.includes('Ціль до 9 год'),
+    sleepDaysText.slice(0, 200)
+  );
+  check(
+    'the days chart replaces the weekday totals',
+    !(await page.locator('[data-testid="tracker-charts"]').innerText()).includes('У які дні ви найактивніші')
+  );
   await page.goto(`${BASE}/practice/${habitId}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="integration-block"]');
 
@@ -557,6 +569,11 @@ try {
     "a habit's tracker shows a success and failure map, not regularity",
     chartsText.includes('Теплова карта успіхів і порушень') && !chartsText.includes('Теплова карта регулярності')
   );
+  check(
+    'a yes/no habit keeps the weekday totals',
+    chartsText.includes('У які дні ви найактивніші') &&
+      (await page.locator('[data-testid="habit-days-chart"]').count()) === 0
+  );
   const failCell = page.locator(`[data-testid="tracker-heatmap"] [data-date="${work.failDay}"]`);
   check(
     'the tracker heatmap paints the failed day red',
@@ -598,6 +615,70 @@ try {
     'a habit that has not started yet already shows the success and failure map',
     laterCharts.includes('Теплова карта успіхів і порушень') && laterCharts.includes('Порушення'),
     laterCharts.slice(0, 200)
+  );
+
+  const steps = await page.evaluate(async () => {
+    const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+    const created = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'build',
+        spec: {
+          name: `Кроки ${Date.now()}`,
+          unit: 'кроків',
+          stage: 'formation',
+          start_date: day(6),
+          level: { min_amount: 5000 },
+          tolerance: { min_amount: 4000 },
+          minimum: { min_amount: 3000 }
+        },
+        effective_from: day(6),
+        reason: 'e2e'
+      })
+    });
+    if (!created.ok) throw new Error(await created.text());
+    const habit = await created.json();
+    // Noon UTC stays on the same calendar day in any nearby timezone.
+    for (const [offset, amount] of [
+      [3, 6000],
+      [2, 4500],
+      [1, 1000]
+    ]) {
+      const logged = await fetch(`/trackers/${habit.tracker.id}/logs/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, timestamp: `${day(offset)}T12:00:00Z` })
+      });
+      if (!logged.ok) throw new Error(await logged.text());
+    }
+    return habit.tracker.id;
+  });
+  await page.goto(`${BASE}/tracker/${steps}`, { waitUntil: 'networkidle' });
+  const stepsDays = page.locator('[data-testid="habit-days-chart"]');
+  await stepsDays.waitFor({ timeout: 10000 });
+  await page.waitForSelector('[data-testid="habit-days-chart"] .recharts-reference-line', { state: 'attached' });
+  const fills = await stepsDays
+    .locator('path.recharts-rectangle')
+    .evaluateAll((bars) => bars.map((bar) => bar.getAttribute('fill')));
+  check(
+    'each day is a bar coloured by its result',
+    ['#10b981', '#fbbf24', '#f43f5e'].every((fill) => fills.includes(fill)),
+    fills.join(',')
+  );
+  const stepsText = await stepsDays.evaluate((node) => node.textContent);
+  check(
+    'the goal and the tolerance are drawn as lines',
+    (await stepsDays.locator('.recharts-reference-line').count()) === 2 &&
+      /Ціль 5\s?000 кроків/.test(stepsText) &&
+      /Допуск 4\s?000 кроків/.test(stepsText),
+    stepsText.slice(0, 200)
+  );
+  check(
+    'the steps tracker has no weekday totals',
+    !(await page.locator('[data-testid="tracker-charts"]').innerText()).includes('У які дні ви найактивніші')
   );
 
   await page.goto(`${BASE}/practice/${work.id}`, { waitUntil: 'networkidle' });

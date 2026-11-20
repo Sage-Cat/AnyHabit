@@ -798,6 +798,12 @@ def main() -> int:
         overview = client.get("/cultivation/overview").json()
         check("overview lists the active habit", [h["id"] for h in overview["active"]] == [hid], str(overview)[:300])
         check("overview says what the habit is about", overview["active"][0]["description"] == "Wake rested")
+        check(
+            "overview carries the current thresholds for the charts",
+            overview["active"][0]["level"] == {"wake_by": "08:00", "min_sleep_h": 7.5}
+            and overview["active"][0]["tolerance"] == {},
+            str(overview["active"][0].get("level")),
+        )
         check("overview carries the rank", overview["rank"]["name"] == "Адепт другого рівня", overview["rank"]["name"])
         check(
             "overview rank carries Прорив and habits per stage",
