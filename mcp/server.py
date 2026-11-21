@@ -29,8 +29,9 @@ mcp = MCPServer(
         "never invent completions. A day without a record is 'no data', not a "
         "failure. Passport, criteria, stage and minimum-mode changes need the "
         "user's explicit approval of that exact change (user_confirmed=true) and a reason; "
-        "history is appended, never rewritten. A habit is integrated only when "
-        "the user decides so — integration checks are recommendations."
+        "history is appended, never rewritten. Stages move by themselves when "
+        "the passport's criteria are met (stage_changes lists each move); a stage "
+        "set by hand is an override the criteria then continue from."
     ),
 )
 
@@ -568,7 +569,7 @@ def list_cultivated_habits(include_archived: bool = False) -> list[dict[str, Any
 @mcp.tool()
 def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any]:
     """Full passport, version history, success rates, deviations, recovery metrics,
-    monthly dynamics, integration criteria check and stage recommendation."""
+    monthly dynamics, integration criteria check and the stage changes."""
     return api.get(f"/cultivation/habits/{habit_id}", params={"history_days": history_days})
 
 
@@ -738,7 +739,7 @@ def change_habit_stage(
     user_confirmed: bool,
     effective_from: str | None = None,
 ) -> dict[str, Any]:
-    """Move a habit to another stage. The user decides; recommendations do not move stages."""
+    """Put a habit on a stage by hand. Stages move by themselves; this overrides that, then the criteria go on."""
     _require_user_confirmation(user_confirmed, "Changing a habit stage")
     return api.post(
         f"/cultivation/habits/{habit_id}/stage",

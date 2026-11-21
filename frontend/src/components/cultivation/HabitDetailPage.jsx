@@ -676,6 +676,7 @@ function HabitDetailPage() {
   }
 
   const markNeedsReason = mark.status !== 'clear';
+  const lastStageChange = habit.stage_changes?.at(-1);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#fcfcfc]">
@@ -703,10 +704,15 @@ function HabitDetailPage() {
               <DayStatusPill day={habit.today?.day} />
             </div>
             {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
+            {lastStageChange?.auto && (
+              <p className="mt-3 text-xs text-gray-500" data-testid="stage-change">
+                Етап «{lastStageChange.to_label}» з {formatDay(lastStageChange.date)} — автоматично.{' '}
+                {lastStageChange.reason}
+              </p>
+            )}
             {habit.recommendation && (
               <p className="mt-3 rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
-                <span className="font-semibold">Пропозиція:</span> {habit.recommendation.reason}{' '}
-                <span className="text-xs text-sky-700">(змінити етап можна нижче, у розділі «Керування»)</span>
+                <span className="font-semibold">Наступного дня етап зміниться сам:</span> {habit.recommendation.reason}
               </p>
             )}
             {habit.kind === 'sleep' && !habit.archived && (
@@ -885,6 +891,10 @@ function HabitDetailPage() {
                       ).then(() => setStageForm((c) => ({ ...c, reason: '' })))
                     }
                   >
+                    <p className="text-xs text-gray-500">
+                      Етапи змінюються самі, коли виконано критерії. Тут — ручне виправлення; далі критерії діють від
+                      нього.
+                    </p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <select
                         aria-label="Новий етап"

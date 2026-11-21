@@ -298,12 +298,11 @@ def _version_out(version: dict, with_spec: bool = True) -> dict:
     return out
 
 
-def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, history_days: int = 60) -> dict:
+def _load(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict:
+    """A habit's versions, days and the stages it really had: they move by themselves."""
     today = _today(user)
     versions = _versions(db, habit)
-    spec = cv.latest_spec(versions) or {}
     tracker = _tracker_info(db, habit)
-    unit = (tracker or {}).get("unit", "")
     modes = _modes(db, habit)
     marks = _marks(db, habit)
     days = cv.build_days(
@@ -315,9 +314,40 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
         today,
         tracked=tracker is not None,
     )
+    staged, changes = cv.staged_versions(versions, days)
+    return {
+        "today": today,
+        "versions": versions,
+        "staged": staged,
+        "stage_changes": changes,
+        "tracker": tracker,
+        "modes": modes,
+        "marks": marks,
+        "days": days,
+    }
+
+
+def _stage_now(data: dict, day: date | None = None) -> str | None:
+    staged = data["staged"]
+    spec = (cv.spec_for(staged, day) if day else None) or cv.latest_spec(staged) or {}
+    return spec.get("stage")
+
+
+def _analyse(
+    db: Session,
+    user: models.User,
+    habit: models.CultivatedHabit,
+    history_days: int = 60,
+    loaded: dict | None = None,
+) -> dict:
+    data = loaded or _load(db, user, habit)
+    today, versions, days = data["today"], data["versions"], data["days"]
+    tracker, modes, marks = data["tracker"], data["modes"], data["marks"]
+    spec = cv.latest_spec(data["staged"]) or {}
+    unit = (tracker or {}).get("unit", "")
     episodes = cv.find_episodes(days, versions)
     rules = cv.section(spec, "rules", cv.DEFAULT_RULES)
-    today_spec = cv.spec_for(versions, today) or spec
+    today_spec = cv.spec_for(data["staged"], today) or spec
     active_mode = next((m for m in modes if m["end_date"] is None), None)
     degraded_today = cv.mode_on(modes, today) is not None
     today_day = days[-1] if days and days[-1].date == today else None
@@ -335,6 +365,16 @@ def _analyse(db: Session, user: models.User, habit: models.CultivatedHabit, hist
         "stage_label": cv.STAGE_LABELS.get(stage, ""),
         "passport": spec,
         "versions": [_version_out(v) for v in versions],
+        # Every stage change, made by the criteria ("auto") or by hand.
+        "stage_changes": [
+            {
+                **change,
+                "date": change["date"].isoformat(),
+                "from_label": cv.STAGE_LABELS.get(change["from"], ""),
+                "to_label": cv.STAGE_LABELS.get(change["to"], ""),
+            }
+            for change in data["stage_changes"]
+        ],
         "today": {
             "date": today.isoformat(),
             "requirement": cv.level_text(habit.kind, (today_spec or {}).get("level"), unit),
@@ -428,18 +468,28 @@ def _compact(analysis: dict) -> dict:
     return out
 
 
-def _rank(db: Session, user: models.User, readiness: dict[int, float | None] | None = None) -> dict:
+def _rank(
+    db: Session,
+    user: models.User,
+    readiness: dict[int, float | None] | None = None,
+    loaded: dict[int, dict] | None = None,
+) -> dict:
     habits = (
         db.query(models.CultivatedHabit)
         .filter(models.CultivatedHabit.user_id == user.id, models.CultivatedHabit.archived_at.is_(None))
         .all()
     )
     ranks, custom = _profile(db, user)
+    data = {h.id: (loaded or {}).get(h.id) or _load(db, user, h) for h in habits}
     if readiness is None:
-        readiness = {h.id: _analyse(db, user, h, history_days=0)["readiness"] for h in habits}
-    report = cv.compute_rank({h.id: _versions(db, h) for h in habits}, _today(user), ranks, readiness)
+        readiness = {h.id: _analyse(db, user, h, history_days=0, loaded=data[h.id])["readiness"] for h in habits}
+    report = cv.compute_rank({hid: d["staged"] for hid, d in data.items()}, _today(user), ranks, readiness)
     report["custom_ladder"] = custom
     return report
+
+
+# How long a habit that dropped out of integration is flagged on the home screen.
+DROP_NOTICE_DAYS = 7
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +506,8 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         .order_by(models.CultivatedHabit.id)
         .all()
     )
-    analyses = [_compact(_analyse(db, current_user, h, history_days=14)) for h in habits]
+    loaded = {h.id: _load(db, current_user, h) for h in habits}
+    analyses = [_compact(_analyse(db, current_user, h, history_days=14, loaded=loaded[h.id])) for h in habits]
 
     def priority_key(item: dict) -> tuple:
         priority = item["priority"]
@@ -464,21 +515,26 @@ def overview(current_user: models.User = Depends(get_current_user), db: Session 
         return (not numeric, priority if numeric else 0, item["id"])
 
     by_priority = sorted(analyses, key=priority_key)
+    today = _today(current_user)
     warnings = []
     for item in analyses:
-        rec = item["recommendation"]
-        if item["stage"] == "integrated" and rec and rec["to"] == "stabilization":
-            warnings.append(
-                {"habit_id": item["id"], "message": f"«{item['name']}»: стійкість погіршується. {rec['reason']}"}
-            )
+        for change in loaded[item["id"]]["stage_changes"]:
+            if change["auto"] and change["from"] == "integrated" and (today - change["date"]).days < DROP_NOTICE_DAYS:
+                warnings.append(
+                    {
+                        "habit_id": item["id"],
+                        "message": f"«{item['name']}» повернулася у стабілізацію "
+                        f"{change['date'].strftime('%d.%m')}. {change['reason']}",
+                    }
+                )
     return {
-        "date": _today(current_user).isoformat(),
+        "date": today.isoformat(),
         "timezone": current_user.timezone or "UTC",
         "active": [a for a in by_priority if a["stage"] in ("formation", "stabilization")],
         "integrated": [a for a in by_priority if a["stage"] == "integrated"],
         "planned": [a for a in by_priority if a["stage"] == "planned"],
         "warnings": warnings,
-        "rank": _rank(db, current_user, {a["id"]: a["readiness"] for a in analyses}),
+        "rank": _rank(db, current_user, {a["id"]: a["readiness"] for a in analyses}, loaded),
     }
 
 
@@ -498,11 +554,11 @@ def stats(
     )
     items = []
     for habit in habits:
-        versions = _versions(db, habit)
-        spec = cv.latest_spec(versions) or {}
+        data = _load(db, current_user, habit)
+        spec = cv.latest_spec(data["staged"]) or {}
         if spec.get("stage") == "planned":
             continue
-        tracker = _tracker_info(db, habit)
+        tracker = data["tracker"]
         items.append(
             {
                 "id": habit.id,
@@ -512,15 +568,7 @@ def stats(
                 "stage_label": cv.STAGE_LABELS.get(spec.get("stage"), ""),
                 "tracker_id": tracker["id"] if tracker else None,
                 "color": tracker["color"] if tracker else "",
-                "days": cv.build_days(
-                    habit.kind,
-                    versions,
-                    _observations(db, habit, current_user),
-                    _marks(db, habit),
-                    _modes(db, habit),
-                    today,
-                    tracked=tracker is not None,
-                ),
+                "days": data["days"],
             }
         )
     since = today - timedelta(days=days - 1)
@@ -547,20 +595,19 @@ def progress(
     )
     rows, episodes = [], []
     for habit in habits:
-        versions = _versions(db, habit)
-        tracker = _tracker_info(db, habit)
-        day_list = cv.build_days(
-            habit.kind,
-            versions,
-            _observations(db, habit, current_user),
-            _marks(db, habit),
-            _modes(db, habit),
-            today,
-            tracked=tracker is not None,
-        )
-        found = cv.find_episodes(day_list, versions)
+        data = _load(db, current_user, habit)
+        found = cv.find_episodes(data["days"], data["versions"])
         episodes.extend(found)
-        rows.append({"id": habit.id, "versions": versions, "days": day_list, "episodes": found, "tracker": tracker})
+        # The staged versions: the stage path follows the stages the habit really had.
+        rows.append(
+            {
+                "id": habit.id,
+                "versions": data["staged"],
+                "days": data["days"],
+                "episodes": found,
+                "tracker": data["tracker"],
+            }
+        )
     ranks, _custom = _profile(db, current_user)
     history = cv.progress_history(rows, today - timedelta(days=days - 1), today, ranks)
     held = {
@@ -615,6 +662,7 @@ def create_habit(
     author = _require_user_confirmation(request, payload.confirmed_by_user)
     spec = dict(payload.spec)
     spec.setdefault("stage", "formation")
+    spec[cv.STAGE_SET] = True
     today = _today(current_user)
     spec.setdefault("start_date", today.isoformat())
     if payload.effective_from is not None:
@@ -799,9 +847,23 @@ def change_passport(
     habit = _writable_habit(db, current_user, habit_id)
     if (payload.spec is None) == (payload.patch is None):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Передайте або spec, або patch")
-    current = cv.latest_spec(_versions(db, habit)) or {}
-    spec = payload.spec if payload.spec is not None else cv.merge_patch(current, payload.patch)
+    current, stage = _current_spec(db, current_user, habit, payload.effective_from)
+    spec = dict(payload.spec) if payload.spec is not None else cv.merge_patch(current, payload.patch)
+    # Only a stage other than the one the habit has then is a move by hand.
+    spec[cv.STAGE_SET] = spec.get("stage") != stage
     return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
+
+
+def _current_spec(
+    db: Session, user: models.User, habit: models.CultivatedHabit, effective_from: date | None
+) -> tuple[dict, str | None]:
+    """The latest passport with the stage the habit has on ``effective_from`` (today by default)."""
+    data = _load(db, user, habit)
+    stage = _stage_now(data, effective_from or data["today"])
+    current = {key: value for key, value in (cv.latest_spec(data["versions"]) or {}).items() if key != cv.STAGE_SET}
+    if stage is not None:
+        current["stage"] = stage
+    return current, stage
 
 
 @router.post("/habits/{habit_id}/stage", status_code=status.HTTP_201_CREATED)
@@ -812,12 +874,13 @@ def change_stage(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Put the habit on a stage by hand; the criteria then move it on from there."""
     author = _require_user_confirmation(request, payload.confirmed_by_user)
     habit = _writable_habit(db, current_user, habit_id)
-    current = cv.latest_spec(_versions(db, habit)) or {}
-    if current.get("stage") == payload.stage:
+    current, stage = _current_spec(db, current_user, habit, payload.effective_from)
+    if stage == payload.stage:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичка вже на цьому етапі")
-    spec = cv.merge_patch(current, {"stage": payload.stage})
+    spec = cv.merge_patch(current, {"stage": payload.stage, cv.STAGE_SET: True})
     return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
 
 

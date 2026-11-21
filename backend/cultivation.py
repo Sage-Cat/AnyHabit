@@ -624,6 +624,17 @@ def find_episodes(days: list[Day], versions: list[dict]) -> list[Episode]:
     Neutral days (no data, exceptions, unrated) neither break nor confirm recovery.
     """
     episodes: list[Episode] = []
+    for _day, episodes in iter_episodes(days, versions):
+        pass
+    return episodes
+
+
+def iter_episodes(days: list[Day], versions: list[dict]):
+    """Yield each day with the deviations found up to it (the last may still be open).
+
+    The list is updated in place on the next day, so read it before moving on.
+    """
+    episodes: list[Episode] = []
     current: Episode | None = None
     for day in days:
         met = day.met
@@ -644,7 +655,7 @@ def find_episodes(days: list[Day], versions: list[dict]) -> list[Episode]:
             if current._streak >= int(rules["confirm_days"]):
                 current.confirmed = day.date
                 current = None
-    return episodes
+        yield day, episodes
 
 
 def rate(days: list[Day], window: int, until: date) -> dict:
@@ -915,6 +926,109 @@ def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today:
     """``readiness`` of :func:`stage_progress`, from 0 to 1."""
     progress = stage_progress(spec, days, episodes, today)
     return None if progress is None else progress["readiness"]
+
+
+# Stages move by themselves; a version with this key set to true puts the habit
+# on its stage by hand.  Versions from before that lack the key, and there a
+# change of the stored stage was the hand-made move.
+STAGE_SET = "stage_set"
+
+
+def _sets_stage(version: dict, previous: dict | None) -> bool:
+    spec = version["spec"]
+    if STAGE_SET in spec:
+        return bool(spec[STAGE_SET])
+    return previous is None or previous["spec"].get("stage") != spec.get("stage")
+
+
+def _stage_move(spec: dict, days: list[Day], episodes: list[Episode], day: date) -> dict | None:
+    """Where the criteria move the habit on ``day``: ``{"to", "reason"}``, or None to stay."""
+    if spec.get("stage") == "planned":
+        start = spec.get("start_date")
+        if start and day >= date.fromisoformat(str(start)):
+            return {"to": "formation", "reason": "Настав день початку."}
+        return None
+    return recommendation(spec, days, episodes, day)
+
+
+def staged_versions(versions: list[dict], days: list[Day]) -> tuple[list[dict], list[dict]]:
+    """The passport versions with the stage the habit really had, and its stage changes.
+
+    Each day the criteria of the stage in force are checked on the days up to
+    it; a move takes effect that same day, one step a day.  A version that sets
+    the stage by hand puts the habit there, and the criteria go on from it.
+    ``days`` must run without gaps up to today, as :func:`build_days` makes them;
+    a habit whose days start later (a future start date) waits on its stage.
+    """
+    if not versions or not days:
+        return [], []
+    by_hand: set[date] = set()
+    previous = None
+    for version in versions:
+        if _sets_stage(version, previous):
+            by_hand.add(version["effective_from"])
+        previous = version
+
+    staged: list[dict] = []
+    changes: list[dict] = []
+    stage: str | None = None
+    source: dict | None = None
+    pending = list(versions)
+    walk = iter_episodes(days, versions)
+    episodes: list[Episode] = []
+    index = -1
+    current = min(versions[0]["effective_from"], days[0].date)
+    while current <= days[-1].date:
+        if current >= days[0].date:
+            _day, episodes = next(walk)
+            index += 1
+        started = None
+        while pending and pending[0]["effective_from"] <= current:
+            source = started = pending.pop(0)
+        if source is None:
+            current += timedelta(days=1)
+            continue
+        stored = source["spec"]
+        if stage is None or current in by_hand:
+            if stored.get("stage") != stage:
+                changes.append(
+                    {
+                        "date": current,
+                        "from": stage,
+                        "to": stored.get("stage"),
+                        "reason": source.get("reason", ""),
+                        "auto": False,
+                    }
+                )
+            stage = stored.get("stage")
+        spec = {key: value for key, value in stored.items() if key != STAGE_SET}
+        spec["stage"] = stage
+        window = max(
+            int(section(spec, key, defaults)["window_days"])
+            for key, defaults in (
+                ("stabilization", DEFAULT_STABILIZATION),
+                ("integration", DEFAULT_INTEGRATION),
+                ("maintenance", DEFAULT_MAINTENANCE),
+            )
+        )
+        recent = days[max(0, index + 1 - window) : index + 1] if index >= 0 else []
+        move = _stage_move(spec, recent, episodes, current)
+        if move:
+            changes.append({"date": current, "from": stage, "to": move["to"], "reason": move["reason"], "auto": True})
+            stage = spec["stage"] = move["to"]
+        if started or staged[-1]["spec"]["stage"] != stage:
+            staged.append(
+                {
+                    "id": source["id"],
+                    "effective_from": current,
+                    "created_at": source.get("created_at") if started else None,
+                    "reason": source.get("reason", "") if started else move["reason"],
+                    "author": source.get("author", "user") if started else "auto",
+                    "spec": spec,
+                }
+            )
+        current += timedelta(days=1)
+    return staged, changes
 
 
 # ---------------------------------------------------------------------------
