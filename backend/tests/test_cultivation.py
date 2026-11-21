@@ -299,6 +299,14 @@ def main() -> int:
         str([(v["effective_from"], v["spec"]["stage"]) for v in staged]),
     )
     check("the stored versions are left as they are", len(fvers) == 1 and fvers[0]["spec"]["stage"] == "formation")
+    tvers = [
+        {**v, "reason": f"v{v['id']}"} for v in versions((D0, SPEC), (D0, {**SPEC, "level": {"wake_by": "08:30"}}))
+    ]
+    check(
+        "the first stage comes with the reason of the version that set it",
+        cv.staged_versions(tvers, fdays, today)[1][0]["reason"] == "v1",
+        str(cv.staged_versions(tvers, fdays, today)[1][0]),
+    )
     check(
         "rank counts the stage the habit reached",
         cv.compute_rank({1: staged}, today)["name"] == "Адепт другого рівня"
