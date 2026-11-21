@@ -962,11 +962,11 @@ def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple
     """
     if not versions:
         return [], []
-    by_hand: set[date] = set()
+    by_hand: dict[date, dict] = {}  # the last version that sets the stage that day
     previous = None
     for version in versions:
         if _sets_stage(version, previous):
-            by_hand.add(version["effective_from"])
+            by_hand[version["effective_from"]] = version
         previous = version
 
     staged: list[dict] = []
@@ -996,7 +996,7 @@ def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple
                         "date": current,
                         "from": stage,
                         "to": stored.get("stage"),
-                        "reason": source.get("reason", ""),
+                        "reason": by_hand.get(current, source).get("reason", ""),
                         "auto": False,
                     }
                 )
