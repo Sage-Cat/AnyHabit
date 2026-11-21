@@ -951,16 +951,16 @@ def _stage_move(spec: dict, days: list[Day], episodes: list[Episode], day: date)
     return recommendation(spec, days, episodes, day)
 
 
-def staged_versions(versions: list[dict], days: list[Day]) -> tuple[list[dict], list[dict]]:
+def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple[list[dict], list[dict]]:
     """The passport versions with the stage the habit really had, and its stage changes.
 
     Each day the criteria of the stage in force are checked on the days up to
     it; a move takes effect that same day, one step a day.  A version that sets
     the stage by hand puts the habit there, and the criteria go on from it.
-    ``days`` must run without gaps up to today, as :func:`build_days` makes them;
-    a habit whose days start later (a future start date) waits on its stage.
+    ``days`` must run without gaps up to ``today``, as :func:`build_days` makes
+    them, or be empty while the habit waits for a future start date.
     """
-    if not versions or not days:
+    if not versions:
         return [], []
     by_hand: set[date] = set()
     previous = None
@@ -977,9 +977,9 @@ def staged_versions(versions: list[dict], days: list[Day]) -> tuple[list[dict], 
     walk = iter_episodes(days, versions)
     episodes: list[Episode] = []
     index = -1
-    current = min(versions[0]["effective_from"], days[0].date)
-    while current <= days[-1].date:
-        if current >= days[0].date:
+    current = min([versions[0]["effective_from"]] + [day.date for day in days[:1]])
+    while current <= today:
+        if days and current >= days[0].date:
             _day, episodes = next(walk)
             index += 1
         started = None

@@ -11,6 +11,7 @@ const initialState = () => ({
   kind: 'sleep',
   name: '',
   stage: 'formation',
+  startDate: '',
   level: emptyLevel(),
   withMinimum: false,
   minimum: emptyLevel(),
@@ -48,7 +49,13 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
       return;
     }
 
+    if (form.stage === 'planned' && !form.startDate) {
+      setError('Вкажіть дату початку: у цей день звичка сама перейде у формування');
+      return;
+    }
+
     const spec = { name, stage: form.stage, level: buildLevel(form.kind, form.level) };
+    if (form.stage === 'planned') spec.start_date = form.startDate;
     if (form.kind === 'build') spec.unit = form.unit.trim();
     if (form.withMinimum && hasLevelValue(form.kind, form.minimum)) {
       spec.minimum = buildLevel(form.kind, form.minimum);
@@ -106,6 +113,18 @@ function NewHabitModal({ isOpen, onClose, onCreated }) {
               ))}
             </select>
           </Field>
+          {form.stage === 'planned' && (
+            <Field label="Дата початку">
+              <input
+                type="date"
+                aria-label="Дата початку"
+                value={form.startDate}
+                onChange={set('startDate')}
+                className={INPUT_CLASS}
+                required
+              />
+            </Field>
+          )}
         </div>
 
         <Field label="Назва">

@@ -314,7 +314,7 @@ def _load(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict
         today,
         tracked=tracker is not None,
     )
-    staged, changes = cv.staged_versions(versions, days)
+    staged, changes = cv.staged_versions(versions, days, today)
     return {
         "today": today,
         "versions": versions,
@@ -671,6 +671,12 @@ def create_habit(
         cv.validate_spec(payload.kind, spec)
     except cv.PassportError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    # A planned habit starts forming by itself on its start date.
+    if spec["stage"] == "planned" and date.fromisoformat(str(spec["start_date"])) <= today:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Запланованій звичці потрібна дата початку в майбутньому",
+        )
 
     tracker_type = KIND_TRACKER_TYPES[payload.kind]
     if payload.tracker_id is not None:
@@ -830,6 +836,20 @@ def _add_version(
         )
     )
     analysis = _analyse_or_rollback(db, user, habit)
+    if spec.get(cv.STAGE_SET):
+        # The criteria act the same day: a stage they move away from at once
+        # would only leave a version nobody can take back.
+        data = _load(db, user, habit)
+        held = _stage_now(data, effective)
+        if held != spec.get("stage"):
+            why = next(
+                (c["reason"] for c in reversed(data["stage_changes"]) if c["auto"] and c["date"] == effective), ""
+            )
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Критерії одразу переводять звичку на етап «{cv.STAGE_LABELS.get(held, held)}». {why}".strip(),
+            )
     db.commit()
     return analysis
 
