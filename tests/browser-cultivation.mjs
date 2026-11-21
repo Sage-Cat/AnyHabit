@@ -205,7 +205,7 @@ try {
   const sleepDaysText = await sleepDays.evaluate((node) => node.textContent);
   check(
     'sleep nights are drawn against the hours of the goal',
-    sleepDaysText.includes('Ціль від 7 год') && sleepDaysText.includes('Ціль до 9 год'),
+    sleepDaysText.includes('Ціль: 7–9 год') && (await sleepDays.locator('.recharts-reference-line').count()) === 2,
     sleepDaysText.slice(0, 200)
   );
   check(
@@ -679,9 +679,14 @@ try {
   check(
     'the goal and the tolerance are drawn as lines',
     (await stepsDays.locator('.recharts-reference-line').count()) === 2 &&
-      /Ціль 5\s?000 кроків/.test(stepsText) &&
-      /Допуск 4\s?000 кроків/.test(stepsText),
+      /Ціль: ≥ 5\s?000 кроків/.test(stepsText) &&
+      /Допуск: ≥ 4\s?000 кроків/.test(stepsText),
     stepsText.slice(0, 200)
+  );
+  check(
+    'the lines are named in a legend, not over the bars',
+    (await stepsDays.locator('.recharts-reference-line text').count()) === 0 &&
+      (await stepsDays.locator('[data-testid="threshold-legend"] li').count()) === 2
   );
   check(
     'the steps tracker has no weekday totals',
