@@ -285,6 +285,73 @@ def main() -> int:
     )
     check("the recovery stage is gone", "recovery" not in cv.STAGES)
 
+    print("\n[3c] Stages move by themselves")
+    fvers = versions((D0, SPEC))
+    fdays, _ = sleep_days(perfect, today, vers=fvers)
+    staged, changes = cv.staged_versions(fvers, fdays)
+    moved = D0 + timedelta(days=9)  # the 10th observed day, all of them successes
+    check(
+        "formation moves to stabilization on the day the criteria are met",
+        [(v["effective_from"], v["spec"]["stage"], v["author"]) for v in staged]
+        == [(D0, "formation", "user"), (moved, "stabilization", "auto")]
+        and changes[-1]["auto"]
+        and changes[-1]["date"] == moved,
+        str([(v["effective_from"], v["spec"]["stage"]) for v in staged]),
+    )
+    check("the stored versions are left as they are", len(fvers) == 1 and fvers[0]["spec"]["stage"] == "formation")
+    check(
+        "rank counts the stage the habit reached",
+        cv.compute_rank({1: staged}, today)["name"] == "Адепт другого рівня"
+        and cv.compute_rank({1: fvers}, today)["name"] == "Адепт першого рівня",
+    )
+    stricter = {**SPEC, "level": {"wake_by": "08:00", "min_sleep_h": 7.5}}
+    for label, later in (
+        ("an older passport edit", stricter),
+        ("a passport edit", {**stricter, cv.STAGE_SET: False}),
+    ):
+        evers = versions((D0, SPEC), (D0 + timedelta(days=11), later))
+        edays, _ = sleep_days(perfect, today, vers=evers)
+        estaged, _ = cv.staged_versions(evers, edays)
+        check(
+            f"{label} after the move keeps the stage",
+            cv.latest_spec(estaged)["stage"] == "stabilization"
+            and cv.latest_spec(estaged)["level"]["min_sleep_h"] == 7.5
+            and cv.STAGE_SET not in cv.latest_spec(estaged),
+            str([(v["effective_from"], v["spec"]["stage"]) for v in estaged]),
+        )
+    hand = {**SPEC, "stage": "integrated", cv.STAGE_SET: True}
+    hvers = versions((D0, SPEC), (D0 + timedelta(days=11), hand))
+    hdays, _ = sleep_days(perfect, today, vers=hvers)
+    hstaged, hchanges = cv.staged_versions(hvers, hdays)
+    check(
+        "a stage set by hand holds while its criteria allow",
+        cv.latest_spec(hstaged)["stage"] == "integrated" and not hchanges[-1]["auto"],
+        str(hchanges),
+    )
+    holding = {**SPEC, "stage": "integrated", "maintenance": {"window_days": 14, "min_success_rate": 0.6}}
+    # Ten good nights, then late ones: on day 15 only 8 of the last 14 are successes (57% < 60%).
+    slide = [night(D0 + timedelta(i), "23:00", "07:00") for i in range(10)]
+    slide += [night(D0 + timedelta(i), "04:00", "12:00") for i in range(10, 20)]
+    dvers = versions((D0, holding))
+    ddays, _ = sleep_days(slide, D0 + timedelta(days=19), vers=dvers)
+    _dstaged, dchanges = cv.staged_versions(dvers, ddays)
+    check(
+        "an integrated habit that slips goes back to stabilization by itself",
+        dchanges[-1]["auto"]
+        and (dchanges[-1]["from"], dchanges[-1]["to"]) == ("integrated", "stabilization")
+        and dchanges[-1]["date"] == D0 + timedelta(days=15),
+        str(dchanges),
+    )
+    pvers = versions((D0, {**SPEC, "stage": "planned", "start_date": (D0 + timedelta(days=3)).isoformat()}))
+    pdays, _ = sleep_days([], D0 + timedelta(days=5), vers=pvers)
+    pstaged, _ = cv.staged_versions(pvers, pdays)
+    check(
+        "a planned habit starts forming on its start date",
+        [(v["effective_from"], v["spec"]["stage"]) for v in pstaged]
+        == [(D0, "planned"), (D0 + timedelta(days=3), "formation")],
+        str([(v["effective_from"], v["spec"]["stage"]) for v in pstaged]),
+    )
+
     print("\n[4] Ranks")
 
     def stage_versions(*stages):
@@ -694,6 +761,25 @@ def main() -> int:
             allowed.status_code == 201 and allowed.json()["versions"][-1]["author"] == "api",
             allowed.text[:200],
         )
+        by_hand = allowed.json()
+        check(
+            "a stage set by hand is listed as such, and the passport hides the flag",
+            by_hand["versions"][-1]["spec"].get(cv.STAGE_SET) is True
+            and cv.STAGE_SET not in by_hand["passport"]
+            and by_hand["stage_changes"][-1]["to"] == "stabilization"
+            and by_hand["stage_changes"][-1]["auto"] is False,
+            str(by_hand["stage_changes"]),
+        )
+        edited = client.post(
+            f"/cultivation/habits/{hid}/versions", json={"patch": {"why": "rest"}, "reason": "why"}
+        ).json()
+        check(
+            "a passport edit keeps the stage and does not set it by hand",
+            edited["stage"] == "stabilization" and edited["versions"][-1]["spec"].get(cv.STAGE_SET) is False,
+            str(edited["versions"][-1]["spec"]),
+        )
+        same = client.post(f"/cultivation/habits/{hid}/stage", json={"stage": "stabilization", "reason": "again"})
+        check("setting the stage the habit already has is refused", same.status_code == 409, same.text[:200])
         agent_mark = agent.post(
             f"/cultivation/habits/{hid}/marks",
             headers=headers,
@@ -836,7 +922,7 @@ def main() -> int:
         cult = exported.get("cultivation", {})
         check(
             "JSON export includes cultivation history",
-            len(cult.get("habits", [])) == 1 and len(cult["habits"][0]["versions"]) == 3,
+            len(cult.get("habits", [])) == 1 and len(cult["habits"][0]["versions"]) == 4,
             str(cult)[:300],
         )
 
