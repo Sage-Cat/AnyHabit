@@ -288,7 +288,7 @@ def main() -> int:
     print("\n[3c] Stages move by themselves")
     fvers = versions((D0, SPEC))
     fdays, _ = sleep_days(perfect, today, vers=fvers)
-    staged, changes = cv.staged_versions(fvers, fdays)
+    staged, changes = cv.staged_versions(fvers, fdays, today)
     moved = D0 + timedelta(days=9)  # the 10th observed day, all of them successes
     check(
         "formation moves to stabilization on the day the criteria are met",
@@ -311,7 +311,7 @@ def main() -> int:
     ):
         evers = versions((D0, SPEC), (D0 + timedelta(days=11), later))
         edays, _ = sleep_days(perfect, today, vers=evers)
-        estaged, _ = cv.staged_versions(evers, edays)
+        estaged, _ = cv.staged_versions(evers, edays, today)
         check(
             f"{label} after the move keeps the stage",
             cv.latest_spec(estaged)["stage"] == "stabilization"
@@ -322,7 +322,7 @@ def main() -> int:
     hand = {**SPEC, "stage": "integrated", cv.STAGE_SET: True}
     hvers = versions((D0, SPEC), (D0 + timedelta(days=11), hand))
     hdays, _ = sleep_days(perfect, today, vers=hvers)
-    hstaged, hchanges = cv.staged_versions(hvers, hdays)
+    hstaged, hchanges = cv.staged_versions(hvers, hdays, today)
     check(
         "a stage set by hand holds while its criteria allow",
         cv.latest_spec(hstaged)["stage"] == "integrated" and not hchanges[-1]["auto"],
@@ -334,7 +334,7 @@ def main() -> int:
     slide += [night(D0 + timedelta(i), "04:00", "12:00") for i in range(10, 20)]
     dvers = versions((D0, holding))
     ddays, _ = sleep_days(slide, D0 + timedelta(days=19), vers=dvers)
-    _dstaged, dchanges = cv.staged_versions(dvers, ddays)
+    _dstaged, dchanges = cv.staged_versions(dvers, ddays, D0 + timedelta(days=19))
     check(
         "an integrated habit that slips goes back to stabilization by itself",
         dchanges[-1]["auto"]
@@ -344,12 +344,18 @@ def main() -> int:
     )
     pvers = versions((D0, {**SPEC, "stage": "planned", "start_date": (D0 + timedelta(days=3)).isoformat()}))
     pdays, _ = sleep_days([], D0 + timedelta(days=5), vers=pvers)
-    pstaged, _ = cv.staged_versions(pvers, pdays)
+    pstaged, _ = cv.staged_versions(pvers, pdays, D0 + timedelta(days=5))
     check(
         "a planned habit starts forming on its start date",
         [(v["effective_from"], v["spec"]["stage"]) for v in pstaged]
         == [(D0, "planned"), (D0 + timedelta(days=3), "formation")],
         str([(v["effective_from"], v["spec"]["stage"]) for v in pstaged]),
+    )
+    waiting = sleep_days([], D0 + timedelta(days=1), vers=pvers)[0]
+    check(
+        "before its start date a planned habit keeps its passport without any day",
+        waiting == []
+        and [v["spec"]["stage"] for v in cv.staged_versions(pvers, waiting, D0 + timedelta(days=1))[0]] == ["planned"],
     )
 
     print("\n[4] Ranks")
@@ -780,6 +786,7 @@ def main() -> int:
         )
         same = client.post(f"/cultivation/habits/{hid}/stage", json={"stage": "stabilization", "reason": "again"})
         check("setting the stage the habit already has is refused", same.status_code == 409, same.text[:200])
+
         agent_mark = agent.post(
             f"/cultivation/habits/{hid}/marks",
             headers=headers,
@@ -1142,6 +1149,67 @@ def main() -> int:
             plain_map["day_states"] is False,
             str(plain_map.get("day_states")),
         )
+
+        begun = (local_today - timedelta(days=11)).isoformat()
+        reading = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "reason": "x",
+                "effective_from": begun,
+                "spec": {"name": "Read", "stage": "formation", "start_date": begun},
+            },
+        ).json()
+        for back_days in range(1, 11):
+            client.post(
+                f"/cultivation/habits/{reading['id']}/marks",
+                json={
+                    "date": (local_today - timedelta(days=back_days)).isoformat(),
+                    "status": "success",
+                    "reason": "read",
+                },
+            )
+        reading = client.get(f"/cultivation/habits/{reading['id']}").json()
+        check(
+            "ten good days move the habit to stabilization by themselves",
+            reading["stage"] == "stabilization" and reading["stage_changes"][-1]["auto"] is True,
+            str(reading["stage_changes"]),
+        )
+        undone = client.post(
+            f"/cultivation/habits/{reading['id']}/stage", json={"stage": "formation", "reason": "not yet"}
+        )
+        after = client.get(f"/cultivation/habits/{reading['id']}").json()
+        check(
+            "a stage the criteria would leave at once is refused and leaves no version",
+            undone.status_code == 409
+            and "Стабілізація" in undone.json()["detail"]
+            and len(after["versions"]) == len(reading["versions"]),
+            undone.text[:200],
+        )
+        soon = client.post(
+            "/cultivation/habits", json={"kind": "boolean", "reason": "x", "spec": {"name": "Run", "stage": "planned"}}
+        )
+        check("a planned habit without a future start date is refused", soon.status_code == 422, soon.text[:200])
+        later = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "reason": "x",
+                "spec": {
+                    "name": "Run",
+                    "stage": "planned",
+                    "start_date": (local_today + timedelta(days=3)).isoformat(),
+                },
+            },
+        )
+        check(
+            "a planned habit with a future start date waits for it",
+            later.status_code == 201 and later.json()["stage"] == "planned",
+            later.text[:200],
+        )
+        for made in (reading, later.json() if later.status_code == 201 else None):
+            if made:
+                client.post(f"/cultivation/habits/{made['id']}/archive")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

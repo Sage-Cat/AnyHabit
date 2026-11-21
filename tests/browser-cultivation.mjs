@@ -45,6 +45,9 @@ try {
 
   await page.locator('#new-practice-habit').click();
   await page.waitForSelector('#new-habit-form');
+  await page.getByLabel('Етап', { exact: true }).selectOption('planned');
+  check('a planned habit asks for its start date', (await page.getByLabel('Дата початку').count()) === 1);
+  await page.getByLabel('Етап', { exact: true }).selectOption('formation');
   await page.getByLabel('Назва', { exact: true }).fill(habitName);
   await page.getByLabel('Підйом не пізніше').fill('23:59');
   await page.getByLabel('Сон від, год').fill('7');
@@ -328,6 +331,10 @@ try {
   check(
     'the recovery stage is no longer offered',
     (await page.getByLabel('Новий етап').locator('option[value="recovery"]').count()) === 0
+  );
+  check(
+    'the stage form says stages move by themselves',
+    (await page.locator('[data-testid="stage-form"]').innerText()).includes('Етапи змінюються самі')
   );
   await page.getByLabel('Новий етап').selectOption('stabilization');
   await page.getByLabel('Причина зміни етапу').fill('Перевірка етапу');
