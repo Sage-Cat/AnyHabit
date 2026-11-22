@@ -206,7 +206,7 @@ def _analytics_for(
         for week in analytics.build_heatmap.columns:
             for cell in week:
                 if not cell.is_filler and cell.date in (states or {}):
-                    cell.status, cell.warning = states[cell.date]
+                    cell.status, cell.warning, cell.first_at = states[cell.date]
     return analytics, habit_logs, journal_entries
 
 

@@ -367,6 +367,7 @@ class Day:
     events: int = 0
     marked: bool = False
     warning: str = ""  # met only within the tolerance band: counts, but is flagged
+    first_at: time | None = None  # not sleep: local time of the day's earliest log
 
     @property
     def met(self) -> bool | None:
@@ -393,6 +394,8 @@ class Day:
             "events": self.events,
             "warning": self.warning,
         }
+        if self.first_at is not None:
+            out["first_at"] = f"{self.first_at:%H:%M}"
         if self.night:
             out["sleep"] = {
                 "log_id": self.night.log_id,
@@ -459,6 +462,8 @@ def classify(
 ) -> Day:
     obs = obs or Observation()
     result = Day(day, "no_data", degraded=degraded, amount=obs.amount, events=obs.events)
+    if kind != "sleep":
+        result.first_at = obs.first_at
 
     if kind == "sleep":
         real = [n for n in obs.nights if n.hours >= MIN_NIGHT_HOURS]

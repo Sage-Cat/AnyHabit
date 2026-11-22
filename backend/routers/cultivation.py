@@ -760,12 +760,15 @@ def habit_days(
     return [d.as_dict() for d in days if (start is None or d.date >= start)]
 
 
-def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> Optional[dict[str, tuple[str, str]]]:
-    """``{date: (status, warning)}`` of the user's habit on this tracker, for its heatmap.
+def tracker_day_states(
+    db: Session, user: models.User, tracker_id: int
+) -> Optional[dict[str, tuple[str, str, str | None]]]:
+    """``{date: (status, warning, first_at)}`` of the user's habit on this tracker, for its heatmap.
 
     The amount alone hides a failure: a late wake still logs hours of sleep.
-    None when no readable habit feeds the tracker; a habit that has not
-    started yet gives an empty dict, and its map is still one of day states.
+    ``first_at`` is the HH:MM of the day's first log, which a "done by" goal
+    is judged by. None when no readable habit feeds the tracker; a habit that
+    has not started yet gives an empty dict, and its map is still one of day states.
     """
     habit = (
         db.query(models.CultivatedHabit)
@@ -786,7 +789,10 @@ def tracker_day_states(db: Session, user: models.User, tracker_id: int) -> Optio
         )
     except (cv.PassportError, ValueError, TypeError, KeyError):
         return None  # an unreadable passport must not break the tracker page
-    return {day.date.isoformat(): (day.status, day.warning) for day in days}
+    return {
+        day.date.isoformat(): (day.status, day.warning, f"{day.first_at:%H:%M}" if day.first_at else None)
+        for day in days
+    }
 
 
 def _analyse_or_rollback(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict:

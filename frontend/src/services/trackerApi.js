@@ -69,9 +69,7 @@ export function normalizeTrackerAnalytics(data) {
       date: point.date,
       label: point.date ? formatChartDate(point.date) : point.label,
       value: toNumber(point.value),
-      ...(point.cumulative !== null && point.cumulative !== undefined
-        ? { cumulative: toNumber(point.cumulative) }
-        : {})
+      ...(point.cumulative !== null && point.cumulative !== undefined ? { cumulative: toNumber(point.cumulative) } : {})
     })),
     streakStats: {
       current: toNumber(data?.streak_stats?.current),
@@ -128,7 +126,8 @@ export function normalizeTrackerAnalytics(data) {
               isFiller: Boolean(cell.is_filler),
               isRelapse: Boolean(cell.is_relapse),
               status: cell.status ?? null,
-              warning: cell.warning ?? ''
+              warning: cell.warning ?? '',
+              firstAt: cell.first_at ?? null
             }))
           )
         }
@@ -173,9 +172,7 @@ export async function saveTrackerApi(trackerFormData) {
     payload.start_date = new Date(trackerFormData.start_date).toISOString();
   }
 
-  return isEdit
-    ? apiClient.patch(`/trackers/${trackerFormData.id}/`, payload)
-    : apiClient.post('/trackers/', payload);
+  return isEdit ? apiClient.patch(`/trackers/${trackerFormData.id}/`, payload) : apiClient.post('/trackers/', payload);
 }
 
 export const deleteTrackerApi = (id) => apiClient.delete(`/trackers/${id}`);

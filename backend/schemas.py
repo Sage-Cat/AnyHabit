@@ -328,6 +328,8 @@ class TrackerHeatmapCell(BaseModel):
     # None for a plain tracker. The amount alone hides a failure.
     status: Optional[str] = None
     warning: str = ""
+    # Local time (HH:MM) of the day's first log, which a "done by" goal is judged by.
+    first_at: str | None = None
 
 
 class TrackerHeatmap(BaseModel):

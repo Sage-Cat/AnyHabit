@@ -111,8 +111,9 @@ function TrackerCharts({
     return [...logs, ...marks].sort((a, b) => b.time - a.time).slice(0, RECENT_LOGS);
   }, [habitLogs, habitMarks]);
   const habitStates = hasDayStates(buildHeatmap);
-  // A habit judged by an amount compares its days with the goal instead of totalling weekdays.
-  const showsHabitDays = habitStates && (habitKind === 'build' || habitKind === 'sleep');
+  // A cultivated habit compares its days with the goal instead of totalling weekdays;
+  // the chart waits for the habit, whose kind decides what a bar measures.
+  const showsHabitDays = habitStates && Boolean(habitKind);
 
   const startEditing = (log) => {
     setEditingLogId(log.id);
@@ -251,7 +252,7 @@ function TrackerCharts({
         />
       )}
 
-      {!isQuit && !showsHabitDays && hasWeekdayData && (
+      {!isQuit && !habitStates && hasWeekdayData && (
         <div className={cardClass}>
           <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <h2 className="text-sm font-semibold text-stone-700">У які дні ви найактивніші</h2>
