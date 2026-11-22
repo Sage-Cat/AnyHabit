@@ -1,6 +1,7 @@
 import { Archive, ChevronDown, Download, Home, Plus, Search, Settings, Sprout, Upload, Users, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { fetchHabitsApi } from '../services/cultivationApi';
 import { TRACKER_COLOR_HEX } from '../constants/tracker';
 import { useAppState } from '../state/appState';
 import { categoryLabel } from '../utils/tracker';
@@ -37,6 +38,34 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
 
   const [trackerTab, setTrackerTab] = useState('all');
   const [query, setQuery] = useState('');
+  const { pathname } = useLocation();
+  const [failedTrackerIds, setFailedTrackerIds] = useState(() => new Set());
+  const [habitsVersion, setHabitsVersion] = useState(0);
+
+  // Trackers whose cultivated habit failed its formation and awaits a decision.
+  // Refetched on navigation and when the habit page announces a change.
+  useEffect(() => {
+    const onChanged = () => setHabitsVersion((value) => value + 1);
+    window.addEventListener('habits-changed', onChanged);
+    return () => window.removeEventListener('habits-changed', onChanged);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHabitsApi()
+      .then((habits) => {
+        if (cancelled) return;
+        setFailedTrackerIds(
+          new Set(
+            habits.filter((habit) => habit.attempt?.failed_on && habit.tracker?.id).map((habit) => habit.tracker.id)
+          )
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, habitsVersion]);
 
   const openHome = () => {
     setSelectedTrackerId(null);
@@ -78,9 +107,7 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
       (trackerTab === 'groups' && tracker.group_id);
 
     const matchesQuery = (tracker) =>
-      !search ||
-      tracker.name.toLowerCase().includes(search) ||
-      (tracker.category || '').toLowerCase().includes(search);
+      !search || tracker.name.toLowerCase().includes(search) || (tracker.category || '').toLowerCase().includes(search);
 
     return sortedCategoryEntries
       .map(([category, items]) => [category, items.filter((item) => matchesTab(item) && matchesQuery(item))])
@@ -168,9 +195,7 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                 onClick={() => setTrackerTab(tab.id)}
                 aria-pressed={trackerTab === tab.id}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  trackerTab === tab.id
-                    ? 'bg-stone-900 text-white'
-                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                  trackerTab === tab.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
                 {tab.label}
@@ -247,16 +272,26 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                 <ul className="ml-2 space-y-1 border-l border-stone-200/70 pl-4 pr-1">
                   {items.map((tracker) => {
                     const accent = TRACKER_COLOR_HEX[tracker.color];
+                    const attemptFailed = failedTrackerIds.has(tracker.id);
 
                     return (
                       <li key={tracker.id}>
                         <button
                           type="button"
                           onClick={() => openTracker(tracker.id, category)}
+                          data-testid={attemptFailed ? 'attempt-failed' : undefined}
+                          title={attemptFailed ? 'Формування не вдалося — потрібне рішення' : undefined}
+                          aria-label={
+                            attemptFailed ? `${tracker.name}. Формування не вдалося — потрібне рішення` : undefined
+                          }
                           className={`flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-all ${
-                            selectedTrackerId === tracker.id
-                              ? 'bg-stone-100 font-medium text-stone-900'
-                              : 'text-gray-500 hover:bg-stone-50 hover:text-stone-700'
+                            attemptFailed
+                              ? `bg-emerald-50 font-medium text-emerald-700 ${
+                                  selectedTrackerId === tracker.id ? 'ring-2 ring-emerald-500' : ''
+                                }`
+                              : selectedTrackerId === tracker.id
+                                ? 'bg-stone-100 font-medium text-stone-900'
+                                : 'text-gray-500 hover:bg-stone-50 hover:text-stone-700'
                           }`}
                         >
                           <span className="flex items-center justify-between gap-2">
@@ -280,9 +315,7 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                                       ? 'bg-emerald-400'
                                       : 'bg-rose-400'
                                 }`}
-                                title={
-                                  tracker.archived_at ? 'В архіві' : tracker.is_active ? 'Активна' : 'На паузі'
-                                }
+                                title={tracker.archived_at ? 'В архіві' : tracker.is_active ? 'Активна' : 'На паузі'}
                               />
                             </span>
                           </span>

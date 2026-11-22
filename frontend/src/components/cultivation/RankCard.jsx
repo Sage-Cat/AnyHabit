@@ -76,7 +76,10 @@ function RankCard({ rank }) {
             <p className="mt-3 text-xs text-gray-400">
               У рахунок ранга йдуть:{' '}
               {habitsCounted
-                .map((habit) => (habit.level > 1 ? `${habit.name} (рівень ${habit.level})` : habit.name))
+                .map((habit) => {
+                  const credit = habit.credit ?? habit.level;
+                  return credit > 1 ? `${habit.name} (рівень ${credit})` : habit.name;
+                })
                 .join(', ')}
             </p>
           )}

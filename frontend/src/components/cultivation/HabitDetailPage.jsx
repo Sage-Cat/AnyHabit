@@ -11,6 +11,7 @@ import {
   fetchOverviewApi,
   markDayApi,
   startModeApi,
+  startNewAttemptApi,
   unarchiveHabitApi
 } from '../../services/cultivationApi';
 import { useAppState } from '../../state/appState';
@@ -381,6 +382,15 @@ function LevelsBlock({ habit, onChanged }) {
               Знизити рівень
             </button>
           </div>
+          <p className="text-xs text-gray-500" data-testid="upgrade-note">
+            Після підвищення звичка почне формування нового рівня з дня підвищення, а в ранзі й далі рахуватиметься на
+            рівні {ladder.current}.
+          </p>
+          {habit.rank_level >= 1 && (
+            <p className="text-xs text-gray-500" data-testid="rank-level-note">
+              У ранзі: рівень {habit.rank_level}
+            </p>
+          )}
           {!ladder.can_upgrade && ladder.upgrade_blocker && (
             <p className="text-xs text-gray-500" data-testid="upgrade-blocker">
               {ladder.upgrade_blocker}
@@ -777,6 +787,72 @@ function ActionForm({ title, children, submitLabel, onSubmit, testId }) {
   );
 }
 
+/** Decision after a failed formation: a new attempt, or a step back to the previous level. */
+function AttemptDecision({ habit, onDone }) {
+  const { notify } = useAppState();
+  const attempt = habit.attempt;
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const isFallback = attempt.action === 'fallback';
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!reason.trim()) {
+      setError('Вкажіть причину');
+      return;
+    }
+    setIsSaving(true);
+    setError('');
+    try {
+      if (isFallback) {
+        await changeLevelApi(habit.id, { direction: 'down', reason: reason.trim() });
+        notify.success('Рівень знижено');
+      } else {
+        await startNewAttemptApi(habit.id, { reason: reason.trim() });
+        notify.success('Нову спробу розпочато');
+      }
+      setReason('');
+      await onDone();
+    } catch (actionError) {
+      setError(actionError?.message || 'Не вдалося виконати дію');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <section
+      className="min-w-0 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 shadow-sm xl:col-span-2"
+      data-testid="attempt-decision"
+    >
+      <h2 className="mb-2 text-base font-bold text-stone-900">Формування не вдалося</h2>
+      <p className="text-sm text-stone-800">
+        За {attempt.days} дн. звичка не дійшла до стабілізації. Вирішіть, як продовжити.
+      </p>
+      {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
+      <form onSubmit={submit} className="mt-3 space-y-3">
+        <input
+          type="text"
+          aria-label="Причина рішення"
+          placeholder="Причина"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          className={INPUT_CLASS}
+        />
+        {error && (
+          <p role="alert" className="text-sm text-rose-600">
+            {error}
+          </p>
+        )}
+        <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
+          {isFallback ? `Повернутися на рівень ${attempt.fallback_level}` : 'Нова спроба'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function HabitDetailPage() {
   const { habitId } = useParams();
   const navigate = useNavigate();
@@ -825,10 +901,16 @@ function HabitDetailPage() {
     if (habit) setStageForm((current) => ({ ...current, stage: habit.stage }));
   }, [habit?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reload and tell the sidebar: its failed-formation highlight depends on the same state.
+  const refresh = async () => {
+    await load();
+    window.dispatchEvent(new Event('habits-changed'));
+  };
+
   const run = async (action, success) => {
     await action();
     notify.success(success);
-    await load();
+    await refresh();
   };
 
   const archive = async () => {
@@ -919,6 +1001,7 @@ function HabitDetailPage() {
 
   const markNeedsReason = mark.status !== 'clear';
   const lastStageChange = habit.stage_changes?.at(-1);
+  const attempt = habit.attempt;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#fcfcfc]">
@@ -929,6 +1012,8 @@ function HabitDetailPage() {
           className="mx-auto grid w-full max-w-screen-2xl items-start gap-5 xl:grid-cols-2"
           data-testid="habit-content"
         >
+          {attempt?.failed_on && !habit.archived && <AttemptDecision habit={habit} onDone={refresh} />}
+
           <Section title="Сьогодні" testId="today-block">
             <p className="text-sm text-gray-500">
               Ціль: <span className="font-semibold text-stone-900">{habit.today?.requirement || '—'}</span>
@@ -955,6 +1040,12 @@ function HabitDetailPage() {
             {habit.recommendation && (
               <p className="mt-3 rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
                 <span className="font-semibold">Наступного дня етап зміниться сам:</span> {habit.recommendation.reason}
+              </p>
+            )}
+            {attempt && !attempt.failed_on && attempt.day != null && attempt.days != null && (
+              <p className="mt-3 text-xs text-gray-500" data-testid="attempt-day">
+                Спроба: день {attempt.day} з {attempt.days}
+                {attempt.deadline ? `, до ${formatDay(attempt.deadline)}` : ''}
               </p>
             )}
             {habit.kind === 'sleep' && !habit.archived && (
@@ -990,13 +1081,13 @@ function HabitDetailPage() {
 
           {habit.ladder && (
             <Section title="Рівні" testId="ladder-block">
-              <LevelsBlock habit={habit} onChanged={load} />
+              <LevelsBlock habit={habit} onChanged={refresh} />
             </Section>
           )}
 
           <Section title="Паспорт" testId="passport-block" className="xl:col-span-2">
             <Passport habit={habit} />
-            {!habit.archived && <EditPassport key={habit.versions?.length} habit={habit} onSaved={load} />}
+            {!habit.archived && <EditPassport key={habit.versions?.length} habit={habit} onSaved={refresh} />}
             <h3 className="mt-5 text-sm font-semibold text-stone-800">Історія версій</h3>
             <VersionHistory versions={habit.versions} />
           </Section>
@@ -1203,7 +1294,7 @@ function HabitDetailPage() {
       </div>
 
       {isSleepOpen && (
-        <SleepEntryModal habit={habit} timezone={timezone} onClose={() => setIsSleepOpen(false)} onSaved={load} />
+        <SleepEntryModal habit={habit} timezone={timezone} onClose={() => setIsSleepOpen(false)} onSaved={refresh} />
       )}
     </div>
   );
