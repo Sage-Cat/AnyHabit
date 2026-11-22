@@ -59,7 +59,9 @@ DEFAULT_INTEGRATION = {
     "min_observed_days": 30,
     "max_deviation_days": 7,
 }
-DEFAULT_MAINTENANCE = {"window_days": 28, "min_success_rate": 0.6, "max_deviation_days": 7}
+# min_observed_days applies to the success-rate rule only: after a return to an
+# easier level one failed day must not drop the habit out of integration.
+DEFAULT_MAINTENANCE = {"window_days": 28, "min_success_rate": 0.6, "max_deviation_days": 7, "min_observed_days": 7}
 
 
 class PassportError(ValueError):
@@ -93,7 +95,7 @@ def level_defined(kind: str, level: dict | None) -> bool:
 
 # Dates before this are typos, and would make every request walk decades of days.
 MIN_DATE = date(2000, 1, 1)
-RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable", "min_level"}
+RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable", "by_level"}
 
 
 def check_number(
@@ -234,6 +236,28 @@ def validate_spec(kind: str, spec: dict) -> None:
         for name in ("min_observed_days", "max_recovery_days", "max_deviation_days"):
             if name in block:
                 check_number(f"{key}.{name}", block[name], integer=True, low=0, high=3650)
+        if key == "stabilization" and block.get("formation_days") is not None:
+            check_number(f"{key}.formation_days", block["formation_days"], integer=True, low=1, high=365)
+
+
+def _check_by_level(name: str, value) -> dict[str, int]:
+    """``{level: count}`` with the keys as strings (JSON has no other kind)."""
+    if not isinstance(value, dict):
+        raise PassportError(f"Ранг «{name}»: by_level має бути об'єктом {{рівень: кількість}}")
+    out: dict[str, int] = {}
+    for key, count in value.items():
+        if isinstance(key, str):
+            if not key.isascii() or not key.isdigit():
+                raise PassportError(f"Ранг «{name}»: by_level: рівень має бути цілим числом")
+            level = int(key)
+        else:
+            level = int(check_number(f"Ранг «{name}»: by_level: рівень", key, integer=True))
+        if not 1 <= level <= 100:
+            raise PassportError(f"Ранг «{name}»: by_level: рівень має бути від 1 до 100")
+        if str(level) in out:
+            raise PassportError(f"Ранг «{name}»: by_level: рівень {level} повторено")
+        out[str(level)] = check_number(f"Ранг «{name}»: by_level[{level}]", count, integer=True, low=0, high=100000)
+    return out
 
 
 def validate_ranks(ranks) -> list[dict]:
@@ -256,8 +280,8 @@ def validate_ranks(ranks) -> list[dict]:
             check_number(f"Ранг «{rank['name']}»: stabilizing", req["stabilizing"], integer=True, low=0, high=1000)
         if "integrated" in req:
             check_number(f"Ранг «{rank['name']}»: integrated", req["integrated"], integer=True, low=0, high=1000)
-        if "min_level" in req:
-            check_number(f"Ранг «{rank['name']}»: min_level", req["min_level"], integer=True, low=1, high=100)
+        if "by_level" in req:
+            req = {**req, "by_level": _check_by_level(rank["name"], req["by_level"])}
         if "durable" in req:
             durable = req["durable"]
             if not isinstance(durable, list) or len(durable) != 2:
@@ -1033,7 +1057,11 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
         ongoing = next((e for e in episodes if e.confirmed is None), None)
         if ongoing and (today - ongoing.start).days > int(cfg["max_deviation_days"]):
             return {"to": "stabilization", "reason": f"Відхилення триває {(today - ongoing.start).days} дн."}
-        if stats["success_rate"] is not None and stats["success_rate"] < float(cfg["min_success_rate"]):
+        if (
+            stats["observed_days"] >= int(cfg["min_observed_days"])
+            and stats["success_rate"] is not None
+            and stats["success_rate"] < float(cfg["min_success_rate"])
+        ):
             return {
                 "to": "stabilization",
                 "reason": (f"За {cfg['window_days']} дн. успішних днів лише {stats['success_rate']:.0%}."),
@@ -1041,7 +1069,12 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
     return None
 
 
-def stage_progress(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> dict | None:
+FORMATION_FAILED = "Формування провалено — потрібне рішення"
+
+
+def stage_progress(
+    spec: dict, days: list[Day], episodes: list[Episode], today: date, failed: bool = False
+) -> dict | None:
     """How close a habit is to its next stage and what still holds it back (None for other stages).
 
     Formation is measured against the stabilization criteria, stabilization
@@ -1063,8 +1096,8 @@ def stage_progress(spec: dict, days: list[Day], episodes: list[Episode], today: 
     observed = min(stats["observed_days"] / need_days, 1.0) if need_days > 0 else 1.0
     success = min((stats["success_rate"] or 0.0) / need_rate, 1.0) if need_rate > 0 else 1.0
     advice = recommendation(spec, days, episodes, today)
-    ready = bool(advice and advice["to"] == target)
-    blockers = []
+    ready = bool(advice and advice["to"] == target) and not failed
+    blockers = [FORMATION_FAILED] if failed else []
     if not ready and stage == "formation":
         if observed < 1:
             blockers.append(f"Днів із оцінкою за {cfg['window_days']} дн.: {stats['observed_days']} з {need_days}")
@@ -1089,9 +1122,11 @@ def stage_progress(spec: dict, days: list[Day], episodes: list[Episode], today: 
     }
 
 
-def stage_readiness(spec: dict, days: list[Day], episodes: list[Episode], today: date) -> float | None:
+def stage_readiness(
+    spec: dict, days: list[Day], episodes: list[Episode], today: date, failed: bool = False
+) -> float | None:
     """``readiness`` of :func:`stage_progress`, from 0 to 1."""
-    progress = stage_progress(spec, days, episodes, today)
+    progress = stage_progress(spec, days, episodes, today, failed)
     return None if progress is None else progress["readiness"]
 
 
@@ -1118,12 +1153,62 @@ def _stage_move(spec: dict, days: list[Day], episodes: list[Episode], day: date)
     return recommendation(spec, days, episodes, day)
 
 
-def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple[list[dict], list[dict]]:
+def _level_moved(version: dict, previous: dict | None) -> bool:
+    return previous is not None and current_level_number(version["spec"]) != current_level_number(previous["spec"])
+
+
+def attempt_starts(versions: list[dict]) -> list[dict]:
+    """The versions after the first that begin an attempt: a stage set by hand or a changed level."""
+    out = []
+    previous = None
+    for version in versions:
+        if previous is not None and (_sets_stage(version, previous) or _level_moved(version, previous)):
+            out.append(version)
+        previous = version
+    return out
+
+
+def formation_days(spec: dict) -> int:
+    """How many days formation may last: ``stabilization.formation_days``, by default the stabilization window."""
+    cfg = section(spec, "stabilization", DEFAULT_STABILIZATION)
+    return int(cfg.get("formation_days") or cfg["window_days"])
+
+
+@dataclass
+class AttemptDay:
+    """The attempt a habit was on during one day, as the stage walk saw it at the end of that day."""
+
+    start: date | None  # the version that began the attempt; None while it is the habit's first
+    formation_since: date | None  # the day the habit entered formation (None outside formation)
+    failed_on: date | None  # the day formation ran out of time, once it did
+    level: int
+    formation_days: int
+
+    @property
+    def deadline(self) -> date | None:
+        return self.formation_since + timedelta(days=self.formation_days - 1) if self.formation_since else None
+
+
+def clip_attempt(days: list[Day], versions: list[dict], start: date | None) -> tuple[list[Day], list[Episode]]:
+    """Only what the attempt saw: its days and the deviations found on them alone."""
+    if start is not None:
+        days = [d for d in days if d.date >= start]
+    return days, find_episodes(days, versions)
+
+
+def staged_versions(
+    versions: list[dict], days: list[Day], today: date, attempts: dict[date, AttemptDay] | None = None
+) -> tuple[list[dict], list[dict]]:
     """The passport versions with the stage the habit really had, and its stage changes.
 
     Each day the criteria of the stage in force are checked on the days up to
     it; a move takes effect that same day, one step a day.  A version that sets
     the stage by hand puts the habit there, and the criteria go on from it.
+    Every criterion only sees the days (and deviations) of the current attempt,
+    which a version setting the stage by hand or changing the level begins.  A
+    habit still in formation at the end of its formation window has failed the
+    attempt: nothing moves it on its own until a new attempt begins.  Pass a
+    dict as ``attempts`` to get the attempt of each day.
     ``days`` must run without gaps up to ``today``, as :func:`build_days` makes
     them, or be empty while the habit waits for a future start date.
     """
@@ -1135,27 +1220,42 @@ def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple
         if _sets_stage(version, previous):
             by_hand[version["effective_from"]] = version
         previous = version
+    begins = {id(v) for v in attempt_starts(versions)}
 
     staged: list[dict] = []
     changes: list[dict] = []
     stage: str | None = None
     source: dict | None = None
+    attempt_start: date | None = None
+    since: date | None = None
+    failed: date | None = None
     pending = list(versions)
-    walk = iter_episodes(days, versions)
+    seen_days: list[Day] = []  # the days of the current attempt
+    walk = iter_episodes(seen_days, versions)
     episodes: list[Episode] = []
     index = -1
     current = min([versions[0]["effective_from"]] + [day.date for day in days[:1]])
     while current <= today:
-        if days and current >= days[0].date:
-            _day, episodes = next(walk)
-            index += 1
         started = None
+        fresh = False
         while pending and pending[0]["effective_from"] <= current:
             source = started = pending.pop(0)
+            fresh = fresh or id(started) in begins
+        if fresh:
+            # The deviations of the new attempt are found again from its first day.
+            attempt_start, failed = current, None
+            seen_days = []
+            walk = iter_episodes(seen_days, versions)
+            episodes = []
+        if days and current >= days[0].date:
+            seen_days.append(days[index + 1])
+            _day, episodes = next(walk)
+            index += 1
         if source is None:
             current += timedelta(days=1)
             continue
         stored = source["spec"]
+        before = stage
         if stage is None or current in by_hand:
             if stored.get("stage") != stage:
                 changes.append(
@@ -1178,11 +1278,20 @@ def staged_versions(versions: list[dict], days: list[Day], today: date) -> tuple
                 ("maintenance", DEFAULT_MAINTENANCE),
             )
         )
-        recent = days[max(0, index + 1 - window) : index + 1] if index >= 0 else []
-        move = _stage_move(spec, recent, episodes, current)
+        recent = seen_days[-window:]
+        move = None if failed else _stage_move(spec, recent, episodes, current)
         if move:
             changes.append({"date": current, "from": stage, "to": move["to"], "reason": move["reason"], "auto": True})
             stage = spec["stage"] = move["to"]
+        if stage != "formation":
+            since = None
+        elif before != "formation" or fresh or since is None:
+            since = current
+        limit = formation_days(spec)
+        if stage == "formation" and failed is None and since and current >= since + timedelta(days=limit - 1):
+            failed = current
+        if attempts is not None:
+            attempts[current] = AttemptDay(attempt_start, since, failed, current_level_number(spec), limit)
         if started or staged[-1]["spec"]["stage"] != stage:
             staged.append(
                 {
@@ -1206,38 +1315,49 @@ ACTIVE_STAGES = ("formation", "stabilization", "integrated")
 
 # active — some habit is being worked on; stabilizing — how many habits have
 # reached stabilization or beyond (true means one); integrated — number of
-# integrated habits; durable — (count, days) integrated habits held without a
-# break that long.  ``min_level`` — the passport level a habit needs to count
-# toward ``integrated`` and ``durable`` (its hold then only runs on days at that
-# level or above).  A habit that drops out of integration goes back to
-# stabilization and starts its run again.  ``confirmed`` marks the thresholds set by the user; the rest
-# are proposals and can be overridden.  Ranks are climbed in order: a rank also
-# needs every condition below it.
+# integrated habits (``by_level {1: n}``); by_level — {level: n}: at least n
+# habits whose credit is at that level or above; durable — (count, days) habits
+# with a credit held without a break that long.  A habit's credit is the level
+# it counts at (see :func:`simulate_stages`).  ``confirmed`` marks the thresholds
+# set by the user; the rest are proposals and can be overridden.  Ranks are
+# climbed in order: a rank also needs every condition below it.
 DEFAULT_RANKS: list[dict] = [
     {"name": "Звичайна людина", "req": {}, "confirmed": True},
     {"name": "Адепт першого рівня", "req": {"active": True}, "confirmed": True},
     {"name": "Адепт другого рівня", "req": {"stabilizing": 1}, "confirmed": True},
     {"name": "Адепт третього рівня", "req": {"stabilizing": 2}, "confirmed": True},
-    {"name": "Маг першого рангу", "req": {"integrated": 1}, "confirmed": True},
-    {"name": "Маг другого рангу", "req": {"integrated": 2, "durable": [1, 30]}, "confirmed": True},
-    {"name": "Маг третього рангу", "req": {"integrated": 4, "durable": [2, 60]}, "confirmed": True},
-    {"name": "Маг Нової Зірки", "req": {"integrated": 8, "durable": [4, 120], "min_level": 2}, "confirmed": True},
-    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 120], "min_level": 3}, "confirmed": True},
-    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 240], "min_level": 4}, "confirmed": True},
-    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [20, 365], "min_level": 5}, "confirmed": True},
+    {"name": "Маг першого рангу", "req": {"by_level": {"1": 1}}, "confirmed": True},
+    {"name": "Маг другого рангу", "req": {"by_level": {"1": 2}, "durable": [1, 30]}, "confirmed": True},
+    {"name": "Маг третього рангу", "req": {"by_level": {"1": 4}, "durable": [2, 60]}, "confirmed": True},
+    {"name": "Маг Нової Зірки", "req": {"by_level": {"1": 8, "2": 1}, "durable": [4, 120]}, "confirmed": True},
+    {
+        "name": "Маг Нейтронної Зорі",
+        "req": {"by_level": {"1": 16, "2": 2, "3": 1}, "durable": [8, 120]},
+        "confirmed": True,
+    },
+    {
+        "name": "Маг Прямого Колапсу",
+        "req": {"by_level": {"1": 25, "2": 4, "3": 2, "4": 1}, "durable": [16, 240]},
+        "confirmed": True,
+    },
+    {
+        "name": "Маг Законів",
+        "req": {"by_level": {"2": 8, "3": 4, "4": 2, "5": 1}, "durable": [20, 365]},
+        "confirmed": True,
+    },
     {
         "name": "Великий Маг Законів",
-        "req": {"integrated": 128, "durable": [40, 730], "min_level": 5},
+        "req": {"by_level": {"3": 8, "4": 4, "5": 2}, "durable": [40, 730]},
         "confirmed": True,
     },
     {
         "name": "Верховний Маг рангу Вічності",
-        "req": {"integrated": 256, "durable": [80, 1095], "min_level": 5},
+        "req": {"by_level": {"4": 8, "5": 4}, "durable": [80, 1095]},
         "confirmed": True,
     },
     {
         "name": "Той, хто знайшов свій Шлях",
-        "req": {"integrated": 512, "durable": [128, 1825], "min_level": 5},
+        "req": {"by_level": {"5": 8}, "durable": [128, 1825]},
         "confirmed": True,
     },
 ]
@@ -1248,54 +1368,50 @@ class HabitRankState:
     habit_id: int
     name: str
     stage: str | None
-    counted: bool = False  # counts as integrated
-    held_days: int = 0  # unbroken run of integrated
+    credit: int = 0  # the level the habit counts at in ranks (0 — nowhere)
+    held_days: int = 0  # unbroken run of days with a credit
     level: int = 1  # passport level that day (missing counts as 1)
-    # threshold N -> unbroken days integrated at level >= N (only while integrated)
-    held_by_level: dict[int, int] = field(default_factory=dict)
 
-    def held_at(self, min_level: int) -> int:
-        return self.held_by_level.get(min_level, 0)
-
-
-def _min_level(req: dict) -> int:
-    return int(req.get("min_level") or 1)
-
-
-def _counts_integrated(state: HabitRankState, req: dict) -> bool:
-    return state.counted and state.level >= _min_level(req)
-
-
-def _counts_durable(state: HabitRankState, req: dict, days: int) -> bool:
-    return _counts_integrated(state, req) and state.held_at(_min_level(req)) >= days
+    @property
+    def counted(self) -> bool:
+        return self.credit >= 1
 
 
 def simulate_stages(habit_id: int, versions: list[dict], until: date) -> dict[date, HabitRankState]:
+    """Each day's stage, level and credit of a habit, from its (staged) versions.
+
+    A day of integration at level L gives credit L.  While the habit is not
+    integrated at its level, the credit is at most L - 1: an upgrade keeps the
+    credit, a fall out of integration lowers it, and a habit created on a rung
+    above 1 has none until it integrates there.
+    """
     out: dict[date, HabitRankState] = {}
     if not versions:
         return out
-    # Run start per level threshold: moving up keeps the runs of the thresholds
-    # already met, moving down ends the higher ones, leaving integration ends all.
-    runs: dict[int, date] = {}
+    credit = 0
+    run_start: date | None = None
     current = min(v["effective_from"] for v in versions)
     while current <= until:
         spec = spec_for(versions, current) or {}
         stage = spec.get("stage")
         level = current_level_number(spec)
-        state = HabitRankState(habit_id, spec.get("name", ""), stage, level=level)
-        if stage == "integrated":
-            for n in [n for n in runs if n > level]:
-                del runs[n]
-            for n in range(1, level + 1):
-                runs.setdefault(n, current)
-            state.counted = True
-            state.held_by_level = {n: (current - start).days + 1 for n, start in runs.items()}
-            state.held_days = state.held_by_level[1]
+        credit = level if stage == "integrated" else min(credit, level - 1)
+        if credit >= 1:
+            run_start = run_start or current
         else:
-            runs.clear()
-        out[current] = state
+            run_start = None
+        held = (current - run_start).days + 1 if run_start else 0
+        out[current] = HabitRankState(habit_id, spec.get("name", ""), stage, credit, held, level)
         current += timedelta(days=1)
     return out
+
+
+def by_level(req: dict) -> dict[int, int]:
+    """``req.by_level`` with integer levels; ``integrated: n`` counts as level 1."""
+    out = {int(k): int(v) for k, v in (req.get("by_level") or {}).items()}
+    if "integrated" in req:
+        out[1] = max(out.get(1, 0), int(req["integrated"]))
+    return dict(sorted(out.items()))
 
 
 def _stabilizing_need(req: dict) -> int:
@@ -1307,15 +1423,16 @@ def _stabilizing_have(states: list[HabitRankState]) -> int:
 
 
 def _rank_met(req: dict, states: list[HabitRankState]) -> bool:
-    if req.get("active") and not any(s.stage in ACTIVE_STAGES for s in states):
+    if req.get("active") and not any(s.stage in ACTIVE_STAGES or s.counted for s in states):
         return False
     if _stabilizing_have(states) < _stabilizing_need(req):
         return False
-    if sum(_counts_integrated(s, req) for s in states) < int(req.get("integrated", 0)):
-        return False
+    for level, need in by_level(req).items():
+        if sum(s.credit >= level for s in states) < need:
+            return False
     if req.get("durable"):
         count, days = req["durable"]
-        if sum(_counts_durable(s, req, int(days)) for s in states) < int(count):
+        if sum(s.counted and s.held_days >= int(days) for s in states) < int(count):
             return False
     return True
 
@@ -1355,13 +1472,20 @@ def rank_requirement_text(req: dict) -> str:
         parts.append("звичка у стабілізації")
     elif need > 1:
         parts.append(f"звичок у стабілізації чи далі ≥ {need}")
-    if "integrated" in req:
-        level = f" рівня {_min_level(req)}+" if _min_level(req) > 1 else ""
-        parts.append(f"інтегрованих звичок{level} ≥ {req['integrated']}")
+    levels = by_level(req)
+    simple = set(levels) <= {1}
+    if levels and simple:
+        parts.append(f"інтегрованих звичок ≥ {levels[1]}")
     if req.get("durable"):
         count, days = req["durable"]
-        parts.append(f"з них ≥ {count} утримуються ≥ {_hold_text(days)}")
-    return ", ".join(parts)
+        hold = f"≥ {count} утримуються ≥ {_hold_text(days)}"
+        parts.append(f"з них {hold}" if simple else hold)
+    if simple:
+        return ", ".join(parts)
+    tiers = ", ".join(f"рівня {k}+ ≥ {n}" for k, n in levels.items())
+    head = parts[:-1] if req.get("durable") else parts
+    text = ", ".join([*head, f"інтегрованих звичок: {tiers}"])
+    return f"{text}; {parts[-1]}" if req.get("durable") else text
 
 
 def _best(values: list[float], count: int) -> float:
@@ -1379,12 +1503,11 @@ def rank_progress(
     readiness = readiness or {}
 
     def ready(stage: str) -> list[float]:
-        return [readiness.get(s.habit_id) or 0.0 for s in states if s.stage == stage]
+        return [readiness.get(s.habit_id) or 0.0 for s in states if s.stage == stage and not s.counted]
 
-    level_label = f" рівня {_min_level(req)}+" if _min_level(req) > 1 else ""
     parts = []
     if req.get("active"):
-        done = any(s.stage in ACTIVE_STAGES for s in states)
+        done = any(s.stage in ACTIVE_STAGES or s.counted for s in states)
         parts.append({"label": "Звичка в роботі", "done": done, "fraction": 1.0 if done else 0.0})
     need = _stabilizing_need(req)
     if need:
@@ -1402,32 +1525,30 @@ def rank_progress(
                     "fraction": fraction,
                 }
             )
-    if "integrated" in req:
-        need = int(req["integrated"])
-        have = sum(_counts_integrated(s, req) for s in states)
-        # Only habits already at the level can be one stage short of counting.
+    for level, need in by_level(req).items():
+        have = sum(s.credit >= level for s in states)
+        # Habits in stabilization at the level (or above) without its credit are one stage short.
         short = [
             readiness.get(s.habit_id) or 0.0
             for s in states
-            if s.stage == "stabilization" and s.level >= _min_level(req)
+            if s.stage == "stabilization" and s.level >= level and s.credit < level
         ]
-        fraction = min((have + _best(short, need - have)) / need, 1.0) if need else 1.0
         parts.append(
             {
-                "label": f"Інтегровані звички{level_label}",
+                "label": "Інтегровані звички" if level == 1 else f"Інтегровані звички рівня {level}+",
                 "have": have,
                 "need": need,
                 "done": have >= need,
-                "fraction": fraction,
+                "fraction": min((have + _best(short, need - have)) / need, 1.0) if need else 1.0,
             }
         )
     if req.get("durable"):
         count, days = (int(v) for v in req["durable"])
-        have = sum(_counts_durable(s, req, days) for s in states)
-        held = [min(s.held_at(_min_level(req)) / days, 1.0) for s in states if _counts_integrated(s, req)]
+        have = sum(s.counted and s.held_days >= days for s in states)
+        held = [min(s.held_days / days, 1.0) for s in states if s.counted]
         parts.append(
             {
-                "label": f"Утримуються ≥ {_hold_text(days)}{level_label}",
+                "label": f"Утримуються ≥ {_hold_text(days)}",
                 "have": have,
                 "need": count,
                 "done": have >= count,
@@ -1526,6 +1647,7 @@ def compute_rank(
                 "name": s.name,
                 "stage": s.stage,
                 "counted": s.counted,
+                "credit": s.credit,
                 "held_days": s.held_days,
                 "level": s.level,
             }
@@ -1541,7 +1663,8 @@ def compute_rank(
 def progress_history(habits: list[dict], since: date, today: date, ranks: list[dict] | None = None) -> dict:
     """Cultivation progress day by day, from ``since`` (or the first habit) to ``today``.
 
-    ``habits`` holds ``id``, ``versions`` and ``days`` built through ``today``.
+    ``habits`` holds ``id``, ``versions`` and ``days`` built through ``today``, and
+    optionally ``attempts`` (day → :class:`AttemptDay`) to clip each day's readiness to its attempt.
     Each day is judged as it was then: the passport in force, the days and
     deviations up to that day, the stages of that day.  Returns «Прорив» with
     the rank per day, every habit's readiness for its next stage, and its stages
@@ -1564,7 +1687,9 @@ def progress_history(habits: list[dict], since: date, today: date, ranks: list[d
             if spec is None:
                 continue
             cut = habit["days"][: bisect.bisect_right(dates[hid], current)]
-            readiness[hid] = stage_readiness(spec, cut, find_episodes(cut, habit["versions"]), current)
+            attempt = (habit.get("attempts") or {}).get(current)
+            cut, seen = clip_attempt(cut, habit["versions"], attempt.start if attempt else None)
+            readiness[hid] = stage_readiness(spec, cut, seen, current, bool(attempt and attempt.failed_on))
             readiness_series[hid].append({"date": current.isoformat(), "value": readiness[hid]})
             stage = daily[hid][current].stage if current in daily[hid] else None
             run = segments[hid]

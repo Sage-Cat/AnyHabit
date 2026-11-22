@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -56,6 +56,12 @@ class StageChange(BaseModel):
 
 class LevelChange(BaseModel):
     direction: Literal["up", "down"]
+    reason: str = Field(min_length=1, max_length=2000)
+    effective_from: date | None = None
+    confirmed_by_user: bool = False
+
+
+class AttemptStart(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
     effective_from: date | None = None
     confirmed_by_user: bool = False
@@ -323,8 +329,10 @@ def _load(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict
         today,
         tracked=tracker is not None,
     )
-    staged, changes = cv.staged_versions(versions, days, today)
+    attempts: dict[date, cv.AttemptDay] = {}
+    staged, changes = cv.staged_versions(versions, days, today, attempts)
     return {
+        "attempts": attempts,
         "today": today,
         "versions": versions,
         "staged": staged,
@@ -342,6 +350,31 @@ def _stage_now(data: dict, day: date | None = None) -> str | None:
     return spec.get("stage")
 
 
+def _attempt_on(data: dict, day: date | None = None) -> cv.AttemptDay | None:
+    """The attempt the habit was on at the end of ``day`` (today by default)."""
+    attempts = data["attempts"]
+    return attempts.get(day or data["today"]) or (attempts[max(attempts)] if attempts else None)
+
+
+def _attempt_out(data: dict, stage: str | None, level: int) -> dict:
+    """The current attempt: when it began, how long formation may last and what to do once it ran out."""
+    today, att = data["today"], _attempt_on(data)
+    first = data["versions"][0]["effective_from"] if data["versions"] else today
+    forming = stage == "formation" and att is not None and att.formation_since is not None
+    failed = att.failed_on if att else None
+    return {
+        "start": ((att.start if att else None) or first).isoformat(),
+        "formation_since": att.formation_since.isoformat() if forming else None,
+        "deadline": att.deadline.isoformat() if forming else None,
+        "day": (today - att.formation_since).days + 1 if forming else None,
+        "days": att.formation_days if forming else None,
+        "failed_on": failed.isoformat() if failed else None,
+        "level": level,
+        "action": None if not failed else ("new_attempt" if level <= 1 else "fallback"),
+        "fallback_level": level - 1 if failed and level > 1 else None,
+    }
+
+
 def _analyse(
     db: Session,
     user: models.User,
@@ -354,15 +387,21 @@ def _analyse(
     tracker, modes, marks = data["tracker"], data["modes"], data["marks"]
     spec = cv.latest_spec(data["staged"]) or {}
     unit = (tracker or {}).get("unit", "")
-    episodes = cv.find_episodes(days, versions)
+    all_episodes = cv.find_episodes(days, versions)
+    att = _attempt_on(data)
+    # The criteria, the readiness and the integration rate see only the current attempt.
+    seen_days, episodes = cv.clip_attempt(days, versions, att.start if att else None)
     rules = cv.section(spec, "rules", cv.DEFAULT_RULES)
     today_spec = cv.spec_for(data["staged"], today) or spec
     active_mode = next((m for m in modes if m["end_date"] is None), None)
     degraded_today = cv.mode_on(modes, today) is not None
     today_day = days[-1] if days and days[-1].date == today else None
     subgoals = spec.get("subgoals") or []
-    integration = cv.integration_check(spec, days, episodes, today) if spec else None
+    integration = cv.integration_check(spec, seen_days, episodes, today) if spec else None
     stage = spec.get("stage")
+    level = cv.current_level_number(spec)
+    credit = cv.simulate_stages(habit.id, data["staged"], today).get(today)
+    failed = bool(att and att.failed_on)
 
     return {
         "id": habit.id,
@@ -376,6 +415,8 @@ def _analyse(
         "versions": [_version_out(v) for v in versions],
         "ladder": cv.build_ladder(habit.kind, spec, stage, unit),
         "level_changes": cv.level_changes(versions),
+        "attempt": _attempt_out(data, stage, level),
+        "rank_level": credit.credit if credit else 0,
         # Every stage change, made by the criteria ("auto") or by hand.
         "stage_changes": [
             {
@@ -423,15 +464,16 @@ def _analyse(
             "7": cv.rate(days, 7, today),
             "30": cv.rate(days, 30, today),
             "integration": cv.rate(
-                days, int(cv.section(spec, "integration", cv.DEFAULT_INTEGRATION)["window_days"]), today
+                seen_days, int(cv.section(spec, "integration", cv.DEFAULT_INTEGRATION)["window_days"]), today
             ),
         },
-        "recovery": cv.recovery_summary(episodes, days, today, int(rules["recovery_ok_days"])),
-        "episodes": [e.as_dict(today) for e in episodes[-30:]],
-        "monthly": cv.monthly(episodes, days),
+        "recovery": cv.recovery_summary(all_episodes, days, today, int(rules["recovery_ok_days"])),
+        "episodes": [e.as_dict(today) for e in all_episodes[-30:]],
+        "monthly": cv.monthly(all_episodes, days),
         "integration": integration,
-        "recommendation": cv.recommendation(spec, days, episodes, today) if spec else None,
-        "readiness": cv.stage_readiness(spec, days, episodes, today) if spec else None,
+        # Nothing moves a habit whose formation failed, so nothing is recommended either.
+        "recommendation": cv.recommendation(spec, seen_days, episodes, today) if spec and not failed else None,
+        "readiness": cv.stage_readiness(spec, seen_days, episodes, today, failed) if spec else None,
         "days": [d.as_dict() for d in days[-history_days:]] if history_days else [],
         # A day marked by hand has no log, so the tracker's recent entries list these beside its logs.
         "recent_marks": [
@@ -452,6 +494,8 @@ def _compact(analysis: dict) -> dict:
         "today",
         "next_subgoal",
         "ladder",
+        "attempt",
+        "rank_level",
         "mode",
         "recommendation",
         "integration",
@@ -610,13 +654,18 @@ def progress(
         data = _load(db, current_user, habit)
         found = cv.find_episodes(data["days"], data["versions"])
         episodes.extend(found)
+        att = _attempt_on(data)
+        seen_days, seen = cv.clip_attempt(data["days"], data["versions"], att.start if att else None)
         # The staged versions: the stage path follows the stages the habit really had.
         rows.append(
             {
                 "id": habit.id,
                 "versions": data["staged"],
                 "days": data["days"],
-                "episodes": found,
+                "episodes": seen,
+                "seen_days": seen_days,
+                "attempts": data["attempts"],
+                "failed": bool(att and att.failed_on),
                 "tracker": data["tracker"],
             }
         )
@@ -637,7 +686,9 @@ def progress(
                 "color": row["tracker"]["color"] if row["tracker"] else "",
                 "stage": stage,
                 "stage_label": cv.STAGE_LABELS.get(stage, ""),
-                "progress": cv.stage_progress(spec, row["days"], row["episodes"], today) if spec else None,
+                "progress": cv.stage_progress(spec, row["seen_days"], row["episodes"], today, row["failed"])
+                if spec
+                else None,
                 "held_days": held.get(row["id"], 0),
                 "readiness": history["readiness"][row["id"]],
                 "segments": history["segments"][row["id"]],
@@ -904,6 +955,8 @@ def _keep_ladder(current: dict, spec: dict, touched: set[str]) -> dict:
     """
     levels = spec.get("levels")
     if not levels:
+        if cv.current_level_number(current) > 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.LEVEL_MOVE_REFUSED)
         spec.pop("current_level", None)
         return spec
     had = bool(current.get("levels"))
@@ -978,7 +1031,44 @@ def change_level(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичка вже на першому рівні")
         target = number - 1
     spec = cv.apply_rung(current, target)
-    spec[cv.STAGE_SET] = False
+    if payload.direction == "up":
+        # The harder level is a new attempt: it starts in formation and has to earn its way back to integration.
+        spec["stage"] = "formation"
+        spec[cv.STAGE_SET] = True
+    else:
+        # Back to an easier level: a habit that earned it is integrated there at once, any other keeps its stage.
+        data = _load(db, current_user, habit)
+        day = payload.effective_from or data["today"]
+        credit = cv.simulate_stages(habit.id, data["staged"], day).get(day)
+        earned = credit is not None and credit.credit >= target
+        if earned:
+            spec["stage"] = "integrated"
+        spec[cv.STAGE_SET] = earned
+    return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
+
+
+ABOVE_FIRST_LEVEL = "Вище рівня 1 провалена спроба повертає на попередній рівень"
+
+
+@router.post("/habits/{habit_id}/attempt", status_code=status.HTTP_201_CREATED)
+def new_attempt(
+    habit_id: int,
+    payload: AttemptStart,
+    request: Request,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Begin a new attempt in formation once the previous one ran out of time."""
+    author = _require_user_confirmation(request, payload.confirmed_by_user)
+    habit = _writable_habit(db, current_user, habit_id)
+    data = _load(db, current_user, habit)
+    att = _attempt_on(data, payload.effective_from or data["today"])
+    if att is None or att.failed_on is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Спроба ще триває")
+    if att.level > 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ABOVE_FIRST_LEVEL)
+    current, _stage = _current_spec(db, current_user, habit, payload.effective_from)
+    spec = cv.merge_patch(current, {"stage": "formation", cv.STAGE_SET: True})
     return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
 
 
