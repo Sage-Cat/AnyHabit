@@ -31,7 +31,11 @@ mcp = MCPServer(
         "user's explicit approval of that exact change (user_confirmed=true) and a reason; "
         "history is appended, never rewritten. Stages move by themselves when "
         "the passport's criteria are met (stage_changes lists each move); a stage "
-        "set by hand is an override the criteria then continue from."
+        "set by hand is an override the criteria then continue from. A habit may "
+        "have a ladder of levels: moving up is allowed only for an integrated habit "
+        "and only with the user's approval; a harder level can make the habit fall "
+        "back to stabilization and then formation by itself; moving down is allowed "
+        "from level 2 up."
     ),
 )
 
@@ -569,7 +573,11 @@ def list_cultivated_habits(include_archived: bool = False) -> list[dict[str, Any
 @mcp.tool()
 def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any]:
     """Full passport, version history, success rates, deviations, recovery metrics,
-    monthly dynamics, integration criteria check and the stage changes."""
+    monthly dynamics, integration criteria check and the stage changes.
+
+    Also `ladder` (levels, current level, can_upgrade / upgrade_blocker,
+    can_downgrade) and `level_changes` (each move between levels).
+    """
     return api.get(f"/cultivation/habits/{habit_id}", params={"history_days": history_days})
 
 
@@ -692,8 +700,11 @@ def create_cultivated_habit(
     """Create a habit passport (and a matching tracker unless tracker_id is given).
 
     spec keys: name, description, why, trait, priority, stage, goal, level,
-    minimum, subgoals, rules, stabilization, integration, maintenance — see
-    get_cultivation_vocabulary for defaults. Requires the user's approval.
+    minimum, subgoals, levels, current_level, rules, stabilization, integration,
+    maintenance — see get_cultivation_vocabulary for defaults. levels is an
+    optional ladder: a list of {name?, level, tolerance?, minimum?}; current_level
+    is 1-based. A sleep level may set bed_by (HH:MM, fall asleep no later than).
+    Requires the user's approval.
     """
     _require_user_confirmation(user_confirmed, "Creating a habit passport")
     return api.post(
@@ -721,6 +732,10 @@ def change_habit_passport(
     """Append a new passport version (merge patch or full spec) with its reason.
 
     Goals, criteria and sub-goals change only with the user's explicit approval.
+    The patch may edit the ladder (`levels`) and a sleep level's `bed_by`. The
+    passport's own level, tolerance and minimum follow its current rung; the
+    level itself moves only with change_habit_level, and `levels: null` removes
+    the ladder.
     """
     _require_user_confirmation(user_confirmed, "Changing a habit passport")
     return api.post(
@@ -744,6 +759,29 @@ def change_habit_stage(
     return api.post(
         f"/cultivation/habits/{habit_id}/stage",
         json_body=_without_none(stage=stage, reason=reason, effective_from=effective_from, confirmed_by_user=True),
+    )
+
+
+@mcp.tool()
+def change_habit_level(
+    habit_id: int,
+    direction: Literal["up", "down"],
+    reason: str,
+    user_confirmed: bool,
+    effective_from: str | None = None,
+) -> dict[str, Any]:
+    """Move a habit one level up or down its ladder (the passport's `levels`).
+
+    Up works only for an integrated habit that has a next level; down only from
+    level 2. A harder level may bring the habit back to stabilization or
+    formation by itself. Requires the user's approval.
+    """
+    _require_user_confirmation(user_confirmed, "Changing a habit level")
+    return api.post(
+        f"/cultivation/habits/{habit_id}/level",
+        json_body=_without_none(
+            direction=direction, reason=reason, effective_from=effective_from, confirmed_by_user=True
+        ),
     )
 
 
