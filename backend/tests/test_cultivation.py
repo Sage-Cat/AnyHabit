@@ -343,11 +343,17 @@ def main() -> int:
     dvers = versions((D0, holding))
     ddays, _ = sleep_days(slide, D0 + timedelta(days=19), vers=dvers)
     _dstaged, dchanges = cv.staged_versions(dvers, ddays, D0 + timedelta(days=19))
+    slipped = dchanges[1]
     check(
         "an integrated habit that slips goes back to stabilization by itself",
-        dchanges[-1]["auto"]
-        and (dchanges[-1]["from"], dchanges[-1]["to"]) == ("integrated", "stabilization")
-        and dchanges[-1]["date"] == D0 + timedelta(days=15),
+        slipped["auto"]
+        and (slipped["from"], slipped["to"]) == ("integrated", "stabilization")
+        and slipped["date"] == D0 + timedelta(days=15),
+        str(dchanges),
+    )
+    check(
+        "a stabilization that keeps failing drops to formation",
+        dchanges[2]["auto"] and (dchanges[2]["from"], dchanges[2]["to"]) == ("stabilization", "formation"),
         str(dchanges),
     )
     pvers = versions((D0, {**SPEC, "stage": "planned", "start_date": (D0 + timedelta(days=3)).isoformat()}))
@@ -634,6 +640,153 @@ def main() -> int:
     empty = cv.combined_stats([], D0, D0)
     check("no habits: empty statistics", empty["summary"]["clean_streak"] == 0 and empty["daily"][0]["habits"] == 0)
 
+    print("\n[4d] Levels, bed_by and demotion")
+    rung_a = {"name": "Base", "level": {"bed_by": "23:30", "wake_by": "08:00", "min_sleep_h": 7}}
+    rung_b = {"level": {"bed_by": "23:00", "wake_by": "07:30", "min_sleep_h": 7}, "minimum": {"wake_by": "09:00"}}
+    laddered = {**SPEC, "levels": [rung_a, rung_b], "current_level": 2}
+    cv.validate_spec("sleep", laddered)
+    cv.validate_spec("sleep", {**SPEC, "levels": [rung_a]})
+
+    def refused(label, patch):
+        try:
+            cv.validate_spec("sleep", {**SPEC, **patch})
+            check(label, False)
+        except cv.PassportError as exc:
+            check(label, True, str(exc))
+
+    refused("an empty ladder is refused", {"levels": []})
+    refused("a ladder must be a list", {"levels": {"level": {}}})
+    refused("a rung must be an object", {"levels": [rung_a, "x"]})
+    refused("a rung level is checked", {"levels": [{"level": {"bed_by": "late"}}]})
+    refused("a rung minimum is checked", {"levels": [{"minimum": {"min_sleep_h": -1}}]})
+    refused("a rung name must be text", {"levels": [{"name": 3}]})
+    refused("current_level above the ladder is refused", {"levels": [rung_a], "current_level": 2})
+    refused("current_level 0 is refused", {"levels": [rung_a], "current_level": 0})
+    refused("current_level must be an integer", {"levels": [rung_a], "current_level": 1.5})
+    refused("current_level needs a ladder", {"current_level": 1})
+    refused("drop_rate above 1 is refused", {"stabilization": {"drop_rate": 1.5}})
+    refused("drop_rate of 0 is refused", {"stabilization": {"drop_rate": 0}})
+    refused("drop_rate above the promotion threshold is refused", {"stabilization": {"drop_rate": 0.8}})
+    refused("a rung needs a requirement", {"levels": [{"name": "x"}]})
+    refused("a sleep rung needs a defined requirement", {"levels": [{"level": {}}]})
+    cv.validate_spec("sleep", {**SPEC, "stabilization": {"min_success_rate": 0.4}})
+    check("a low promotion threshold still validates without drop_rate", True)
+
+    bed = {**SPEC, "level": {"bed_by": "00:00"}, "minimum": {}}
+    bvers = versions((D0, bed))
+
+    def bed_status(bed_time: str, spec_vers=bvers, seconds: int = 0) -> str:
+        bt = cv.parse_hhmm(bed_time)
+        bed_day = d - timedelta(days=1) if bt.hour >= 12 else d
+        start = datetime.combine(bed_day, bt, TZ).replace(second=seconds)
+        wake = datetime.combine(d, cv.parse_hhmm("10:15"), TZ)
+        return sleep_days([cv.Night(1, start, wake)], d, vers=spec_vers)[0][-1].status
+
+    check(
+        "bed_by 00:00 includes 23:30 and 00:00, not 00:01",
+        [bed_status(t) for t in ("23:30", "00:00", "00:01")] == ["success", "success", "fail"],
+        str([bed_status(t) for t in ("23:30", "00:00", "00:01")]),
+    )
+    check("bed_by counts minutes: 00:00:40 still meets 00:00", bed_status("00:00", seconds=40) == "success")
+    check("a morning bedtime is later than any evening one", bed_status("04:00") == "fail")
+    check(
+        "a sleep level with only bed_by is defined",
+        cv.level_defined("sleep", {"bed_by": "23:30"}) and cv.tolerance_defined("sleep", {"bed_by": "23:30"}),
+    )
+    check(
+        "level text puts the bedtime first",
+        cv.level_text("sleep", {"bed_by": "00:00", "wake_by": "10:15", "min_sleep_h": 7, "max_sleep_h": 10})
+        == "заснути до 00:00, підйом до 10:15, сон 7–10 год",
+        cv.level_text("sleep", {"bed_by": "00:00", "wake_by": "10:15", "min_sleep_h": 7, "max_sleep_h": 10}),
+    )
+    soft = {**SPEC, "level": {"bed_by": "23:30"}, "tolerance": {"bed_by": "00:30"}, "minimum": {}}
+    soft_day = bed_status("00:10", spec_vers=versions((D0, soft)))
+    soft_full = sleep_days(
+        [cv.Night(1, datetime.combine(d, cv.parse_hhmm("00:10"), TZ), datetime.combine(d, cv.parse_hhmm("08:00"), TZ))],
+        d,
+        vers=versions((D0, soft)),
+    )[0][-1]
+    check(
+        "bedtime inside the tolerance is a success whose warning says when sleep began",
+        soft_day == "success" and soft_full.warning.startswith("заснув 00:10, підйом 08:00"),
+        soft_full.warning,
+    )
+
+    check(
+        "a ladder-less habit has one rung and cannot be upgraded",
+        cv.build_ladder("sleep", SPEC, "integrated")
+        == {
+            "current": 1,
+            "count": 1,
+            "levels": [
+                {
+                    "number": 1,
+                    "name": None,
+                    "requirement": "підйом до 08:00, сон ≥ 7 год",
+                    "tolerance": None,
+                    "minimum": "підйом до 09:00, сон ≥ 5.5 год",
+                    "current": True,
+                }
+            ],
+            "can_upgrade": False,
+            "upgrade_blocker": "Наступного рівня в паспорті немає",
+            "can_downgrade": False,
+        },
+        str(cv.build_ladder("sleep", SPEC, "integrated")),
+    )
+    ladder = cv.build_ladder("sleep", {**laddered, "current_level": 1}, "stabilization")
+    check(
+        "the ladder explains why a habit cannot go up yet",
+        ladder["upgrade_blocker"] == "Підвищити рівень можна лише інтегрованій звичці"
+        and not ladder["can_upgrade"]
+        and [x["current"] for x in ladder["levels"]] == [True, False]
+        and ladder["levels"][0]["name"] == "Base"
+        and cv.build_ladder("sleep", {**laddered, "current_level": 1}, "integrated")["can_upgrade"],
+        str(ladder),
+    )
+    lvers = [
+        {"id": 1, "effective_from": D0, "reason": "start", "author": "user", "spec": SPEC},
+        {"id": 2, "effective_from": D0 + timedelta(days=5), "reason": "up", "author": "api", "spec": laddered},
+        {"id": 3, "effective_from": D0 + timedelta(days=6), "reason": "edit", "author": "user", "spec": laddered},
+    ]
+    check(
+        "level changes come from the versions that move current_level",
+        cv.level_changes(lvers)
+        == [{"date": (D0 + timedelta(days=5)).isoformat(), "from": 1, "to": 2, "reason": "up", "author": "api"}],
+        str(cv.level_changes(lvers)),
+    )
+
+    fall_nights = [night(D0 + timedelta(i), "23:00", "07:00") for i in range(10)]
+    fall_nights += [night(D0 + timedelta(i), "04:00", "12:00") for i in range(10, 30)]
+    fall_vers = versions((D0, SPEC))
+    fall_days, _ = sleep_days(fall_nights, D0 + timedelta(days=29), vers=fall_vers)
+    fall = [c for c in cv.staged_versions(fall_vers, fall_days, D0 + timedelta(days=29))[1] if c["auto"]]
+    drop = next((c for c in fall if c["to"] == "formation"), None)
+    check(
+        "stabilization drops to formation when successes fall under the drop rate",
+        bool(drop) and drop["from"] == "stabilization" and "поріг падіння 50%" in drop["reason"],
+        str(fall),
+    )
+    steady = [night(D0 + timedelta(i), "23:00" if i % 10 < 7 else "04:00", "07:00" if i % 10 < 7 else "12:00")
+              for i in range(60)]
+    steady_days, _ = sleep_days(steady, D0 + timedelta(days=59), vers=fall_vers)
+    steady_moves = [(c["from"], c["to"]) for c in cv.staged_versions(fall_vers, steady_days, D0 + timedelta(days=59))[1]]
+    check(
+        "a habit at the promotion threshold does not flip-flop",
+        ("formation", "stabilization") in steady_moves and ("stabilization", "formation") not in steady_moves,
+        str(steady_moves),
+    )
+    low = {**SPEC, "stage": "stabilization", "stabilization": {"min_success_rate": 0.4}}
+    low_nights = [night(D0 + timedelta(i), "23:00" if i < 6 else "04:00", "07:00" if i < 6 else "12:00") for i in range(14)]
+    low_days, _ = sleep_days(low_nights, D0 + timedelta(days=13), vers=versions((D0, low)))
+    check(
+        "the drop never sits above the promotion threshold",
+        cv.recommendation(low, low_days, [], D0 + timedelta(days=13)) is None,
+        str(cv.recommendation(low, low_days, [], D0 + timedelta(days=13))),
+    )
+    keep = cv.stage_progress({**SPEC, "stage": "stabilization"}, fall_days[:12], [], D0 + timedelta(days=11))
+    check("stage progress still reads a stabilization that may drop", keep is not None and keep["target"] == "integrated")
+
     print("\n[5] API")
     workdir = Path(tempfile.mkdtemp(prefix="anyhabit-cultivation-"))
     os.environ["ANYHABIT_DATA_DIR"] = str(workdir / "data")
@@ -783,7 +936,7 @@ def main() -> int:
         by_hand = allowed.json()
         check(
             "a stage set by hand is listed as such, and the passport hides the flag",
-            by_hand["versions"][-1]["spec"].get(cv.STAGE_SET) is True
+            cv.STAGE_SET not in by_hand["versions"][-1]["spec"]
             and cv.STAGE_SET not in by_hand["passport"]
             and by_hand["stage_changes"][-1]["to"] == "stabilization"
             and by_hand["stage_changes"][-1]["auto"] is False,
@@ -794,7 +947,9 @@ def main() -> int:
         ).json()
         check(
             "a passport edit keeps the stage and does not set it by hand",
-            edited["stage"] == "stabilization" and edited["versions"][-1]["spec"].get(cv.STAGE_SET) is False,
+            edited["stage"] == "stabilization"
+            and cv.STAGE_SET not in edited["versions"][-1]["spec"]
+            and edited["stage_changes"] == by_hand["stage_changes"],
             str(edited["versions"][-1]["spec"]),
         )
         same = client.post(f"/cultivation/habits/{hid}/stage", json={"stage": "stabilization", "reason": "again"})
@@ -1231,6 +1386,251 @@ def main() -> int:
         for made in (reading, later.json() if later.status_code == 201 else None):
             if made:
                 client.post(f"/cultivation/habits/{made['id']}/archive")
+
+        # Levels: a ladder, a synthetic integrated habit, moves up and down.
+        begin = local_today - timedelta(days=50)
+        rungs = [
+            {
+                "name": "Base",
+                "level": {"bed_by": "23:30", "wake_by": "08:00", "min_sleep_h": 7},
+                "minimum": {"wake_by": "09:00", "min_sleep_h": 5.5},
+            },
+            {"name": "Firm", "level": {"bed_by": "23:00", "wake_by": "07:30", "min_sleep_h": 7}},
+        ]
+        ladder_habit = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "sleep",
+                "reason": "ladder",
+                "effective_from": begin.isoformat(),
+                "spec": {
+                    "name": "Steps",
+                    "stage": "formation",
+                    "start_date": begin.isoformat(),
+                    "level": rungs[0]["level"],
+                    "minimum": rungs[0]["minimum"],
+                    "levels": rungs,
+                    "current_level": 1,
+                },
+            },
+        )
+        check("a habit with a ladder is created", ladder_habit.status_code == 201, ladder_habit.text[:300])
+        lid = ladder_habit.json()["id"]
+        first = ladder_habit.json()
+        check(
+            "ladder output of a fresh habit",
+            first["ladder"]["current"] == 1
+            and first["ladder"]["count"] == 2
+            and first["ladder"]["levels"][0]["requirement"] == "заснути до 23:30, підйом до 08:00, сон ≥ 7 год"
+            and first["ladder"]["levels"][1]["name"] == "Firm"
+            and first["ladder"]["upgrade_blocker"] == "Підвищити рівень можна лише інтегрованій звичці"
+            and not first["ladder"]["can_upgrade"]
+            and first["level_changes"] == [],
+            str(first["ladder"]),
+        )
+        early = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "up", "reason": "too early"})
+        check(
+            "up on a habit that is not integrated is refused and leaves no version",
+            early.status_code == 409
+            and early.json()["detail"] == "Підвищити рівень можна лише інтегрованій звичці"
+            and len(client.get(f"/cultivation/habits/{lid}").json()["versions"]) == 1,
+            early.text[:200],
+        )
+        for back_days in range(1, 51):
+            client.post(
+                f"/cultivation/habits/{lid}/marks",
+                json={
+                    "date": (local_today - timedelta(days=back_days)).isoformat(),
+                    "status": "fail" if back_days == 30 else "success",
+                    "reason": "mark",
+                },
+            )
+        made = client.get(f"/cultivation/habits/{lid}").json()
+        if made["stage"] != "integrated":
+            by_hand_up = client.post(
+                f"/cultivation/habits/{lid}/stage", json={"stage": "integrated", "reason": "synthetic history"}
+            )
+            check("the synthetic habit is put on integrated", by_hand_up.status_code == 201, by_hand_up.text[:300])
+        made = client.get(f"/cultivation/habits/{lid}").json()
+        check(
+            "the integrated habit may go up",
+            made["stage"] == "integrated" and made["ladder"]["can_upgrade"] and made["ladder"]["upgrade_blocker"] is None,
+            str((made["stage"], made["ladder"])),
+        )
+        down_first = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "down", "reason": "no"})
+        check(
+            "down at the first level is refused",
+            down_first.status_code == 409 and down_first.json()["detail"] == "Звичка вже на першому рівні",
+            down_first.text[:200],
+        )
+        no_consent = agent.post(
+            f"/cultivation/habits/{lid}/level",
+            headers=headers,
+            json={"direction": "up", "reason": "agent thinks so"},
+        )
+        check(
+            "a token without confirmed_by_user cannot change the level",
+            no_consent.status_code == 409
+            and len(client.get(f"/cultivation/habits/{lid}").json()["versions"]) == len(made["versions"]),
+            no_consent.text[:200],
+        )
+        before_levels = len(made["versions"])
+        upgraded = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "up", "reason": "ready"})
+        up = upgraded.json()
+        check(
+            "up makes level 2 and copies the rung into the passport",
+            upgraded.status_code == 201
+            and len(up["versions"]) == before_levels + 1
+            and up["passport"]["current_level"] == 2
+            and up["passport"]["level"] == rungs[1]["level"]
+            and "minimum" not in up["passport"]
+            and "tolerance" not in up["passport"]
+            and up["passport"]["levels"] == rungs,
+            upgraded.text[:400],
+        )
+        check(
+            "the stage stays the same on the day of the move",
+            up["stage"] == "integrated" and up["stage_changes"] == made["stage_changes"],
+            str(up["stage_changes"]),
+        )
+        check(
+            "ladder and level changes show the move",
+            up["ladder"]["current"] == 2
+            and [x["current"] for x in up["ladder"]["levels"]] == [False, True]
+            and up["ladder"]["can_downgrade"]
+            and not up["ladder"]["can_upgrade"]
+            and up["ladder"]["upgrade_blocker"] == "Наступного рівня в паспорті немає"
+            and up["level_changes"]
+            == [
+                {
+                    "date": local_today.isoformat(),
+                    "from": 1,
+                    "to": 2,
+                    "reason": "ready",
+                    "author": "user",
+                }
+            ],
+            str((up["ladder"], up["level_changes"])),
+        )
+        check(
+            "versions hide the stage_set flag",
+            all(cv.STAGE_SET not in v["spec"] for v in up["versions"]),
+            str([v["spec"].keys() for v in up["versions"]][-2:]),
+        )
+        compact = next(h for h in client.get("/cultivation/habits").json() if h["id"] == lid)
+        check("the compact habit carries the ladder", compact["ladder"] == up["ladder"], str(compact.get("ladder")))
+        late_night = client.post(
+            f"/cultivation/habits/{lid}/sleep",
+            json={
+                "bedtime": f"{(local_today - timedelta(days=1)).isoformat()}T23:30:00",
+                "wake": f"{local_today.isoformat()}T07:00:00",
+            },
+        )
+        check(
+            "a night after the move is judged by the harder rung",
+            late_night.status_code == 201 and late_night.json()["day"]["status"] == "fail",
+            late_night.text[:300],
+        )
+        exported_levels = client.get("/export/?data_type=all&format=json").json()
+        fifth = TestClient(app)
+        fifth.post(
+            "/auth/register", json={"username": "fifth", "email": "fifth@example.com", "password": "fifth-password"}
+        )
+        round_trip = restore(fifth, exported_levels)
+        check("an export with levels imports", round_trip.status_code == 200, round_trip.text[:300])
+        back_home = next((h for h in fifth.get("/cultivation/habits").json() if h["name"] == "Steps"), None)
+        restored_levels = fifth.get(f"/cultivation/habits/{back_home['id']}").json() if back_home else {}
+        check(
+            "export and import keep levels and current_level",
+            restored_levels.get("passport", {}).get("levels") == rungs
+            and restored_levels["passport"].get("current_level") == 2
+            and restored_levels["ladder"]["current"] == 2
+            and restored_levels["stage"] == "integrated",
+            str(restored_levels.get("passport")),
+        )
+        again_up = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "up", "reason": "more"})
+        check(
+            "up at the last rung is refused",
+            again_up.status_code == 409 and again_up.json()["detail"] == "Наступного рівня в паспорті немає",
+            again_up.text[:200],
+        )
+        stepped_down = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "down", "reason": "too hard"})
+        down = stepped_down.json()
+        check(
+            "down returns to level 1 with its fields",
+            stepped_down.status_code == 201
+            and down["passport"]["current_level"] == 1
+            and down["passport"]["level"] == rungs[0]["level"]
+            and down["passport"]["minimum"] == rungs[0]["minimum"]
+            and [c["to"] for c in down["level_changes"]] == [2, 1],
+            stepped_down.text[:400],
+        )
+        down_again = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "down", "reason": "no"})
+        check("down at level 1 is refused again", down_again.status_code == 409, down_again.text[:200])
+
+        def edit(patch: dict):
+            return client.post(f"/cultivation/habits/{lid}/versions", json={"patch": patch, "reason": "edit"})
+
+        skipped = edit({"current_level": 2})
+        check(
+            "a passport edit cannot move the level",
+            skipped.status_code == 409 and skipped.json()["detail"] == cv.LEVEL_MOVE_REFUSED,
+            skipped.text[:200],
+        )
+        softer = [{**rungs[0], "tolerance": {"wake_by": "10:15"}}, rungs[1]]
+        edited = edit({"levels": softer})
+        check(
+            "editing the current rung changes the passport's own fields",
+            edited.status_code == 201 and edited.json()["passport"]["tolerance"] == {"wake_by": "10:15"},
+            edited.text[:300],
+        )
+        mirrored = edit({"minimum": {"wake_by": "10:30"}})  # a merge patch: min_sleep_h stays
+        mirrored_spec = mirrored.json().get("passport", {})
+        check(
+            "editing the passport's own fields is written into the current rung",
+            mirrored.status_code == 201
+            and mirrored_spec["levels"][0]["minimum"] == {"wake_by": "10:30", "min_sleep_h": 5.5}
+            and mirrored_spec["levels"][1] == rungs[1],
+            mirrored.text[:300],
+        )
+        dropped = edit({"levels": None})
+        dropped_spec = dropped.json().get("passport", {})
+        check(
+            "removing the ladder keeps the current requirement",
+            dropped.status_code == 201
+            and "levels" not in dropped_spec
+            and "current_level" not in dropped_spec
+            and dropped_spec["minimum"] == {"wake_by": "10:30", "min_sleep_h": 5.5},
+            dropped.text[:300],
+        )
+        high_start = edit({"levels": rungs, "current_level": 2})
+        check(
+            "a new ladder starts at level 1",
+            high_start.status_code == 409 and high_start.json()["detail"] == cv.NEW_LADDER_AT_ONE,
+            high_start.text[:200],
+        )
+        client.post(f"/cultivation/habits/{lid}/archive")
+
+        made = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Ladder at creation",
+                    "level": {"done_by": "18:00"},
+                    "levels": [{"level": {"done_by": "18:00"}}, {"level": {"done_by": "17:00"}}],
+                    "current_level": 2,
+                },
+                "reason": "created on level 2",
+            },
+        )
+        check(
+            "a habit created on a rung takes that rung's requirement",
+            made.status_code == 201 and made.json()["passport"]["level"] == {"done_by": "17:00"},
+            made.text[:300],
+        )
+        if made.status_code == 201:
+            client.post(f"/cultivation/habits/{made.json()['id']}/archive")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

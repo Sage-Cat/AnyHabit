@@ -37,6 +37,8 @@ def test_passport_changes_need_user_confirmation(server):
         server.start_minimum_mode(1, "busy week", user_confirmed=False)
     with pytest.raises(ValueError, match="user_confirmed=true"):
         server.end_minimum_mode(1, user_confirmed=False)
+    with pytest.raises(ValueError, match="user_confirmed=true"):
+        server.change_habit_level(1, "up", "ready", user_confirmed=False)
     assert server.calls == []
 
 
@@ -69,3 +71,26 @@ def test_stats_pass_the_window(server):
 def test_progress_pass_the_window(server):
     server.get_cultivation_progress(365)
     assert server.calls[-1] == ("GET", "/cultivation/progress", {"params": {"days": 365}})
+
+
+def test_confirmed_level_change_is_forwarded(server):
+    server.change_habit_level(3, "up", "user agreed", user_confirmed=True, effective_from="2026-11-20")
+    method, path, kwargs = server.calls[-1]
+    assert (method, path) == ("POST", "/cultivation/habits/3/level")
+    assert kwargs["json_body"] == {
+        "direction": "up",
+        "reason": "user agreed",
+        "effective_from": "2026-11-20",
+        "confirmed_by_user": True,
+    }
+    server.change_habit_level(3, "down", "too hard", user_confirmed=True)
+    assert "effective_from" not in server.calls[-1][2]["json_body"]
+
+
+def test_level_change_errors_pass_through(server, monkeypatch):
+    def refuse(path, **kwargs):
+        raise RuntimeError("409: Habit is already on the first level")
+
+    monkeypatch.setattr(server.api, "post", refuse)
+    with pytest.raises(RuntimeError, match="409"):
+        server.change_habit_level(3, "down", "too hard", user_confirmed=True)

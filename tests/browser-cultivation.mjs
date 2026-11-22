@@ -50,6 +50,10 @@ try {
   await page.getByLabel('Етап', { exact: true }).selectOption('formation');
   await page.getByLabel('Назва', { exact: true }).fill(habitName);
   await page.getByLabel('Підйом не пізніше').fill('23:59');
+  check(
+    'sleep level fields offer a bedtime limit',
+    (await page.getByLabel('Заснути до', { exact: true }).count()) === 1
+  );
   await page.getByLabel('Сон від, год').fill('7');
   await page.getByLabel('Сон до, год').fill('9');
   await page.getByRole('button', { name: 'Створити', exact: true }).click();
@@ -250,6 +254,10 @@ try {
   check('manual mark saved', true);
 
   await page.getByRole('button', { name: 'Редагувати паспорт' }).click();
+  check(
+    'the passport editor has the bedtime limit next to the wake time',
+    (await page.getByLabel('Заснути до', { exact: true }).count()) === 1
+  );
   await page.getByLabel('Сон до, год', { exact: true }).fill('9.5');
   await page.getByLabel('Причина зміни паспорта').fill('Перевірка');
   await page.getByRole('button', { name: 'Зберегти нову версію' }).click();
@@ -711,6 +719,135 @@ try {
   );
   check('habit page uses two columns on a wide screen', Math.abs(todayBox.y - calendarBox.y) < 2);
   await page.setViewportSize({ width: 1400, height: 900 });
+
+  console.log('\n[10] Levels');
+  const stamp = Date.now();
+  const plainName = `Без драбини ${stamp}`;
+  const ladderName = `Драбина ${stamp}`;
+  const created = await page.evaluate(
+    async ({ plain, ladder }) => {
+      const post = async (spec) => {
+        const response = await fetch('/cultivation/habits', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'boolean', spec, reason: 'e2e' })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const habit = await response.json();
+        return { id: habit.id, trackerId: habit.tracker.id };
+      };
+      return {
+        plain: await post({ name: plain, stage: 'formation', level: { done_by: '18:00' } }),
+        ladder: await post({
+          name: ladder,
+          stage: 'formation',
+          level: { done_by: '17:00' },
+          levels: [
+            { name: 'Старт', level: { done_by: '18:00' } },
+            { name: 'Раніше', level: { done_by: '17:00' } }
+          ],
+          current_level: 2
+        })
+      };
+    },
+    { plain: plainName, ladder: ladderName }
+  );
+
+  await page.goto(`${BASE}/practice/${created.plain.id}`, { waitUntil: 'networkidle' });
+  const ladderBlock = page.locator('[data-testid="ladder-block"]');
+  await ladderBlock.waitFor({ timeout: 10000 });
+  check('the habit page has a Рівні block', (await ladderBlock.locator('h2').innerText()).trim() === 'Рівні');
+  check(
+    'a habit without a ladder has no level buttons',
+    (await ladderBlock.getByRole('button', { name: /рівень/ }).count()) === 0
+  );
+  check(
+    'a habit without a ladder shows no level badge',
+    (await page.locator('[data-testid="level-badge"]').count()) === 0
+  );
+
+  await page.getByRole('button', { name: 'Редагувати паспорт' }).click();
+  await page.getByRole('button', { name: 'Додати драбину рівнів' }).click();
+  check(
+    'the first rung starts from the current level',
+    (await page.getByLabel('Рівень 1: Виконати до', { exact: true }).inputValue()) === '18:00'
+  );
+  await page.getByRole('button', { name: 'Додати рівень', exact: true }).click();
+  await page.getByLabel('Назва рівня 2', { exact: true }).fill('Раніше');
+  await page.getByLabel('Рівень 2: Виконати до', { exact: true }).fill('17:00');
+  await page.getByLabel('Причина зміни паспорта').fill('Драбина');
+  await page.getByRole('button', { name: 'Зберегти нову версію' }).click();
+  await page.waitForSelector('text=Створено нову версію паспорта', { timeout: 10000 });
+  await ladderBlock.locator('[data-testid="ladder-level"]').nth(1).waitFor({ timeout: 10000 });
+  const rungs = await ladderBlock.locator('[data-testid="ladder-level"]').allInnerTexts();
+  check(
+    'a ladder can be added in the passport editor',
+    rungs.length === 2 && rungs[1].includes('Рівень 2'),
+    rungs.join('|')
+  );
+  check(
+    'the ladder shows the rung name and requirement',
+    rungs[1].includes('Раніше') && rungs[1].includes('17:00'),
+    rungs[1]
+  );
+  check(
+    'the first rung is the current one',
+    (await ladderBlock.locator('[data-testid="ladder-level"][data-current="true"]').innerText()).includes('Рівень 1')
+  );
+  check(
+    'a habit with several levels shows the level badge',
+    (await page.locator('[data-testid="level-badge"]').first().innerText()).trim() === 'Рівень 1'
+  );
+  check(
+    'the level cannot go up before the habit is integrated',
+    await ladderBlock.getByRole('button', { name: 'Підвищити рівень' }).isDisabled()
+  );
+  check(
+    'the hint says why',
+    (await ladderBlock.locator('[data-testid="upgrade-blocker"]').innerText()).includes('лише інтегрованій')
+  );
+  check(
+    'the first level cannot go down',
+    await ladderBlock.getByRole('button', { name: 'Знизити рівень' }).isDisabled()
+  );
+
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  const ladderHome = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', {
+    hasText: ladderName
+  });
+  await ladderHome.waitFor({ timeout: 10000 });
+  check('the home card shows the level of a habit', (await ladderHome.innerText()).includes('Рівень 2'));
+
+  await page.goto(`${BASE}/practice/${created.ladder.id}`, { waitUntil: 'networkidle' });
+  await ladderBlock.waitFor({ timeout: 10000 });
+  check(
+    'the second rung is the current one',
+    (await ladderBlock.locator('[data-testid="ladder-level"][data-current="true"]').innerText()).includes('Рівень 2')
+  );
+  await ladderBlock.getByLabel('Причина зміни рівня').fill('Перевірка рівня');
+  await ladderBlock.getByRole('button', { name: 'Знизити рівень' }).click();
+  await page.waitForSelector('text=Рівень знижено', { timeout: 10000 });
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="ladder-block"] [data-testid="ladder-level"][data-current="true"]')
+      ?.textContent.includes('Рівень 1')
+  );
+  check('lowering the level moves the highlight to level 1', true);
+  const changesText = await ladderBlock.locator('[data-testid="level-changes"]').innerText();
+  check(
+    'the level change is listed with its reason',
+    changesText.includes('2 → 1') && changesText.includes('Перевірка рівня'),
+    changesText
+  );
+  await page.goto(`${BASE}/tracker/${created.ladder.trackerId}`, { waitUntil: 'networkidle' });
+  const ladderCard = page.locator('[data-testid="tracker-habit-card"]');
+  await ladderCard.waitFor({ timeout: 10000 });
+  // The card's heading is uppercase, so its rendered text reads «РІВЕНЬ 1»; the badge's own text does not.
+  check(
+    "the tracker's habit card shows the level",
+    (await ladderCard.locator('[data-testid="level-badge"]').textContent()) === 'Рівень 1'
+  );
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
