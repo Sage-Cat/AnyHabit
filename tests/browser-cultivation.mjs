@@ -576,10 +576,21 @@ try {
     "a habit's tracker shows a success and failure map, not regularity",
     chartsText.includes('Теплова карта успіхів і порушень') && !chartsText.includes('Теплова карта регулярності')
   );
+  const workDays = page.locator('[data-testid="habit-days-chart"]');
+  await page.waitForSelector('[data-testid="habit-days-chart"] .recharts-reference-line', { state: 'attached' });
+  const workLegend = await workDays.locator('[data-testid="threshold-legend"]').innerText();
   check(
-    'a yes/no habit keeps the weekday totals',
-    chartsText.includes('У які дні ви найактивніші') &&
-      (await page.locator('[data-testid="habit-days-chart"]').count()) === 0
+    'a yes/no habit compares its days with the goal, not weekday totals',
+    !(await page.locator('[data-testid="tracker-charts"]').innerText()).includes('У які дні ви найактивніші') &&
+      workLegend.includes('Ціль: до 18:00') &&
+      workLegend.includes('Допуск: до 19:00') &&
+      (await workDays.locator('.recharts-reference-line').count()) === 2,
+    workLegend
+  );
+  check(
+    'a day judged without a time is drawn pale and explained',
+    (await workDays.locator('[data-testid="unknown-time-note"]').count()) === 1 &&
+      (await workDays.locator('path.recharts-rectangle[fill-opacity="0.35"]').count()) === 1
   );
   const failCell = page.locator(`[data-testid="tracker-heatmap"] [data-date="${work.failDay}"]`);
   check(

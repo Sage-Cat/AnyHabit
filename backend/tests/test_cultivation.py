@@ -580,6 +580,11 @@ def main() -> int:
         str([(c, r.status, r.warning) for c, r in results.items()]),
     )
     check("boolean warning names the time", "виконано о 18:30" in results["18:30"].warning, results["18:30"].warning)
+    check(
+        "a boolean day gives the time it was done",
+        results["18:00:40"].as_dict()["first_at"] == "18:00",
+        str(results["18:00:40"].as_dict()),
+    )
     try:
         cv.validate_spec("boolean", {**work, "tolerance": {"done_by": "19h"}})
         check("bad deadline rejected", False)
@@ -1089,6 +1094,14 @@ def main() -> int:
             "completion inside the tolerance is a success with a warning",
             late_day.get("status") == "success" and "18:40" in late_day.get("warning", ""),
             str(late_day)[:300],
+        )
+        work_map = client.get(f"/trackers/{work_tracker}/analytics").json()["build_heatmap"]
+        work_cells = {cell["date"]: cell for week in work_map["columns"] for cell in week}
+        check(
+            "the tracker map carries the time a deadline habit was done",
+            work_cells[yesterday.isoformat()]["first_at"] == "18:40"
+            and work_cells[local_today.isoformat()]["first_at"] is None,
+            str(work_cells.get(yesterday.isoformat())),
         )
         detail = client.get(f"/cultivation/habits/{work_id}").json()
         check(
