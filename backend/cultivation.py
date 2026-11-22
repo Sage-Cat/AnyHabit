@@ -93,7 +93,7 @@ def level_defined(kind: str, level: dict | None) -> bool:
 
 # Dates before this are typos, and would make every request walk decades of days.
 MIN_DATE = date(2000, 1, 1)
-RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable"}
+RANK_REQ_KEYS = {"active", "stabilizing", "integrated", "durable", "min_level"}
 
 
 def check_number(
@@ -256,6 +256,8 @@ def validate_ranks(ranks) -> list[dict]:
             check_number(f"Ранг «{rank['name']}»: stabilizing", req["stabilizing"], integer=True, low=0, high=1000)
         if "integrated" in req:
             check_number(f"Ранг «{rank['name']}»: integrated", req["integrated"], integer=True, low=0, high=1000)
+        if "min_level" in req:
+            check_number(f"Ранг «{rank['name']}»: min_level", req["min_level"], integer=True, low=1, high=100)
         if "durable" in req:
             durable = req["durable"]
             if not isinstance(durable, list) or len(durable) != 2:
@@ -1205,7 +1207,9 @@ ACTIVE_STAGES = ("formation", "stabilization", "integrated")
 # active — some habit is being worked on; stabilizing — how many habits have
 # reached stabilization or beyond (true means one); integrated — number of
 # integrated habits; durable — (count, days) integrated habits held without a
-# break that long.  A habit that drops out of integration goes back to
+# break that long.  ``min_level`` — the passport level a habit needs to count
+# toward ``integrated`` and ``durable`` (its hold then only runs on days at that
+# level or above).  A habit that drops out of integration goes back to
 # stabilization and starts its run again.  ``confirmed`` marks the thresholds set by the user; the rest
 # are proposals and can be overridden.  Ranks are climbed in order: a rank also
 # needs every condition below it.
@@ -1217,13 +1221,25 @@ DEFAULT_RANKS: list[dict] = [
     {"name": "Маг першого рангу", "req": {"integrated": 1}, "confirmed": True},
     {"name": "Маг другого рангу", "req": {"integrated": 2, "durable": [1, 30]}, "confirmed": True},
     {"name": "Маг третього рангу", "req": {"integrated": 4, "durable": [2, 60]}, "confirmed": True},
-    {"name": "Маг Нової Зірки", "req": {"integrated": 8, "durable": [4, 120]}, "confirmed": True},
-    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 120]}, "confirmed": True},
-    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 240]}, "confirmed": True},
-    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [20, 365]}, "confirmed": True},
-    {"name": "Великий Маг Законів", "req": {"integrated": 128, "durable": [40, 730]}, "confirmed": True},
-    {"name": "Верховний Маг рангу Вічності", "req": {"integrated": 256, "durable": [80, 1095]}, "confirmed": True},
-    {"name": "Той, хто знайшов свій Шлях", "req": {"integrated": 512, "durable": [128, 1825]}, "confirmed": True},
+    {"name": "Маг Нової Зірки", "req": {"integrated": 8, "durable": [4, 120], "min_level": 2}, "confirmed": True},
+    {"name": "Маг Нейтронної Зорі", "req": {"integrated": 16, "durable": [8, 120], "min_level": 3}, "confirmed": True},
+    {"name": "Маг Прямого Колапсу", "req": {"integrated": 32, "durable": [16, 240], "min_level": 4}, "confirmed": True},
+    {"name": "Маг Законів", "req": {"integrated": 64, "durable": [20, 365], "min_level": 5}, "confirmed": True},
+    {
+        "name": "Великий Маг Законів",
+        "req": {"integrated": 128, "durable": [40, 730], "min_level": 5},
+        "confirmed": True,
+    },
+    {
+        "name": "Верховний Маг рангу Вічності",
+        "req": {"integrated": 256, "durable": [80, 1095], "min_level": 5},
+        "confirmed": True,
+    },
+    {
+        "name": "Той, хто знайшов свій Шлях",
+        "req": {"integrated": 512, "durable": [128, 1825], "min_level": 5},
+        "confirmed": True,
+    },
 ]
 
 
@@ -1234,24 +1250,49 @@ class HabitRankState:
     stage: str | None
     counted: bool = False  # counts as integrated
     held_days: int = 0  # unbroken run of integrated
+    level: int = 1  # passport level that day (missing counts as 1)
+    # threshold N -> unbroken days integrated at level >= N (only while integrated)
+    held_by_level: dict[int, int] = field(default_factory=dict)
+
+    def held_at(self, min_level: int) -> int:
+        return self.held_by_level.get(min_level, 0)
+
+
+def _min_level(req: dict) -> int:
+    return int(req.get("min_level") or 1)
+
+
+def _counts_integrated(state: HabitRankState, req: dict) -> bool:
+    return state.counted and state.level >= _min_level(req)
+
+
+def _counts_durable(state: HabitRankState, req: dict, days: int) -> bool:
+    return _counts_integrated(state, req) and state.held_at(_min_level(req)) >= days
 
 
 def simulate_stages(habit_id: int, versions: list[dict], until: date) -> dict[date, HabitRankState]:
     out: dict[date, HabitRankState] = {}
     if not versions:
         return out
-    held_since: date | None = None
+    # Run start per level threshold: moving up keeps the runs of the thresholds
+    # already met, moving down ends the higher ones, leaving integration ends all.
+    runs: dict[int, date] = {}
     current = min(v["effective_from"] for v in versions)
     while current <= until:
         spec = spec_for(versions, current) or {}
         stage = spec.get("stage")
-        state = HabitRankState(habit_id, spec.get("name", ""), stage)
+        level = current_level_number(spec)
+        state = HabitRankState(habit_id, spec.get("name", ""), stage, level=level)
         if stage == "integrated":
-            held_since = held_since or current
+            for n in [n for n in runs if n > level]:
+                del runs[n]
+            for n in range(1, level + 1):
+                runs.setdefault(n, current)
             state.counted = True
-            state.held_days = (current - held_since).days + 1
+            state.held_by_level = {n: (current - start).days + 1 for n, start in runs.items()}
+            state.held_days = state.held_by_level[1]
         else:
-            held_since = None
+            runs.clear()
         out[current] = state
         current += timedelta(days=1)
     return out
@@ -1270,11 +1311,11 @@ def _rank_met(req: dict, states: list[HabitRankState]) -> bool:
         return False
     if _stabilizing_have(states) < _stabilizing_need(req):
         return False
-    if sum(s.counted for s in states) < int(req.get("integrated", 0)):
+    if sum(_counts_integrated(s, req) for s in states) < int(req.get("integrated", 0)):
         return False
     if req.get("durable"):
         count, days = req["durable"]
-        if sum(s.counted and s.held_days >= int(days) for s in states) < int(count):
+        if sum(_counts_durable(s, req, int(days)) for s in states) < int(count):
             return False
     return True
 
@@ -1315,7 +1356,8 @@ def rank_requirement_text(req: dict) -> str:
     elif need > 1:
         parts.append(f"звичок у стабілізації чи далі ≥ {need}")
     if "integrated" in req:
-        parts.append(f"інтегрованих звичок ≥ {req['integrated']}")
+        level = f" рівня {_min_level(req)}+" if _min_level(req) > 1 else ""
+        parts.append(f"інтегрованих звичок{level} ≥ {req['integrated']}")
     if req.get("durable"):
         count, days = req["durable"]
         parts.append(f"з них ≥ {count} утримуються ≥ {_hold_text(days)}")
@@ -1339,6 +1381,7 @@ def rank_progress(
     def ready(stage: str) -> list[float]:
         return [readiness.get(s.habit_id) or 0.0 for s in states if s.stage == stage]
 
+    level_label = f" рівня {_min_level(req)}+" if _min_level(req) > 1 else ""
     parts = []
     if req.get("active"):
         done = any(s.stage in ACTIVE_STAGES for s in states)
@@ -1361,18 +1404,30 @@ def rank_progress(
             )
     if "integrated" in req:
         need = int(req["integrated"])
-        have = sum(s.counted for s in states)
-        fraction = min((have + _best(ready("stabilization"), need - have)) / need, 1.0) if need else 1.0
+        have = sum(_counts_integrated(s, req) for s in states)
+        # Only habits already at the level can be one stage short of counting.
+        short = [
+            readiness.get(s.habit_id) or 0.0
+            for s in states
+            if s.stage == "stabilization" and s.level >= _min_level(req)
+        ]
+        fraction = min((have + _best(short, need - have)) / need, 1.0) if need else 1.0
         parts.append(
-            {"label": "Інтегровані звички", "have": have, "need": need, "done": have >= need, "fraction": fraction}
+            {
+                "label": f"Інтегровані звички{level_label}",
+                "have": have,
+                "need": need,
+                "done": have >= need,
+                "fraction": fraction,
+            }
         )
     if req.get("durable"):
         count, days = (int(v) for v in req["durable"])
-        have = sum(s.counted and s.held_days >= days for s in states)
-        held = [min(s.held_days / days, 1.0) for s in states if s.counted]
+        have = sum(_counts_durable(s, req, days) for s in states)
+        held = [min(s.held_at(_min_level(req)) / days, 1.0) for s in states if _counts_integrated(s, req)]
         parts.append(
             {
-                "label": f"Утримуються ≥ {_hold_text(days)}",
+                "label": f"Утримуються ≥ {_hold_text(days)}{level_label}",
                 "have": have,
                 "need": count,
                 "done": have >= count,
@@ -1472,6 +1527,7 @@ def compute_rank(
                 "stage": s.stage,
                 "counted": s.counted,
                 "held_days": s.held_days,
+                "level": s.level,
             }
             for s in states
         ],

@@ -74,7 +74,10 @@ function RankCard({ rank }) {
 
           {habitsCounted.length > 0 && (
             <p className="mt-3 text-xs text-gray-400">
-              У рахунок ранга йдуть: {habitsCounted.map((habit) => habit.name).join(', ')}
+              У рахунок ранга йдуть:{' '}
+              {habitsCounted
+                .map((habit) => (habit.level > 1 ? `${habit.name} (рівень ${habit.level})` : habit.name))
+                .join(', ')}
             </p>
           )}
         </div>
