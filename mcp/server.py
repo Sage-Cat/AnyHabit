@@ -33,9 +33,13 @@ mcp = MCPServer(
         "the passport's criteria are met (stage_changes lists each move); a stage "
         "set by hand is an override the criteria then continue from. A habit may "
         "have a ladder of levels: moving up is allowed only for an integrated habit "
-        "and only with the user's approval; a harder level can make the habit fall "
-        "back to stabilization and then formation by itself; moving down is allowed "
-        "from level 2 up."
+        "and only with the user's approval; it starts formation of the new level "
+        "from that day while the rank keeps counting the previous level; moving "
+        "down is allowed from level 2 up. A failed formation attempt (`attempt.failed_on`) needs the "
+        "user's decision: a new attempt (start_new_attempt) on level 1, a return to "
+        "the previous level (change_habit_level down) above it; never act without "
+        "the user's explicit approval. Ranks count integrated habits per level "
+        "(`rank_level`)."
     ),
 )
 
@@ -772,9 +776,12 @@ def change_habit_level(
 ) -> dict[str, Any]:
     """Move a habit one level up or down its ladder (the passport's `levels`).
 
-    Up works only for an integrated habit that has a next level; down only from
-    level 2. A harder level may bring the habit back to stabilization or
-    formation by itself. Requires the user's approval.
+    Up needs an integrated habit that has a next level; the new level starts
+    its formation from that day, while the rank keeps counting the previous
+    level. Down (only from level 2) returns to the lower level, integrated
+    again if the habit was credited there; it is also how a failed attempt
+    above level 1 (attempt action `fallback`) is confirmed. Requires the
+    user's approval.
     """
     _require_user_confirmation(user_confirmed, "Changing a habit level")
     return api.post(
@@ -782,6 +789,27 @@ def change_habit_level(
         json_body=_without_none(
             direction=direction, reason=reason, effective_from=effective_from, confirmed_by_user=True
         ),
+    )
+
+
+@mcp.tool()
+def start_new_attempt(
+    habit_id: int,
+    reason: str,
+    user_confirmed: bool,
+    effective_from: str | None = None,
+) -> dict[str, Any]:
+    """Start a new formation attempt for a habit.
+
+    Use only after the habit's formation attempt failed (the habit output has
+    `attempt.failed_on`, action `new_attempt`) and the user decided to try
+    again. It restarts formation and the criteria windows from that day.
+    Requires the user's approval.
+    """
+    _require_user_confirmation(user_confirmed, "Starting a new attempt")
+    return api.post(
+        f"/cultivation/habits/{habit_id}/attempt",
+        json_body=_without_none(reason=reason, effective_from=effective_from, confirmed_by_user=True),
     )
 
 
