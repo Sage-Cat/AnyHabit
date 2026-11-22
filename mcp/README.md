@@ -166,6 +166,7 @@ to `backend:8000`.
 - `change_habit_passport`
 - `change_habit_stage`
 - `change_habit_level`
+- `start_new_attempt`
 
 Recording facts (sleep, day marks) works directly. Creating a passport,
 changing its goals or criteria, moving a stage or a level by hand and starting or ending minimum
@@ -176,9 +177,12 @@ read-only token cannot write at all. Every change is appended to the passport hi
 its reason. Stages move by themselves once the passport's criteria are met;
 each move is listed in the habit's `stage_changes`. A passport may hold a ladder
 of `levels` (with `current_level`; a sleep level may set `bed_by`). Moving up is
-allowed only for an integrated habit, a harder level can send it back to
-stabilization and formation by itself, and moving down needs level 2 or higher;
-the habit shows `ladder` and `level_changes`. The rank system itself can
+allowed only for an integrated habit and starts formation of the new level
+while the rank keeps counting the previous one; moving down needs level 2 or
+higher and returns to the lower level. A failed formation attempt
+(`attempt.failed_on`) needs the user's decision: `start_new_attempt` on level 1,
+`change_habit_level` down above it. Ranks count integrated habits per level
+(`rank_level`); the habit shows `ladder` and `level_changes`. The rank system itself can
 only be changed in the web UI.
 
 ## Destructive operations
