@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   archiveHabitApi,
+  changeLevelApi,
   changeStageApi,
   createVersionApi,
   endModeApi,
@@ -18,7 +19,7 @@ import { formatDateTime } from '../../utils/date';
 import LevelFields from './LevelFields';
 import { buildLevel, hasLevelValue, levelFromSpec, levelKeys } from './levelHelpers';
 import SleepEntryModal from './SleepEntryModal';
-import { DayStatusPill, Field, ModeBadge, StageBadge } from './common';
+import { DayStatusPill, Field, LevelBadge, ModeBadge, StageBadge } from './common';
 import {
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
@@ -261,7 +262,8 @@ function Passport({ habit }) {
     ['Пріоритет', spec.priority != null ? String(spec.priority) : null],
     ['Опис', spec.description || null]
   ].filter(([, value]) => value != null);
-  const subgoals = spec.subgoals || [];
+  // A ladder replaces the legacy subgoals in the view.
+  const subgoals = spec.levels?.length ? [] : spec.subgoals || [];
   return (
     <div>
       <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2" data-testid="passport-view">
@@ -291,6 +293,122 @@ function Passport({ habit }) {
   );
 }
 
+function LevelsBlock({ habit, onChanged }) {
+  const { notify } = useAppState();
+  const ladder = habit.ladder;
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const hasLadder = ladder.count > 1 || habit.passport?.levels?.length > 0;
+  const changes = (habit.level_changes || []).slice(-5).reverse();
+
+  const change = async (direction) => {
+    if (!reason.trim()) {
+      setError('Вкажіть причину зміни рівня');
+      return;
+    }
+    setIsSaving(true);
+    setError('');
+    try {
+      await changeLevelApi(habit.id, { direction, reason: reason.trim() });
+      notify.success(direction === 'up' ? 'Рівень підвищено' : 'Рівень знижено');
+      setReason('');
+      await onChanged();
+    } catch (changeError) {
+      setError(changeError?.message || 'Не вдалося змінити рівень');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      {ladder.levels?.length > 0 ? (
+        <ol className="space-y-2" data-testid="ladder-levels">
+          {ladder.levels.map((rung) => (
+            <li
+              key={rung.number}
+              data-testid="ladder-level"
+              data-current={rung.current ? 'true' : undefined}
+              className={`rounded-xl border p-3 text-sm ${
+                rung.current ? 'border-emerald-300 bg-emerald-50' : 'border-gray-100'
+              }`}
+            >
+              <p className="flex flex-wrap items-center gap-2 font-semibold text-stone-900">
+                Рівень {rung.number}
+                {rung.name && <span className="font-medium text-stone-700">— {rung.name}</span>}
+                {rung.current && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    поточний
+                  </span>
+                )}
+              </p>
+              <p className="text-stone-800">Вимога: {rung.requirement || '—'}</p>
+              {rung.tolerance && <p className="text-xs text-amber-700">Допуск з попередженням: {rung.tolerance}</p>}
+              {rung.minimum && <p className="text-xs text-gray-500">Мінімум: {rung.minimum}</p>}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {!hasLadder && levelKeys(habit.kind).length > 0 && (
+        <p className="mt-2 text-sm text-gray-500">Поки один рівень. Драбину рівнів можна додати в паспорті.</p>
+      )}
+      {hasLadder && !habit.archived && (
+        <div className="mt-4 space-y-3" data-testid="level-form">
+          <input
+            type="text"
+            aria-label="Причина зміни рівня"
+            placeholder="Причина"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className={INPUT_CLASS}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={isSaving || !ladder.can_upgrade}
+              onClick={() => change('up')}
+              className={BUTTON_SECONDARY}
+            >
+              Підвищити рівень
+            </button>
+            <button
+              type="button"
+              disabled={isSaving || !ladder.can_downgrade}
+              onClick={() => change('down')}
+              className={BUTTON_SECONDARY}
+            >
+              Знизити рівень
+            </button>
+          </div>
+          {!ladder.can_upgrade && ladder.upgrade_blocker && (
+            <p className="text-xs text-gray-500" data-testid="upgrade-blocker">
+              {ladder.upgrade_blocker}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-rose-600">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+      {changes.length > 0 && (
+        <ul className="mt-4 divide-y divide-gray-100 rounded-xl border border-gray-100" data-testid="level-changes">
+          {changes.map((item, index) => (
+            <li key={`${item.date}-${index}`} className="px-3 py-2 text-sm text-gray-600">
+              <span className="font-medium text-stone-800">
+                {formatDay(item.date)}: рівень {item.from} → {item.to}
+              </span>
+              {item.reason && ` — ${item.reason}`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function VersionHistory({ versions }) {
   if (!versions?.length) return null;
   const ordered = [...versions].sort((a, b) => (b.effective_from + b.id).localeCompare(a.effective_from + a.id));
@@ -311,6 +429,13 @@ function VersionHistory({ versions }) {
   );
 }
 
+const rungFromSpec = (rung) => ({
+  name: rung?.name ?? '',
+  level: levelFromSpec(rung?.level),
+  tolerance: levelFromSpec(rung?.tolerance),
+  minimum: levelFromSpec(rung?.minimum)
+});
+
 function EditPassport({ habit, onSaved }) {
   const { notify } = useAppState();
   const spec = habit.passport || {};
@@ -325,6 +450,7 @@ function EditPassport({ habit, onSaved }) {
   const [level, setLevel] = useState(levelFromSpec());
   const [minimum, setMinimum] = useState(levelFromSpec());
   const [tolerance, setTolerance] = useState(levelFromSpec());
+  const [rungs, setRungs] = useState([]);
   const [json, setJson] = useState('');
   const [reason, setReason] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
@@ -337,6 +463,7 @@ function EditPassport({ habit, onSaved }) {
     setLevel(levelFromSpec(spec.level));
     setMinimum(levelFromSpec(spec.minimum));
     setTolerance(levelFromSpec(spec.tolerance));
+    setRungs((spec.levels || []).map(rungFromSpec));
     setJson(JSON.stringify(spec, null, 2));
     setReason('');
     setEffectiveFrom('');
@@ -376,12 +503,39 @@ function EditPassport({ habit, onSaved }) {
         setError('Назва не може бути порожньою');
         return;
       }
-      const patch = { name: name.trim(), level: buildLevel(habit.kind, level, { nulls: true }) };
+      const patch = { name: name.trim() };
       if (habit.kind === 'build') patch.unit = unit.trim();
-      if (hasLevelValue(habit.kind, minimum)) patch.minimum = buildLevel(habit.kind, minimum, { nulls: true });
-      else if (spec.minimum) patch.minimum = null;
-      if (hasLevelValue(habit.kind, tolerance)) patch.tolerance = buildLevel(habit.kind, tolerance, { nulls: true });
-      else if (spec.tolerance) patch.tolerance = null;
+      // With a ladder the current rung is the requirement: the server copies it to the passport.
+      if (rungs.length === 0) {
+        patch.level = buildLevel(habit.kind, level, { nulls: true });
+        if (hasLevelValue(habit.kind, minimum)) patch.minimum = buildLevel(habit.kind, minimum, { nulls: true });
+        else if (spec.minimum) patch.minimum = null;
+        if (hasLevelValue(habit.kind, tolerance)) patch.tolerance = buildLevel(habit.kind, tolerance, { nulls: true });
+        else if (spec.tolerance) patch.tolerance = null;
+      }
+      if (levelKeys(habit.kind).length > 0) {
+        if (rungs.length > 0) {
+          for (const [index, rung] of rungs.entries()) {
+            if (!hasLevelValue(habit.kind, rung.level)) {
+              setError(`Рівень ${index + 1}: вкажіть вимогу`);
+              return;
+            }
+          }
+          patch.levels = rungs.map((rung) => {
+            const out = {};
+            if (rung.name.trim()) out.name = rung.name.trim();
+            out.level = buildLevel(habit.kind, rung.level);
+            if (hasLevelValue(habit.kind, rung.tolerance)) out.tolerance = buildLevel(habit.kind, rung.tolerance);
+            if (hasLevelValue(habit.kind, rung.minimum)) out.minimum = buildLevel(habit.kind, rung.minimum);
+            return out;
+          });
+          // A new ladder starts at level 1; an existing one keeps its level (moves go through /level).
+          if (!spec.levels) patch.current_level = 1;
+        } else if (spec.levels) {
+          patch.levels = null;
+          patch.current_level = null;
+        }
+      }
       payload.patch = patch;
     }
 
@@ -400,6 +554,14 @@ function EditPassport({ habit, onSaved }) {
   };
 
   const hasLevels = levelKeys(habit.kind).length > 0;
+  const setRung = (index, key, value) =>
+    setRungs((current) => current.map((rung, i) => (i === index ? { ...rung, [key]: value } : rung)));
+  // The first rung starts from what the passport asks for now; later ones copy the previous rung.
+  const createLadder = () => setRungs([{ name: '', level, tolerance, minimum }]);
+  const addRung = () => setRungs((current) => [...current, { ...current.at(-1), name: '' }]);
+  const removeRung = (index) => setRungs((current) => current.filter((_, i) => i !== index));
+  // Removing the current rung or one below it would shift the habit to another level.
+  const currentLevel = spec.levels ? spec.current_level || 1 : 1;
 
   return (
     <form
@@ -431,7 +593,12 @@ function EditPassport({ habit, onSaved }) {
               className={INPUT_CLASS}
             />
           </Field>
-          {hasLevels && <LevelFields kind={habit.kind} value={level} onChange={setLevel} />}
+          {hasLevels && rungs.length === 0 && <LevelFields kind={habit.kind} value={level} onChange={setLevel} />}
+          {hasLevels && rungs.length > 0 && (
+            <p className="text-sm text-gray-500" data-testid="ladder-requirement-note">
+              Вимога, допуск і мінімум — ті, що в поточному рівні {currentLevel} драбини нижче.
+            </p>
+          )}
           {habit.kind === 'build' && (
             <Field label="Одиниця виміру">
               <input
@@ -443,7 +610,7 @@ function EditPassport({ habit, onSaved }) {
               />
             </Field>
           )}
-          {hasLevels && (
+          {hasLevels && rungs.length === 0 && (
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Мінімум (порожньо — без мінімуму)
@@ -451,12 +618,86 @@ function EditPassport({ habit, onSaved }) {
               <LevelFields kind={habit.kind} prefix="Мінімум: " value={minimum} onChange={setMinimum} />
             </div>
           )}
-          {hasLevels && (
+          {hasLevels && rungs.length === 0 && (
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Допуск: поза ціллю, але зараховується з попередженням (порожньо — без допуску)
               </p>
               <LevelFields kind={habit.kind} prefix="Допуск: " value={tolerance} onChange={setTolerance} />
+            </div>
+          )}
+          {hasLevels && (
+            <div className="space-y-3" data-testid="ladder-editor">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Рівні (необов'язково): вимога зростає від рівня до рівня
+              </p>
+              {rungs.map((rung, index) => {
+                const n = index + 1;
+                return (
+                  <div key={n} className="space-y-3 rounded-xl border border-gray-100 p-3" data-testid="ladder-rung">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-stone-800">Рівень {n}</p>
+                      {n > currentLevel && (
+                        <button
+                          type="button"
+                          aria-label={`Прибрати рівень ${n}`}
+                          onClick={() => removeRung(index)}
+                          className={BUTTON_SECONDARY}
+                        >
+                          Прибрати
+                        </button>
+                      )}
+                    </div>
+                    <Field label="Назва рівня (необов'язково)">
+                      <input
+                        type="text"
+                        aria-label={`Назва рівня ${n}`}
+                        value={rung.name}
+                        onChange={(event) => setRung(index, 'name', event.target.value)}
+                        className={INPUT_CLASS}
+                      />
+                    </Field>
+                    <LevelFields
+                      kind={habit.kind}
+                      prefix={`Рівень ${n}: `}
+                      value={rung.level}
+                      onChange={(value) => setRung(index, 'level', value)}
+                    />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      Допуск рівня (порожньо — без допуску)
+                    </p>
+                    <LevelFields
+                      kind={habit.kind}
+                      prefix={`Рівень ${n}, допуск: `}
+                      value={rung.tolerance}
+                      onChange={(value) => setRung(index, 'tolerance', value)}
+                    />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      Мінімум рівня (порожньо — без мінімуму)
+                    </p>
+                    <LevelFields
+                      kind={habit.kind}
+                      prefix={`Рівень ${n}, мінімум: `}
+                      value={rung.minimum}
+                      onChange={(value) => setRung(index, 'minimum', value)}
+                    />
+                  </div>
+                );
+              })}
+              {rungs.length === 0 ? (
+                <button type="button" onClick={createLadder} className={BUTTON_SECONDARY}>
+                  Додати драбину рівнів
+                </button>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={addRung} className={BUTTON_SECONDARY}>
+                    Додати рівень
+                  </button>
+                  <button type="button" onClick={() => setRungs([])} className={BUTTON_SECONDARY}>
+                    Прибрати драбину
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -635,6 +876,7 @@ function HabitDetailPage() {
               )}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StageBadge stage={habit.stage} label={habit.stage_label} />
+                <LevelBadge ladder={habit.ladder} />
                 {(habit.mode || habit.today?.degraded) && <ModeBadge />}
                 <span className="text-xs text-gray-400">{KIND_LABELS[habit.kind] || habit.kind}</span>
                 {habit.archived && (
@@ -745,6 +987,12 @@ function HabitDetailPage() {
           <Section title="Відновлення" testId="recovery-block">
             <Recovery recovery={habit.recovery} episodes={habit.episodes} />
           </Section>
+
+          {habit.ladder && (
+            <Section title="Рівні" testId="ladder-block">
+              <LevelsBlock habit={habit} onChanged={load} />
+            </Section>
+          )}
 
           <Section title="Паспорт" testId="passport-block" className="xl:col-span-2">
             <Passport habit={habit} />

@@ -1,6 +1,6 @@
 import { Sprout } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { StageBadge } from './common';
+import { LevelBadge, StageBadge } from './common';
 import { BUTTON_SECONDARY, CARD_CLASS } from './helpers';
 
 /**
@@ -24,6 +24,7 @@ function TrackerHabitCard({ habit, trackerDescription = '' }) {
           <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
             <Sprout size={14} className="text-emerald-600" aria-hidden="true" /> Звичка культивації
             <StageBadge stage={habit.stage} label={habit.stage_label} />
+            <LevelBadge ladder={habit.ladder} />
           </p>
           {/* The tracker's header already shows the description it was given from the passport. */}
           {habit.description && habit.description !== trackerDescription && (

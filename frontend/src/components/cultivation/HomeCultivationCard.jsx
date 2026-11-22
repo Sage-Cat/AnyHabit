@@ -6,7 +6,7 @@ import { useAppState } from '../../state/appState';
 import RankEmblem from './RankEmblem';
 import { Breakthrough, StageCounts, StageTimeline } from './RankStats';
 import SleepEntryModal from './SleepEntryModal';
-import { DayStatusPill, ModeBadge } from './common';
+import { DayStatusPill, LevelBadge, ModeBadge } from './common';
 import { BUTTON_SECONDARY, useCultivationOverview } from './helpers';
 
 const CARD = 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm';
@@ -102,7 +102,8 @@ function HomeTodayCard({ overview, onSleep, onChanged }) {
                     to={`/practice/${habit.id}`}
                     className="flex flex-wrap items-center gap-2 text-sm font-medium text-stone-800 hover:underline"
                   >
-                    {habit.name} {(habit.mode || habit.today?.degraded) && <ModeBadge />}
+                    {habit.name} <LevelBadge ladder={habit.ladder} />{' '}
+                    {(habit.mode || habit.today?.degraded) && <ModeBadge />}
                   </Link>
                   {requirement && requirement !== 'виконати' && <p className="text-xs text-gray-500">{requirement}</p>}
                   {habit.today?.tolerance && (

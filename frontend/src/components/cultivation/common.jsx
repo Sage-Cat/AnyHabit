@@ -20,6 +20,19 @@ export function StageBadge({ stage, label }) {
   );
 }
 
+/** «Рівень N» next to the stage; only for habits with more than one rung. */
+export function LevelBadge({ ladder }) {
+  if (!ladder || !(ladder.count > 1)) return null;
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
+      data-testid="level-badge"
+    >
+      Рівень {ladder.current}
+    </span>
+  );
+}
+
 export function ModeBadge() {
   return (
     <span className="inline-flex items-center rounded-full bg-lime-50 px-2.5 py-0.5 text-xs font-medium text-lime-700">

@@ -8,13 +8,22 @@ function LevelFields({ kind, value, onChange, prefix = '' }) {
 
   if (kind === 'sleep') {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Підйом не пізніше">
           <input
             type="time"
             aria-label={label('Підйом не пізніше')}
             value={value.wake_by}
             onChange={set('wake_by')}
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="Заснути до" hint="Порожньо — час засинання не оцінюється.">
+          <input
+            type="time"
+            aria-label={label('Заснути до')}
+            value={value.bed_by}
+            onChange={set('bed_by')}
             className={INPUT_CLASS}
           />
         </Field>

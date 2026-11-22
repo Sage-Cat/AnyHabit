@@ -1,8 +1,16 @@
 /** Empty level object for a given kind. */
-export const emptyLevel = () => ({ wake_by: '', min_sleep_h: '', max_sleep_h: '', min_amount: '', done_by: '' });
+export const emptyLevel = () => ({
+  wake_by: '',
+  bed_by: '',
+  min_sleep_h: '',
+  max_sleep_h: '',
+  min_amount: '',
+  done_by: ''
+});
 
 export const levelFromSpec = (level) => ({
   wake_by: level?.wake_by ?? '',
+  bed_by: level?.bed_by ?? '',
   min_sleep_h: level?.min_sleep_h ?? '',
   max_sleep_h: level?.max_sleep_h ?? '',
   min_amount: level?.min_amount ?? '',
@@ -10,11 +18,15 @@ export const levelFromSpec = (level) => ({
 });
 
 /** Fields that make sense for the kind, as API keys. */
-const LEVEL_KEYS = { sleep: ['wake_by', 'min_sleep_h', 'max_sleep_h'], build: ['min_amount'], boolean: ['done_by'] };
+const LEVEL_KEYS = {
+  sleep: ['wake_by', 'bed_by', 'min_sleep_h', 'max_sleep_h'],
+  build: ['min_amount'],
+  boolean: ['done_by']
+};
 
 export const levelKeys = (kind) => LEVEL_KEYS[kind] || [];
 
-const TIME_KEYS = new Set(['wake_by', 'done_by']);
+const TIME_KEYS = new Set(['wake_by', 'bed_by', 'done_by']);
 
 /**
  * Turn form state into an API level. With `nulls`, cleared fields become
