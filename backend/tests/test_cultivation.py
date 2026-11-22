@@ -453,6 +453,111 @@ def main() -> int:
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
 
+    print("\n[4a] Rank level requirements")
+
+    def level_versions(*steps):
+        """steps: (stage, level, day offset); a level above 1 needs the ladder fields to look real."""
+        return [
+            {
+                "id": i + 1,
+                "effective_from": D0 + timedelta(days=on),
+                "spec": {"name": "h", "stage": st, "current_level": lv},
+            }
+            for i, (st, lv, on) in enumerate(steps)
+        ]
+
+    def refused(ranks) -> bool:
+        try:
+            cv.validate_ranks(ranks)
+        except cv.PassportError:
+            return True
+        return False
+
+    check(
+        "validate_ranks accepts min_level",
+        cv.validate_ranks([{"name": "A", "req": {"integrated": 1, "min_level": 3}}])[0]["req"]["min_level"] == 3,
+    )
+    check(
+        "validate_ranks refuses a bad min_level",
+        all(refused([{"name": "A", "req": {"min_level": bad}}]) for bad in (0, 101, 1.5, "2", None)),
+    )
+    check(
+        "default ranks carry min_level above Маг третього рангу",
+        [r["req"].get("min_level") for r in cv.DEFAULT_RANKS[7:]] == [2, 3, 4, 5, 5, 5, 5],
+    )
+    check(
+        "default ranks below Маг Нової Зірки have no min_level",
+        all("min_level" not in r["req"] for r in cv.DEFAULT_RANKS[:7]),
+    )
+    star = [{"name": "Low", "req": {}}, {"name": "Lv2", "req": {"integrated": 2, "min_level": 2}}]
+
+    def lv_rank(habits: dict, on: int) -> int:
+        daily = [cv.simulate_stages(h, v, D0 + timedelta(days=on))[D0 + timedelta(days=on)] for h, v in habits.items()]
+        return cv.rank_index(star, daily)
+
+    flat = {1: level_versions(("integrated", 1, 0)), 2: level_versions(("integrated", 1, 0))}
+    check("integrated level-1 habits do not meet a level-2 rank", lv_rank(flat, 5) == 0)
+    moved = {1: level_versions(("integrated", 1, 0), ("integrated", 2, 3)), 2: level_versions(("integrated", 2, 0))}
+    check("the rank is met once the habits are level 2", lv_rank(moved, 2) == 0 and lv_rank(moved, 3) == 1)
+    check(
+        "requirement text names the level",
+        cv.rank_requirement_text({"integrated": 8, "durable": [4, 120], "min_level": 2})
+        == "інтегрованих звичок рівня 2+ ≥ 8, з них ≥ 4 утримуються ≥ 4 міс.",
+    )
+    check(
+        "requirement text without min_level is unchanged",
+        cv.rank_requirement_text({"integrated": 8, "durable": [4, 120]})
+        == "інтегрованих звичок ≥ 8, з них ≥ 4 утримуються ≥ 4 міс.",
+    )
+
+    def runs(versions_, on: int) -> dict:
+        return cv.simulate_stages(1, versions_, D0 + timedelta(days=on))[D0 + timedelta(days=on)].held_by_level
+
+    up = level_versions(("integrated", 2, 0), ("integrated", 3, 10))
+    check(
+        "an upgrade keeps the lower run and starts the higher one",
+        runs(up, 14) == {1: 15, 2: 15, 3: 5},
+        str(runs(up, 14)),
+    )
+    down = level_versions(("integrated", 3, 0), ("integrated", 2, 10), ("integrated", 3, 15))
+    check(
+        "a downgrade ends the higher run, the lower one goes on",
+        runs(down, 12) == {1: 13, 2: 13} and runs(down, 16) == {1: 17, 2: 17, 3: 2},
+        f"{runs(down, 12)} {runs(down, 16)}",
+    )
+    left = level_versions(("integrated", 3, 0), ("stabilization", 3, 10), ("integrated", 3, 12))
+    check("leaving integration resets every run", runs(left, 14) == {1: 3, 2: 3, 3: 3}, str(runs(left, 14)))
+    check(
+        "a day outside integration holds nothing",
+        runs(left, 11) == {},
+    )
+    hold = [{"name": "Lv2", "req": {"integrated": 1, "durable": [1, 10], "min_level": 2}}]
+    held = {1: level_versions(("integrated", 1, 0), ("integrated", 2, 6))}
+
+    def hold_met(habits: dict, on: int) -> bool:
+        states = [cv.simulate_stages(h, v, D0 + timedelta(days=on))[D0 + timedelta(days=on)] for h, v in habits.items()]
+        return cv._rank_met(hold[0]["req"], states)
+
+    check("the level-2 hold counts from the upgrade day", not hold_met(held, 14) and hold_met(held, 15))
+    plain = [{"name": "P", "req": {"integrated": 1, "durable": [1, 10]}}]
+    old = [cv.simulate_stages(1, held[1], D0 + timedelta(days=9))[D0 + timedelta(days=9)]]
+    check("ranks without min_level hold from the integration day", cv.rank_index(plain + plain, old) == 1)
+    partial = cv.rank_progress(
+        {"integrated": 2, "min_level": 2},
+        [
+            cv.HabitRankState(1, "a", "stabilization", level=1),
+            cv.HabitRankState(2, "b", "stabilization", level=2),
+        ],
+        {1: 1.0, 2: 0.5},
+    )
+    check(
+        "progress credits only habits at the level; the label names it",
+        partial[0]["have"] == 0 and abs(partial[0]["fraction"] - 0.25) < 1e-9 and "рівня 2+" in partial[0]["label"],
+        str(partial),
+    )
+    report = cv.compute_rank({1: level_versions(("integrated", 2, 0))}, D0 + timedelta(days=1))
+    check("rank habits carry the level", report["habits"][0]["level"] == 2)
+
     print("\n[4b] Review regressions")
     dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
     check("night across a DST switch counts elapsed hours", abs(dst.hours - 9) < 0.01, str(dst.hours))
