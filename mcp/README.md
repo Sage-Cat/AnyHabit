@@ -165,15 +165,20 @@ to `backend:8000`.
 - `create_cultivated_habit`
 - `change_habit_passport`
 - `change_habit_stage`
+- `change_habit_level`
 
 Recording facts (sleep, day marks) works directly. Creating a passport,
-changing its goals or criteria, moving a stage by hand and starting or ending minimum
+changing its goals or criteria, moving a stage or a level by hand and starting or ending minimum
 mode (which changes what counts as success) take `user_confirmed=true`, which
 the agent may pass only after the user approved that exact change; the API
 also refuses such changes from a token without `confirmed_by_user`, and a
 read-only token cannot write at all. Every change is appended to the passport history with
 its reason. Stages move by themselves once the passport's criteria are met;
-each move is listed in the habit's `stage_changes`. The rank system itself can
+each move is listed in the habit's `stage_changes`. A passport may hold a ladder
+of `levels` (with `current_level`; a sleep level may set `bed_by`). Moving up is
+allowed only for an integrated habit, a harder level can send it back to
+stabilization and formation by itself, and moving down needs level 2 or higher;
+the habit shows `ladder` and `level_changes`. The rank system itself can
 only be changed in the web UI.
 
 ## Destructive operations
