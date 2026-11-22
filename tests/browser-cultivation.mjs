@@ -840,6 +840,12 @@ try {
     changesText.includes('2 → 1') && changesText.includes('Перевірка рівня'),
     changesText
   );
+  const upgradeNote = await ladderBlock.locator('[data-testid="upgrade-note"]').innerText();
+  check(
+    'the upgrade note says the new level starts a new formation',
+    upgradeNote.includes('почне формування нового рівня') && upgradeNote.includes('рахуватиметься на рівні 1'),
+    upgradeNote
+  );
   await page.goto(`${BASE}/tracker/${created.ladder.trackerId}`, { waitUntil: 'networkidle' });
   const ladderCard = page.locator('[data-testid="tracker-habit-card"]');
   await ladderCard.waitFor({ timeout: 10000 });
@@ -848,6 +854,63 @@ try {
     "the tracker's habit card shows the level",
     (await ladderCard.locator('[data-testid="level-badge"]').textContent()) === 'Рівень 1'
   );
+
+  console.log('\n[11] Failed formation');
+  const failedName = `Провал ${stamp}`;
+  const failed = await page.evaluate(async (name) => {
+    const start = new Date(Date.now() - 20 * 86400000).toISOString().slice(0, 10);
+    const response = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'boolean',
+        spec: { name, stage: 'formation', start_date: start, level: { done_by: '18:00' } },
+        effective_from: start,
+        reason: 'e2e'
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const habit = await response.json();
+    return { id: habit.id, trackerId: habit.tracker.id, attempt: habit.attempt };
+  }, failedName);
+  check('the API reports a failed formation', Boolean(failed.attempt?.failed_on), JSON.stringify(failed.attempt));
+
+  await page.goto(`${BASE}/practice/${failed.id}`, { waitUntil: 'networkidle' });
+  const decision = page.locator('[data-testid="attempt-decision"]');
+  await decision.waitFor({ timeout: 10000 });
+  const decisionText = await decision.innerText();
+  check(
+    'the decision block explains the failure',
+    decisionText.includes('Формування не вдалося') && decisionText.includes('не дійшла до стабілізації'),
+    decisionText
+  );
+  check(
+    'the decision block offers a new attempt',
+    (await decision.getByRole('button', { name: 'Нова спроба' }).count()) === 1
+  );
+
+  const failedEntry = page.locator('[data-testid="attempt-failed"]', { hasText: failedName });
+  await failedEntry.first().waitFor({ timeout: 10000 });
+  check('the sidebar marks the tracker with the failed formation', (await failedEntry.count()) >= 1);
+
+  await decision.getByLabel('Причина рішення').fill('Нова спроба після перерви');
+  await decision.getByRole('button', { name: 'Нова спроба' }).click();
+  await page.waitForSelector('text=Нову спробу розпочато', { timeout: 10000 });
+  await decision.waitFor({ state: 'detached', timeout: 10000 });
+  check('the decision block disappears after a new attempt', (await decision.count()) === 0);
+  await page.locator('[data-testid="attempt-day"]').waitFor({ timeout: 10000 });
+  check(
+    'the attempt day is shown after the new attempt',
+    (await page.locator('[data-testid="attempt-day"]').innerText()).includes('Спроба: день')
+  );
+  await page.waitForFunction(
+    (name) =>
+      ![...document.querySelectorAll('[data-testid="attempt-failed"]')].some((el) => el.textContent.includes(name)),
+    failedName,
+    { timeout: 10000 }
+  );
+  check('the sidebar highlight is gone after a new attempt', true);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {

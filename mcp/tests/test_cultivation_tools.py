@@ -94,3 +94,31 @@ def test_level_change_errors_pass_through(server, monkeypatch):
     monkeypatch.setattr(server.api, "post", refuse)
     with pytest.raises(RuntimeError, match="409"):
         server.change_habit_level(3, "down", "too hard", user_confirmed=True)
+
+
+def test_new_attempt_requires_confirmation(server):
+    with pytest.raises(ValueError, match="user_confirmed=true"):
+        server.start_new_attempt(3, "try again", user_confirmed=False)
+    assert server.calls == []
+
+
+def test_confirmed_new_attempt_is_forwarded(server):
+    server.start_new_attempt(3, "try again", user_confirmed=True, effective_from="2026-11-20")
+    method, path, kwargs = server.calls[-1]
+    assert (method, path) == ("POST", "/cultivation/habits/3/attempt")
+    assert kwargs["json_body"] == {
+        "reason": "try again",
+        "effective_from": "2026-11-20",
+        "confirmed_by_user": True,
+    }
+    server.start_new_attempt(3, "again", user_confirmed=True)
+    assert "effective_from" not in server.calls[-1][2]["json_body"]
+
+
+def test_new_attempt_errors_pass_through(server, monkeypatch):
+    def refuse(path, **kwargs):
+        raise RuntimeError("409: The attempt is still running")
+
+    monkeypatch.setattr(server.api, "post", refuse)
+    with pytest.raises(RuntimeError, match="409"):
+        server.start_new_attempt(3, "again", user_confirmed=True)

@@ -453,18 +453,7 @@ def main() -> int:
     same_day = {1: stage_versions(("formation", 0), ("integrated", 5), ("stabilization", 5))}
     check("same-day correction: last version wins", rank_name(same_day, 5) == "Адепт другого рівня")
 
-    print("\n[4a] Rank level requirements")
-
-    def level_versions(*steps):
-        """steps: (stage, level, day offset); a level above 1 needs the ladder fields to look real."""
-        return [
-            {
-                "id": i + 1,
-                "effective_from": D0 + timedelta(days=on),
-                "spec": {"name": "h", "stage": st, "current_level": lv},
-            }
-            for i, (st, lv, on) in enumerate(steps)
-        ]
+    print("\n[4a] Attempts, credit and ranks by level")
 
     def refused(ranks) -> bool:
         try:
@@ -473,90 +462,310 @@ def main() -> int:
             return True
         return False
 
-    check(
-        "validate_ranks accepts min_level",
-        cv.validate_ranks([{"name": "A", "req": {"integrated": 1, "min_level": 3}}])[0]["req"]["min_level"] == 3,
-    )
-    check(
-        "validate_ranks refuses a bad min_level",
-        all(refused([{"name": "A", "req": {"min_level": bad}}]) for bad in (0, 101, 1.5, "2", None)),
-    )
-    check(
-        "default ranks carry min_level above Маг третього рангу",
-        [r["req"].get("min_level") for r in cv.DEFAULT_RANKS[7:]] == [2, 3, 4, 5, 5, 5, 5],
-    )
-    check(
-        "default ranks below Маг Нової Зірки have no min_level",
-        all("min_level" not in r["req"] for r in cv.DEFAULT_RANKS[:7]),
-    )
-    star = [{"name": "Low", "req": {}}, {"name": "Lv2", "req": {"integrated": 2, "min_level": 2}}]
+    def steps(*items):
+        """items: (day offset, stage, level[, stage_set]) — versions of a sleep habit on its ladder."""
+        out = []
+        for i, item in enumerate(items):
+            on, st, lv = item[:3]
+            flag = item[3] if len(item) > 3 else True
+            spec = {**SPEC, "stage": st, "current_level": lv, "stage_set": flag}
+            out.append({"id": i + 1, "effective_from": D0 + timedelta(days=on), "spec": spec})
+        return out
 
-    def lv_rank(habits: dict, on: int) -> int:
-        daily = [cv.simulate_stages(h, v, D0 + timedelta(days=on))[D0 + timedelta(days=on)] for h, v in habits.items()]
-        return cv.rank_index(star, daily)
+    def good(first: int, last: int) -> list:
+        return [night(D0 + timedelta(i), "23:00", "07:00") for i in range(first, last + 1)]
 
-    flat = {1: level_versions(("integrated", 1, 0)), 2: level_versions(("integrated", 1, 0))}
-    check("integrated level-1 habits do not meet a level-2 rank", lv_rank(flat, 5) == 0)
-    moved = {1: level_versions(("integrated", 1, 0), ("integrated", 2, 3)), 2: level_versions(("integrated", 2, 0))}
-    check("the rank is met once the habits are level 2", lv_rank(moved, 2) == 0 and lv_rank(moved, 3) == 1)
+    def bad(first: int, last: int) -> list:
+        return [night(D0 + timedelta(i), "04:00", "12:00") for i in range(first, last + 1)]
+
+    def walk(vers, nights, last: int):
+        """The staged versions, stage changes and attempt per day up to day ``last``."""
+        until = D0 + timedelta(days=last)
+        days_, _ = sleep_days(nights, until, vers=vers)
+        attempts: dict = {}
+        staged_, changes_ = cv.staged_versions(vers, days_, until, attempts)
+        return staged_, changes_, attempts
+
+    def stage_on(staged_, on: int) -> str | None:
+        return (cv.spec_for(staged_, D0 + timedelta(days=on)) or {}).get("stage")
+
+    def credit_on(staged_, on: int) -> int:
+        return cv.simulate_stages(1, staged_, D0 + timedelta(days=on))[D0 + timedelta(days=on)].credit
+
+    ones = [{"name": "-", "req": {}}, {"name": "M1", "req": {"by_level": {"1": 1}}}]
+
+    def rank_on(staged_, on: int, ranks=ones) -> int:
+        return cv.rank_index(ranks, [cv.simulate_stages(1, staged_, D0 + timedelta(days=on))[D0 + timedelta(days=on)]])
+
+    up_vers = steps((0, "integrated", 1), (10, "formation", 2))
+    st, ch, att = walk(up_vers, good(0, 40), 40)
+    check("an upgrade puts the habit in formation", stage_on(st, 9) == "integrated" and stage_on(st, 10) == "formation")
     check(
-        "requirement text names the level",
-        cv.rank_requirement_text({"integrated": 8, "durable": [4, 120], "min_level": 2})
-        == "інтегрованих звичок рівня 2+ ≥ 8, з них ≥ 4 утримуються ≥ 4 міс.",
+        "the upgrade keeps the lower rank and the hold run",
+        credit_on(st, 12) == 1
+        and rank_on(st, 12) == 1
+        and cv.simulate_stages(1, st, D0 + timedelta(days=12))[D0 + timedelta(days=12)].held_days == 13,
     )
     check(
-        "requirement text without min_level is unchanged",
-        cv.rank_requirement_text({"integrated": 8, "durable": [4, 120]})
+        "an upgrade does not re-promote from the old successes",
+        stage_on(st, 12) == "formation" and stage_on(st, 18) == "formation" and stage_on(st, 19) == "stabilization",
+        str([(c["date"], c["to"]) for c in ch]),
+    )
+    check(
+        "the new level integrates only after its own window and the credit follows",
+        credit_on(st, 19) == 1 and stage_on(st, 40) in ("stabilization", "integrated"),
+        str([(c["date"].isoformat(), c["to"]) for c in ch]),
+    )
+    check(
+        "the attempt starts on the upgrade day",
+        att[D0 + timedelta(days=12)].start == D0 + timedelta(days=10)
+        and att[D0 + timedelta(days=12)].formation_since == D0 + timedelta(days=10)
+        and att[D0 + timedelta(days=5)].start is None,
+    )
+
+    fail_vers = steps((0, "formation", 1))
+    st, ch, att = walk(fail_vers, bad(0, 12) + good(13, 35), 35)
+    gone = att[D0 + timedelta(days=13)]
+    check(
+        "formation that runs out of time flags the failure and changes nothing",
+        gone.failed_on == D0 + timedelta(days=13)
+        and att[D0 + timedelta(days=12)].failed_on is None
+        and gone.deadline == D0 + timedelta(days=13)
+        and stage_on(st, 13) == "formation"
+        and not ch[1:],
+        str(ch),
+    )
+    check(
+        "a failed attempt stops the automatic moves", stage_on(st, 35) == "formation" and not any(c["auto"] for c in ch)
+    )
+    patient = steps((0, "formation", 1))
+    patient[0]["spec"] = {**SPEC, "stage_set": True, "stabilization": {"formation_days": 40}}
+    _, ch_patient, _ = walk(patient, bad(0, 12) + good(13, 35), 35)
+    check(
+        "with a longer formation window the same days move on",
+        any(c["auto"] and c["to"] == "stabilization" for c in ch_patient),
+        str(ch_patient),
+    )
+    retry = steps((0, "formation", 1), (20, "formation", 1))
+    st, ch, att = walk(retry, bad(0, 19) + good(20, 40), 40)
+    check(
+        "a new by-hand version restarts the window and the moves",
+        att[D0 + timedelta(days=19)].failed_on == D0 + timedelta(days=13)
+        and att[D0 + timedelta(days=20)].failed_on is None
+        and att[D0 + timedelta(days=20)].formation_since == D0 + timedelta(days=20)
+        and att[D0 + timedelta(days=21)].deadline == D0 + timedelta(days=33)
+        and stage_on(st, 28) == "formation"
+        and stage_on(st, 29) == "stabilization",
+        str([(c["date"].isoformat(), c["to"]) for c in ch]),
+    )
+
+    fall_back = steps((0, "integrated", 1), (10, "formation", 2), (25, "integrated", 1))
+    st, ch, att = walk(fall_back, good(0, 9) + bad(10, 27), 27)
+    check(
+        "a failed harder level leaves the rank and the stage untouched",
+        att[D0 + timedelta(days=23)].failed_on == D0 + timedelta(days=23)
+        and stage_on(st, 24) == "formation"
+        and all(credit_on(st, n) == 1 for n in range(10, 28))
+        and rank_on(st, 24) == 1,
+    )
+    check(
+        "after the fallback the habit is integrated and the harder level's fails do not drop it",
+        stage_on(st, 25) == "integrated"
+        and stage_on(st, 27) == "integrated"
+        and not any(c["auto"] and c["date"] >= D0 + timedelta(days=25) for c in ch)
+        and att[D0 + timedelta(days=27)].start == D0 + timedelta(days=25),
+        str([(c["date"].isoformat(), c["to"], c["auto"]) for c in ch]),
+    )
+
+    dropped = steps((0, "integrated", 1), (10, "stabilization", 1, False))
+    check(
+        "a level-1 habit that falls out of integration loses its credit and the rank",
+        credit_on(dropped, 9) == 1
+        and credit_on(dropped, 10) == 0
+        and rank_on(dropped, 9) == 1
+        and rank_on(dropped, 10) == 0,
+    )
+    hard = steps((0, "integrated", 3), (10, "stabilization", 3, False))
+    check(
+        "a level-3 habit that falls out of integration keeps the credit of the level below",
+        credit_on(hard, 9) == 3 and credit_on(hard, 10) == 2,
+    )
+    check(
+        "a habit created on rung 2 has no credit until it integrates",
+        credit_on(steps((0, "formation", 2)), 5) == 0
+        and credit_on(steps((0, "stabilization", 2)), 5) == 0
+        and credit_on(steps((0, "formation", 2), (5, "integrated", 2)), 5) == 2,
+    )
+
+    def state(credit_: int, stage_: str, level: int = 1, held: int = 5) -> cv.HabitRankState:
+        return cv.HabitRankState(1, "h", stage_, credit_, held if credit_ else 0, level)
+
+    star = {"by_level": {"1": 1, "2": 1, "3": 1}}
+    check(
+        "a level-3 credit counts for 1+, 2+ and 3+ but not 4+",
+        cv._rank_met(star, [state(3, "integrated", 3)])
+        and not cv._rank_met({"by_level": {"4": 1}}, [state(3, "integrated", 3)]),
+    )
+    check(
+        "a credited habit in a harder attempt counts for stabilizing and for the rank",
+        cv._rank_met({"stabilizing": 2}, [state(2, "formation", 3), state(0, "stabilization", 1)])
+        and not cv._rank_met({"stabilizing": 2}, [state(0, "formation", 3), state(0, "stabilization", 1)])
+        and cv._rank_met({"active": True}, [state(1, "planned", 1)]),
+    )
+    check(
+        "a hold counts on days with a credit, whatever the attempt",
+        cv._rank_met({"by_level": {"1": 1}, "durable": [1, 10]}, [state(1, "formation", 2, held=12)])
+        and not cv._rank_met({"by_level": {"1": 1}, "durable": [1, 10]}, [state(1, "formation", 2, held=8)]),
+    )
+    check("integrated still means level 1", cv.by_level({"integrated": 3}) == {1: 3})
+
+    check(
+        "validate_ranks keeps by_level with string keys",
+        cv.validate_ranks([{"name": "A", "req": {"by_level": {"1": 2, 3: 1}}}])[0]["req"]["by_level"]
+        == {"1": 2, "3": 1},
+    )
+    check(
+        "validate_ranks refuses a bad by_level",
+        all(
+            refused([{"name": "A", "req": {"by_level": bad_}}])
+            for bad_ in (
+                [],
+                {"0": 1},
+                {"101": 1},
+                {"x": 1},
+                {"1": -1},
+                {"1": 1.5},
+                {"1": "2"},
+                {"1": 100001},
+                {1: 1, "1": 2},
+                {2.5: 1},
+            )
+        ),
+    )
+    check("min_level is gone from the rank requirements", refused([{"name": "A", "req": {"min_level": 2}}]))
+    check(
+        "the default ranks follow the table",
+        [(r["req"].get("by_level"), r["req"].get("durable")) for r in cv.DEFAULT_RANKS[4:]]
+        == [
+            ({"1": 1}, None),
+            ({"1": 2}, [1, 30]),
+            ({"1": 4}, [2, 60]),
+            ({"1": 8, "2": 1}, [4, 120]),
+            ({"1": 16, "2": 2, "3": 1}, [8, 120]),
+            ({"1": 25, "2": 4, "3": 2, "4": 1}, [16, 240]),
+            ({"2": 8, "3": 4, "4": 2, "5": 1}, [20, 365]),
+            ({"3": 8, "4": 4, "5": 2}, [40, 730]),
+            ({"4": 8, "5": 4}, [80, 1095]),
+            ({"5": 8}, [128, 1825]),
+        ]
+        and all(r.get("confirmed") for r in cv.DEFAULT_RANKS)
+        and cv.validate_ranks(cv.DEFAULT_RANKS) == cv.DEFAULT_RANKS,
+    )
+    check(
+        "a requirement with one level reads as before",
+        cv.rank_requirement_text({"by_level": {"1": 2}, "durable": [1, 30]})
+        == "інтегрованих звичок ≥ 2, з них ≥ 1 утримуються ≥ 1 міс."
+        and cv.rank_requirement_text({"integrated": 8, "durable": [4, 120]})
         == "інтегрованих звичок ≥ 8, з них ≥ 4 утримуються ≥ 4 міс.",
     )
-
-    def runs(versions_, on: int) -> dict:
-        return cv.simulate_stages(1, versions_, D0 + timedelta(days=on))[D0 + timedelta(days=on)].held_by_level
-
-    up = level_versions(("integrated", 2, 0), ("integrated", 3, 10))
     check(
-        "an upgrade keeps the lower run and starts the higher one",
-        runs(up, 14) == {1: 15, 2: 15, 3: 5},
-        str(runs(up, 14)),
+        "a requirement with several levels names each one",
+        cv.rank_requirement_text({"by_level": {"1": 8, "2": 1}, "durable": [4, 120]})
+        == "інтегрованих звичок: рівня 1+ ≥ 8, рівня 2+ ≥ 1; ≥ 4 утримуються ≥ 4 міс."
+        and cv.rank_requirement_text({"by_level": {"3": 8, "4": 4}})
+        == "інтегрованих звичок: рівня 3+ ≥ 8, рівня 4+ ≥ 4",
+        cv.rank_requirement_text({"by_level": {"1": 8, "2": 1}, "durable": [4, 120]}),
     )
-    down = level_versions(("integrated", 3, 0), ("integrated", 2, 10), ("integrated", 3, 15))
-    check(
-        "a downgrade ends the higher run, the lower one goes on",
-        runs(down, 12) == {1: 13, 2: 13} and runs(down, 16) == {1: 17, 2: 17, 3: 2},
-        f"{runs(down, 12)} {runs(down, 16)}",
-    )
-    left = level_versions(("integrated", 3, 0), ("stabilization", 3, 10), ("integrated", 3, 12))
-    check("leaving integration resets every run", runs(left, 14) == {1: 3, 2: 3, 3: 3}, str(runs(left, 14)))
-    check(
-        "a day outside integration holds nothing",
-        runs(left, 11) == {},
-    )
-    hold = [{"name": "Lv2", "req": {"integrated": 1, "durable": [1, 10], "min_level": 2}}]
-    held = {1: level_versions(("integrated", 1, 0), ("integrated", 2, 6))}
-
-    def hold_met(habits: dict, on: int) -> bool:
-        states = [cv.simulate_stages(h, v, D0 + timedelta(days=on))[D0 + timedelta(days=on)] for h, v in habits.items()]
-        return cv._rank_met(hold[0]["req"], states)
-
-    check("the level-2 hold counts from the upgrade day", not hold_met(held, 14) and hold_met(held, 15))
-    plain = [{"name": "P", "req": {"integrated": 1, "durable": [1, 10]}}]
-    old = [cv.simulate_stages(1, held[1], D0 + timedelta(days=9))[D0 + timedelta(days=9)]]
-    check("ranks without min_level hold from the integration day", cv.rank_index(plain + plain, old) == 1)
     partial = cv.rank_progress(
-        {"integrated": 2, "min_level": 2},
+        {"by_level": {"1": 2, "2": 2}},
         [
             cv.HabitRankState(1, "a", "stabilization", level=1),
             cv.HabitRankState(2, "b", "stabilization", level=2),
+            cv.HabitRankState(3, "c", "integrated", credit=1, held_days=3, level=1),
         ],
         {1: 1.0, 2: 0.5},
     )
     check(
-        "progress credits only habits at the level; the label names it",
-        partial[0]["have"] == 0 and abs(partial[0]["fraction"] - 0.25) < 1e-9 and "рівня 2+" in partial[0]["label"],
+        "progress has one part per level; only habits at the level are one stage short",
+        [p["label"] for p in partial] == ["Інтегровані звички", "Інтегровані звички рівня 2+"]
+        and partial[0]["have"] == 1
+        and abs(partial[0]["fraction"] - 1.0) < 1e-9
+        and partial[1]["have"] == 0
+        and abs(partial[1]["fraction"] - 0.25) < 1e-9,
         str(partial),
     )
-    report = cv.compute_rank({1: level_versions(("integrated", 2, 0))}, D0 + timedelta(days=1))
-    check("rank habits carry the level", report["habits"][0]["level"] == 2)
+    report = cv.compute_rank({1: steps((0, "integrated", 2))}, D0 + timedelta(days=1))
+    check(
+        "rank habits carry the level, the credit and the counted flag",
+        report["habits"][0]["level"] == 2 and report["habits"][0]["credit"] == 2 and report["habits"][0]["counted"],
+    )
+
+    rewalk, _ = sleep_days(good(0, 18) + bad(19, 19) + bad(24, 26), D0 + timedelta(days=26))
+    clipped_days, clipped_eps = cv.clip_attempt(
+        rewalk, steps((0, "integrated", 1), (20, "integrated", 1)), D0 + timedelta(days=20)
+    )
+    check(
+        "deviations inside an attempt are found again from its first day",
+        [e.start for e in clipped_eps] == [D0 + timedelta(days=24)]
+        and clipped_days[0].date == D0 + timedelta(days=20)
+        and cv.recommendation({**SPEC, "stage": "integrated"}, clipped_days, clipped_eps, D0 + timedelta(days=33))["to"]
+        == "stabilization",
+        str([e.start for e in clipped_eps]),
+    )
+    ready_days, _ = sleep_days(good(0, 12), D0 + timedelta(days=12))
+    open_ = cv.stage_progress(SPEC, ready_days, [], D0 + timedelta(days=12))
+    shut = cv.stage_progress(SPEC, ready_days, [], D0 + timedelta(days=12), failed=True)
+    check(
+        "a failed attempt is never fully ready and says why",
+        open_["readiness"] == 1.0
+        and shut["readiness"] == 0.99
+        and shut["blockers"][0] == "Формування провалено — потрібне рішення",
+        str(shut),
+    )
+    twice = cv.rank_progress(
+        {"stabilizing": 3},
+        [
+            cv.HabitRankState(1, "a", "formation", credit=2, level=3),
+            cv.HabitRankState(2, "b", "formation"),
+        ],
+        {1: 1.0, 2: 0.5},
+    )
+    check(
+        "a credited habit in formation is not counted twice for stabilizing",
+        abs(twice[0]["fraction"] - 0.5) < 1e-9 and twice[0]["have"] == 1,
+        str(twice),
+    )
+
+    def refuses_formation(value) -> bool:
+        try:
+            cv.validate_spec("sleep", {**SPEC, "stabilization": {"formation_days": value}})
+        except cv.PassportError:
+            return True
+        return False
+
+    check(
+        "formation_days is an integer from 1 to 365",
+        all(refuses_formation(v) for v in (0, 366, 1.5, "7", True))
+        and not any(refuses_formation(v) for v in (1, 7, 365, None)),
+    )
+    check(
+        "formation_days defaults to the stabilization window",
+        cv.formation_days(SPEC) == 14
+        and cv.formation_days({"stabilization": {"window_days": 20}}) == 20
+        and cv.formation_days({"stabilization": {"formation_days": 5}}) == 5,
+    )
+    short = [cv.Day(D0 + timedelta(i), "success" if i < 2 else "fail") for i in range(6)]
+    kept = {**SPEC, "stage": "integrated"}
+    check(
+        "maintenance judges the success rate only from 7 observed days",
+        cv.DEFAULT_MAINTENANCE["min_observed_days"] == 7
+        and cv.recommendation(kept, short, [], D0 + timedelta(days=5)) is None
+        and (
+            cv.recommendation({**kept, "maintenance": {"min_observed_days": 0}}, short, [], D0 + timedelta(days=5))
+            or {}
+        ).get("to")
+        == "stabilization",
+    )
 
     print("\n[4b] Review regressions")
     dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
@@ -872,17 +1081,23 @@ def main() -> int:
         bool(drop) and drop["from"] == "stabilization" and "поріг падіння 50%" in drop["reason"],
         str(fall),
     )
-    steady = [night(D0 + timedelta(i), "23:00" if i % 10 < 7 else "04:00", "07:00" if i % 10 < 7 else "12:00")
-              for i in range(60)]
+    steady = [
+        night(D0 + timedelta(i), "23:00" if i % 10 < 7 else "04:00", "07:00" if i % 10 < 7 else "12:00")
+        for i in range(60)
+    ]
     steady_days, _ = sleep_days(steady, D0 + timedelta(days=59), vers=fall_vers)
-    steady_moves = [(c["from"], c["to"]) for c in cv.staged_versions(fall_vers, steady_days, D0 + timedelta(days=59))[1]]
+    steady_moves = [
+        (c["from"], c["to"]) for c in cv.staged_versions(fall_vers, steady_days, D0 + timedelta(days=59))[1]
+    ]
     check(
         "a habit at the promotion threshold does not flip-flop",
         ("formation", "stabilization") in steady_moves and ("stabilization", "formation") not in steady_moves,
         str(steady_moves),
     )
     low = {**SPEC, "stage": "stabilization", "stabilization": {"min_success_rate": 0.4}}
-    low_nights = [night(D0 + timedelta(i), "23:00" if i < 6 else "04:00", "07:00" if i < 6 else "12:00") for i in range(14)]
+    low_nights = [
+        night(D0 + timedelta(i), "23:00" if i < 6 else "04:00", "07:00" if i < 6 else "12:00") for i in range(14)
+    ]
     low_days, _ = sleep_days(low_nights, D0 + timedelta(days=13), vers=versions((D0, low)))
     check(
         "the drop never sits above the promotion threshold",
@@ -890,7 +1105,9 @@ def main() -> int:
         str(cv.recommendation(low, low_days, [], D0 + timedelta(days=13))),
     )
     keep = cv.stage_progress({**SPEC, "stage": "stabilization"}, fall_days[:12], [], D0 + timedelta(days=11))
-    check("stage progress still reads a stabilization that may drop", keep is not None and keep["target"] == "integrated")
+    check(
+        "stage progress still reads a stabilization that may drop", keep is not None and keep["target"] == "integrated"
+    )
 
     print("\n[5] API")
     workdir = Path(tempfile.mkdtemp(prefix="anyhabit-cultivation-"))
@@ -1457,15 +1674,27 @@ def main() -> int:
             str(reading["stage_changes"]),
         )
         undone = client.post(
-            f"/cultivation/habits/{reading['id']}/stage", json={"stage": "formation", "reason": "not yet"}
+            f"/cultivation/habits/{reading['id']}/stage", json={"stage": "planned", "reason": "not yet"}
         )
         after = client.get(f"/cultivation/habits/{reading['id']}").json()
         check(
             "a stage the criteria would leave at once is refused and leaves no version",
             undone.status_code == 409
-            and "Стабілізація" in undone.json()["detail"]
+            and "Формування" in undone.json()["detail"]
             and len(after["versions"]) == len(reading["versions"]),
             undone.text[:200],
+        )
+        again = client.post(
+            f"/cultivation/habits/{reading['id']}/stage", json={"stage": "formation", "reason": "start over"}
+        )
+        check(
+            "a stage set by hand begins a new attempt that ignores the earlier days",
+            again.status_code == 201
+            and again.json()["stage"] == "formation"
+            and again.json()["attempt"]["start"] == local_today.isoformat()
+            and again.json()["attempt"]["formation_since"] == local_today.isoformat()
+            and again.json()["recommendation"] is None,
+            again.text[:300],
         )
         soon = client.post(
             "/cultivation/habits", json={"kind": "boolean", "reason": "x", "spec": {"name": "Run", "stage": "planned"}}
@@ -1559,7 +1788,9 @@ def main() -> int:
         made = client.get(f"/cultivation/habits/{lid}").json()
         check(
             "the integrated habit may go up",
-            made["stage"] == "integrated" and made["ladder"]["can_upgrade"] and made["ladder"]["upgrade_blocker"] is None,
+            made["stage"] == "integrated"
+            and made["ladder"]["can_upgrade"]
+            and made["ladder"]["upgrade_blocker"] is None,
             str((made["stage"], made["ladder"])),
         )
         down_first = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "down", "reason": "no"})
@@ -1594,9 +1825,20 @@ def main() -> int:
             upgraded.text[:400],
         )
         check(
-            "the stage stays the same on the day of the move",
-            up["stage"] == "integrated" and up["stage_changes"] == made["stage_changes"],
-            str(up["stage_changes"]),
+            "an upgrade starts the new level in formation and keeps the rank level",
+            up["stage"] == "formation"
+            and up["stage_changes"][-1]["to"] == "formation"
+            and up["stage_changes"][-1]["auto"] is False
+            and up["rank_level"] == 1
+            and up["attempt"]["start"] == local_today.isoformat()
+            and up["attempt"]["level"] == 2
+            and up["attempt"]["formation_since"] == local_today.isoformat()
+            and up["attempt"]["days"] == 14
+            and up["attempt"]["day"] == 1
+            and up["attempt"]["failed_on"] is None
+            and up["attempt"]["action"] is None
+            and made["rank_level"] == 1,
+            str((up["stage_changes"][-1], up["attempt"], up["rank_level"])),
         )
         check(
             "ladder and level changes show the move",
@@ -1624,6 +1866,11 @@ def main() -> int:
         )
         compact = next(h for h in client.get("/cultivation/habits").json() if h["id"] == lid)
         check("the compact habit carries the ladder", compact["ladder"] == up["ladder"], str(compact.get("ladder")))
+        check(
+            "the compact habit carries the attempt and the rank level",
+            compact["attempt"] == up["attempt"] and compact["rank_level"] == up["rank_level"],
+            str((compact.get("attempt"), compact.get("rank_level"))),
+        )
         late_night = client.post(
             f"/cultivation/habits/{lid}/sleep",
             json={
@@ -1650,7 +1897,8 @@ def main() -> int:
             restored_levels.get("passport", {}).get("levels") == rungs
             and restored_levels["passport"].get("current_level") == 2
             and restored_levels["ladder"]["current"] == 2
-            and restored_levels["stage"] == "integrated",
+            and restored_levels["stage"] == "formation"
+            and restored_levels["attempt"]["start"] == local_today.isoformat(),
             str(restored_levels.get("passport")),
         )
         again_up = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "up", "reason": "more"})
@@ -1667,7 +1915,11 @@ def main() -> int:
             and down["passport"]["current_level"] == 1
             and down["passport"]["level"] == rungs[0]["level"]
             and down["passport"]["minimum"] == rungs[0]["minimum"]
-            and [c["to"] for c in down["level_changes"]] == [2, 1],
+            and [c["to"] for c in down["level_changes"]] == [2, 1]
+            and down["stage"] == "integrated"
+            and down["rank_level"] == 1
+            and down["attempt"]["start"] == local_today.isoformat()
+            and down["attempt"]["formation_since"] is None,
             stepped_down.text[:400],
         )
         down_again = client.post(f"/cultivation/habits/{lid}/level", json={"direction": "down", "reason": "no"})
@@ -1736,6 +1988,172 @@ def main() -> int:
         )
         if made.status_code == 201:
             client.post(f"/cultivation/habits/{made.json()['id']}/archive")
+
+        # Attempts: a short formation window runs out on its own; a ladder habit falls back.
+        long_ago = local_today - timedelta(days=12)
+        steps_ = [{"level": {"done_by": "18:00"}}, {"level": {"done_by": "17:00"}}]
+        brief = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "reason": "short window",
+                "effective_from": long_ago.isoformat(),
+                "spec": {
+                    "name": "Short",
+                    "stage": "formation",
+                    "start_date": long_ago.isoformat(),
+                    "stabilization": {"formation_days": 3},
+                },
+            },
+        )
+        brief_id = brief.json()["id"]
+        out = brief.json()["attempt"]
+        check(
+            "a formation past its window is flagged failed on the last day",
+            out["failed_on"] == (long_ago + timedelta(days=2)).isoformat()
+            and out["action"] == "new_attempt"
+            and out["fallback_level"] is None
+            and out["deadline"] == (long_ago + timedelta(days=2)).isoformat()
+            and out["days"] == 3
+            and out["day"] == 13
+            and out["start"] == long_ago.isoformat()
+            and brief.json()["stage"] == "formation"
+            and brief.json()["recommendation"] is None,
+            str(out),
+        )
+        fresh = client.post(
+            "/cultivation/habits",
+            json={"kind": "boolean", "reason": "new", "spec": {"name": "Fresh", "stage": "formation"}},
+        ).json()
+        running = client.post(
+            f"/cultivation/habits/{fresh['id']}/attempt", json={"reason": "again", "confirmed_by_user": True}
+        )
+        check(
+            "a new attempt is refused while the current one runs",
+            running.status_code == 409 and running.json()["detail"] == "Спроба ще триває",
+            running.text[:200],
+        )
+        unconfirmed = agent.post(f"/cultivation/habits/{brief_id}/attempt", headers=headers, json={"reason": "go"})
+        check(
+            "a token needs the user's confirmation for a new attempt",
+            unconfirmed.status_code == 409 and "confirmed_by_user" in unconfirmed.json()["detail"],
+            unconfirmed.text[:200],
+        )
+        read_only = agent.post(
+            f"/cultivation/habits/{brief_id}/attempt",
+            headers={"Authorization": f"Bearer {read_token}"},
+            json={"reason": "go", "confirmed_by_user": True},
+        )
+        check("a read-only token cannot start an attempt", read_only.status_code == 403, read_only.text[:200])
+        restarted = client.post(f"/cultivation/habits/{brief_id}/attempt", json={"reason": "second try"})
+        again_out = restarted.json().get("attempt", {})
+        check(
+            "a new attempt after the failure restarts the formation window",
+            restarted.status_code == 201
+            and restarted.json()["stage"] == "formation"
+            and again_out["failed_on"] is None
+            and again_out["action"] is None
+            and again_out["start"] == local_today.isoformat()
+            and again_out["formation_since"] == local_today.isoformat()
+            and again_out["deadline"] == (local_today + timedelta(days=2)).isoformat()
+            and restarted.json()["versions"][-1]["reason"] == "second try",
+            restarted.text[:300],
+        )
+        client.post(f"/cultivation/habits/{brief_id}/archive")
+        client.post(f"/cultivation/habits/{fresh['id']}/archive")
+
+        rank_habit = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "reason": "ladder",
+                "effective_from": long_ago.isoformat(),
+                "spec": {
+                    "name": "Fallback",
+                    "stage": "integrated",
+                    "start_date": long_ago.isoformat(),
+                    "level": steps_[0]["level"],
+                    "levels": steps_,
+                    "current_level": 1,
+                    "stabilization": {"formation_days": 2},
+                },
+            },
+        )
+        rid = rank_habit.json()["id"]
+        climbed = client.post(
+            f"/cultivation/habits/{rid}/level",
+            json={"direction": "up", "reason": "try", "effective_from": (local_today - timedelta(days=10)).isoformat()},
+        )
+        hard = climbed.json()
+        check(
+            "a harder level that ran out of time offers the fallback and keeps the rank level",
+            climbed.status_code == 201
+            and hard["stage"] == "formation"
+            and hard["attempt"]["failed_on"] == (local_today - timedelta(days=9)).isoformat()
+            and hard["attempt"]["action"] == "fallback"
+            and hard["attempt"]["fallback_level"] == 1
+            and hard["attempt"]["level"] == 2
+            and hard["rank_level"] == 1,
+            str((hard.get("attempt"), hard.get("rank_level"))),
+        )
+        above = client.post(f"/cultivation/habits/{rid}/attempt", json={"reason": "retry"})
+        check(
+            "above level 1 a failed attempt cannot restart, only fall back",
+            above.status_code == 409
+            and above.json()["detail"] == "Вище рівня 1 провалена спроба повертає на попередній рівень"
+            and len(client.get(f"/cultivation/habits/{rid}").json()["versions"]) == len(hard["versions"]),
+            above.text[:200],
+        )
+        fell = client.post(f"/cultivation/habits/{rid}/level", json={"direction": "down", "reason": "too hard"})
+        soft = fell.json()
+        check(
+            "the fallback puts the habit back on the easier level as integrated",
+            fell.status_code == 201
+            and soft["stage"] == "integrated"
+            and soft["passport"]["current_level"] == 1
+            and soft["rank_level"] == 1
+            and soft["attempt"]["failed_on"] is None
+            and soft["attempt"]["start"] == local_today.isoformat(),
+            fell.text[:300],
+        )
+        forged = client.post(
+            f"/cultivation/habits/{rid}/versions",
+            json={"patch": {"current_level": 2, cv.STAGE_SET: True}, "reason": "sneaky"},
+        )
+        check("a passport edit cannot fake a level change", forged.status_code == 409, forged.text[:200])
+        client.post(f"/cultivation/habits/{rid}/level", json={"direction": "up", "reason": "again"})
+        stripped = client.post(
+            f"/cultivation/habits/{rid}/versions", json={"patch": {"levels": None}, "reason": "no ladder"}
+        )
+        check(
+            "removing a ladder above level 1 cannot fake a level change either",
+            stripped.status_code == 409 and stripped.json()["detail"] == cv.LEVEL_MOVE_REFUSED,
+            stripped.text[:200],
+        )
+        plain_start = local_today - timedelta(days=5)
+        plain = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "reason": "plain",
+                "effective_from": plain_start.isoformat(),
+                "spec": {"name": "Plain", "stage": "formation", "start_date": plain_start.isoformat()},
+            },
+        ).json()
+        flag = client.post(
+            f"/cultivation/habits/{plain['id']}/versions",
+            json={"patch": {"description": "note", cv.STAGE_SET: True}, "reason": "edit"},
+        )
+        check(
+            "a stage_set flag in a passport edit is overwritten and begins no attempt",
+            flag.status_code == 201
+            and flag.json()["attempt"]["start"] == plain_start.isoformat()
+            and flag.json()["attempt"]["formation_since"] == plain_start.isoformat()
+            and len(flag.json()["stage_changes"]) == len(plain["stage_changes"]),
+            flag.text[:300],
+        )
+        client.post(f"/cultivation/habits/{plain['id']}/archive")
+        client.post(f"/cultivation/habits/{rid}/archive")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
