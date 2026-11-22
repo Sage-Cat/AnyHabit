@@ -54,6 +54,13 @@ class StageChange(BaseModel):
     confirmed_by_user: bool = False
 
 
+class LevelChange(BaseModel):
+    direction: Literal["up", "down"]
+    reason: str = Field(min_length=1, max_length=2000)
+    effective_from: date | None = None
+    confirmed_by_user: bool = False
+
+
 class DayMarkCreate(BaseModel):
     date: date
     status: Literal["success", "minimum", "fail", "exception", "clear"]
@@ -285,7 +292,8 @@ def _tracker_info(db: Session, habit: models.CultivatedHabit) -> dict | None:
     }
 
 
-def _version_out(version: dict, with_spec: bool = True) -> dict:
+def _version_out(version: dict, with_spec: bool = True, keep_internal: bool = False) -> dict:
+    """``keep_internal`` leaves the ``stage_set`` flag in: a backup needs it to read the stage back."""
     out = {
         "id": version["id"],
         "effective_from": version["effective_from"].isoformat(),
@@ -294,7 +302,8 @@ def _version_out(version: dict, with_spec: bool = True) -> dict:
         "author": version["author"],
     }
     if with_spec:
-        out["spec"] = version["spec"]
+        spec = version["spec"]
+        out["spec"] = spec if keep_internal else {k: v for k, v in spec.items() if k != cv.STAGE_SET}
     return out
 
 
@@ -365,6 +374,8 @@ def _analyse(
         "stage_label": cv.STAGE_LABELS.get(stage, ""),
         "passport": spec,
         "versions": [_version_out(v) for v in versions],
+        "ladder": cv.build_ladder(habit.kind, spec, stage, unit),
+        "level_changes": cv.level_changes(versions),
         # Every stage change, made by the criteria ("auto") or by hand.
         "stage_changes": [
             {
@@ -440,6 +451,7 @@ def _compact(analysis: dict) -> dict:
         "stage_label",
         "today",
         "next_subgoal",
+        "ladder",
         "mode",
         "recommendation",
         "integration",
@@ -671,6 +683,8 @@ def create_habit(
         cv.validate_spec(payload.kind, spec)
     except cv.PassportError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    if spec.get("levels"):
+        spec = cv.apply_rung(spec, cv.current_level_number(spec))
     # A planned habit starts forming by itself on its start date.
     if spec["stage"] == "planned" and date.fromisoformat(str(spec["start_date"])) <= today:
         raise HTTPException(
@@ -875,9 +889,38 @@ def change_passport(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Передайте або spec, або patch")
     current, stage = _current_spec(db, current_user, habit, payload.effective_from)
     spec = dict(payload.spec) if payload.spec is not None else cv.merge_patch(current, payload.patch)
+    spec = _keep_ladder(current, spec, set(payload.spec if payload.spec is not None else payload.patch))
     # Only a stage other than the one the habit has then is a move by hand.
     spec[cv.STAGE_SET] = spec.get("stage") != stage
     return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
+
+
+def _keep_ladder(current: dict, spec: dict, touched: set[str]) -> dict:
+    """An edited passport whose own level fields still match its current rung.
+
+    The level moves only through ``/level``, where the stage rules apply; an edit
+    of the ladder carries its current rung into the passport, and an edit of the
+    passport's own fields is written back into that rung.
+    """
+    levels = spec.get("levels")
+    if not levels:
+        spec.pop("current_level", None)
+        return spec
+    had = bool(current.get("levels"))
+    number = cv.current_level_number(spec)
+    if had and number != cv.current_level_number(current):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.LEVEL_MOVE_REFUSED)
+    if not had and number != 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.NEW_LADDER_AT_ONE)
+    if not isinstance(levels, list) or not all(isinstance(rung, dict) for rung in levels):
+        return spec  # validate_spec names the problem
+    if number > len(levels):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.CURRENT_RUNG_KEPT)
+    if "levels" in touched or not had:
+        return cv.apply_rung(spec, number)
+    if touched & set(cv.LEVEL_FIELDS):
+        return cv.mirror_rung(spec)
+    return spec
 
 
 def _current_spec(
@@ -907,6 +950,35 @@ def change_stage(
     if stage == payload.stage:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичка вже на цьому етапі")
     spec = cv.merge_patch(current, {"stage": payload.stage, cv.STAGE_SET: True})
+    return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
+
+
+@router.post("/habits/{habit_id}/level", status_code=status.HTTP_201_CREATED)
+def change_level(
+    habit_id: int,
+    payload: LevelChange,
+    request: Request,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Move the habit one rung of its ladder; the day states then follow the new level."""
+    author = _require_user_confirmation(request, payload.confirmed_by_user)
+    habit = _writable_habit(db, current_user, habit_id)
+    current, stage = _current_spec(db, current_user, habit, payload.effective_from)
+    levels = current.get("levels") or []
+    number = cv.current_level_number(current)
+    if payload.direction == "up":
+        if number >= len(levels):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.NO_NEXT_LEVEL)
+        if stage != "integrated":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.UPGRADE_NEEDS_INTEGRATION)
+        target = number + 1
+    else:
+        if number <= 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Звичка вже на першому рівні")
+        target = number - 1
+    spec = cv.apply_rung(current, target)
+    spec[cv.STAGE_SET] = False
     return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
 
 
@@ -1139,7 +1211,7 @@ def export_cultivation(db: Session, user: models.User) -> dict:
                 "tracker_id": habit.tracker_id,
                 "tracker_name": tracker["name"] if tracker else None,
                 "archived_at": habit.archived_at.isoformat() if habit.archived_at else None,
-                "versions": [_version_out(v) for v in _versions(db, habit)],
+                "versions": [_version_out(v, keep_internal=True) for v in _versions(db, habit)],
                 "marks": [
                     {
                         "date": m.date,

@@ -51,7 +51,7 @@ MAX_VALID_SLEEP_HOURS = 16.0
 MIN_NIGHT_HOURS = 1.0  # shorter sleep logs are naps or accidental taps
 
 DEFAULT_RULES = {"confirm_days": 2, "recovery_ok_days": 2}
-DEFAULT_STABILIZATION = {"window_days": 14, "min_success_rate": 0.7, "min_observed_days": 10}
+DEFAULT_STABILIZATION = {"window_days": 14, "min_success_rate": 0.7, "min_observed_days": 10, "drop_rate": 0.5}
 DEFAULT_INTEGRATION = {
     "window_days": 42,
     "min_success_rate": 0.85,
@@ -84,7 +84,9 @@ def section(spec: dict | None, key: str, defaults: dict) -> dict:
 
 def level_defined(kind: str, level: dict | None) -> bool:
     if kind == "sleep":
-        return bool(level) and any(level.get(k) is not None for k in ("wake_by", "min_sleep_h", "max_sleep_h"))
+        return bool(level) and any(
+            level.get(k) is not None for k in ("bed_by", "wake_by", "min_sleep_h", "max_sleep_h")
+        )
     # boolean / quit are judged by the presence of an event; build may add a threshold
     return True
 
@@ -122,6 +124,12 @@ def check_number(
     return int(number) if integer else number
 
 
+def evening_minutes(value: time) -> int:
+    """Minutes on an evening-anchored clock: times before 12:00 belong to the next day (23:30 < 00:00 < 00:30)."""
+    minutes = value.hour * 60 + value.minute
+    return minutes + 24 * 60 if value.hour < 12 else minutes
+
+
 def check_date(label: str, value) -> date:
     try:
         if not isinstance(value, str):
@@ -139,7 +147,7 @@ def _check_level(label: str, level) -> None:
         return
     if not isinstance(level, dict):
         raise PassportError(f"{label}: очікується об'єкт")
-    for key in ("wake_by", "done_by"):
+    for key in ("bed_by", "wake_by", "done_by"):
         if level.get(key) is not None:
             parse_hhmm(level[key])
     bounds = {}
@@ -152,6 +160,28 @@ def _check_level(label: str, level) -> None:
         raise PassportError(f"{label}: мінімальна тривалість більша за максимальну")
     if level.get("min_amount") is not None:
         check_number(f"{label}.min_amount", level["min_amount"], low=0)
+
+
+def _check_levels(kind: str, spec: dict) -> None:
+    levels = spec.get("levels")
+    if levels is None:
+        if spec.get("current_level") is not None:
+            raise PassportError("current_level: потрібна драбина levels")
+        return
+    if not isinstance(levels, list) or not levels:
+        raise PassportError("levels: очікується непорожній список")
+    for i, rung in enumerate(levels):
+        if not isinstance(rung, dict):
+            raise PassportError(f"levels[{i}]: очікується об'єкт")
+        if rung.get("name") is not None and not isinstance(rung["name"], str):
+            raise PassportError(f"levels[{i}].name: очікується рядок")
+        for key in ("level", "tolerance", "minimum"):
+            _check_level(f"levels[{i}].{key}", rung.get(key))
+        # A rung without a requirement would leave every day unrated once the habit reached it.
+        if rung.get("level") is None or not level_defined(kind, rung["level"]):
+            raise PassportError(f"levels[{i}].level: рівню потрібна вимога")
+    if spec.get("current_level") is not None:
+        check_number("current_level", spec["current_level"], integer=True, low=1, high=len(levels))
 
 
 def validate_spec(kind: str, spec: dict) -> None:
@@ -173,6 +203,7 @@ def validate_spec(kind: str, spec: dict) -> None:
     _check_level("level", spec.get("level"))
     _check_level("minimum", spec.get("minimum"))
     _check_level("tolerance", spec.get("tolerance"))
+    _check_levels(kind, spec)
     subgoals = spec.get("subgoals")
     if subgoals is not None and not isinstance(subgoals, list):
         raise PassportError("subgoals: очікується список")
@@ -193,6 +224,12 @@ def validate_spec(kind: str, spec: dict) -> None:
     ):
         block = section(spec, key, defaults)
         check_number(f"{key}.min_success_rate", block["min_success_rate"], low=0, low_exclusive=True, high=1)
+        if key == "stabilization":
+            check_number(f"{key}.drop_rate", block["drop_rate"], low=0, low_exclusive=True, high=1)
+            # Above the promotion threshold the same days would both promote and demote.
+            explicit = (spec.get(key) or {}).get("drop_rate")
+            if explicit is not None and float(explicit) > float(block["min_success_rate"]):
+                raise PassportError(f"{key}.drop_rate: не може бути вищим за min_success_rate")
         check_number(f"{key}.window_days", block["window_days"], integer=True, low=1, high=3650)
         for name in ("min_observed_days", "max_recovery_days", "max_deviation_days"):
             if name in block:
@@ -261,6 +298,8 @@ def level_text(kind: str, level: dict | None, unit: str = "") -> str:
         if not level_defined(kind, level):
             return "не задано"
         parts = []
+        if level.get("bed_by") is not None:
+            parts.append(f"заснути до {level['bed_by']}")
         if level.get("wake_by") is not None:
             parts.append(f"підйом до {level['wake_by']}")
         lo, hi = level.get("min_sleep_h"), level.get("max_sleep_h")
@@ -278,6 +317,107 @@ def level_text(kind: str, level: dict | None, unit: str = "") -> str:
     if kind == "boolean" and level.get("done_by") is not None:
         return f"виконати до {level['done_by']}"
     return "виконати"
+
+
+def _level_entry(kind: str, number: int, name: str | None, rung: dict, unit: str, current: bool) -> dict:
+    tolerance, minimum = rung.get("tolerance"), rung.get("minimum")
+    return {
+        "number": number,
+        "name": name,
+        "requirement": level_text(kind, rung.get("level"), unit),
+        "tolerance": level_text(kind, tolerance, unit) if tolerance_defined(kind, tolerance) else None,
+        "minimum": level_text(kind, minimum, unit) if minimum else None,
+        "current": current,
+    }
+
+
+NO_NEXT_LEVEL = "Наступного рівня в паспорті немає"
+UPGRADE_NEEDS_INTEGRATION = "Підвищити рівень можна лише інтегрованій звичці"
+LEVEL_MOVE_REFUSED = "Рівень змінюється лише підвищенням чи пониженням"
+NEW_LADDER_AT_ONE = "Нова драбина починається з рівня 1"
+CURRENT_RUNG_KEPT = "Поточний рівень не можна прибрати з драбини: спершу знизьте рівень"
+LEVEL_FIELDS = ("level", "tolerance", "minimum")
+
+
+def apply_rung(spec: dict, number: int) -> dict:
+    """The passport on rung ``number``: its level, tolerance and minimum copied in, absent ones removed."""
+    rung = spec["levels"][number - 1]
+    out = {**spec, "current_level": number}
+    for key in LEVEL_FIELDS:
+        if rung.get(key) is None:
+            out.pop(key, None)
+        else:
+            out[key] = copy.deepcopy(rung[key])
+    return out
+
+
+def mirror_rung(spec: dict) -> dict:
+    """The passport with its own level fields written back into the current rung."""
+    number = current_level_number(spec)
+    rung = {k: v for k, v in spec["levels"][number - 1].items() if k not in LEVEL_FIELDS}
+    rung.update({key: copy.deepcopy(spec[key]) for key in LEVEL_FIELDS if spec.get(key) is not None})
+    levels = list(spec["levels"])
+    levels[number - 1] = rung
+    return {**spec, "levels": levels}
+
+
+def current_level_number(spec: dict | None) -> int:
+    return int((spec or {}).get("current_level") or 1)
+
+
+def build_ladder(kind: str, spec: dict | None, stage: str | None, unit: str = "") -> dict:
+    """The level ladder of a passport, with what the current stage allows.
+
+    A habit without ``levels`` has one rung made of its own level, tolerance and minimum.
+    """
+    spec = spec or {}
+    levels = spec.get("levels")
+    if not levels:
+        rung = {key: spec.get(key) for key in ("level", "tolerance", "minimum")}
+        return {
+            "current": 1,
+            "count": 1,
+            "levels": [_level_entry(kind, 1, None, rung, unit, True)],
+            "can_upgrade": False,
+            "upgrade_blocker": NO_NEXT_LEVEL,
+            "can_downgrade": False,
+        }
+    current = current_level_number(spec)
+    blocker = None
+    if current >= len(levels):
+        blocker = NO_NEXT_LEVEL
+    elif stage != "integrated":
+        blocker = UPGRADE_NEEDS_INTEGRATION
+    return {
+        "current": current,
+        "count": len(levels),
+        "levels": [
+            _level_entry(kind, i, rung.get("name"), rung, unit, i == current) for i, rung in enumerate(levels, 1)
+        ],
+        "can_upgrade": blocker is None,
+        "upgrade_blocker": blocker,
+        "can_downgrade": current > 1,
+    }
+
+
+def level_changes(versions: list[dict]) -> list[dict]:
+    """Every version that moved ``current_level`` (a missing one counts as 1)."""
+    out = []
+    previous: int | None = None
+    for version in versions:
+        number = current_level_number(version["spec"])
+        if previous is not None and number != previous:
+            out.append(
+                {
+                    "date": version["effective_from"].isoformat(),
+                    "from": previous,
+                    "to": number,
+                    "reason": version.get("reason", ""),
+                    "author": version.get("author", "user"),
+                }
+            )
+        previous = number
+    return out
 
 
 def _hours_text(hours: float) -> str:
@@ -412,6 +552,8 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
     level = level or {}
     if kind == "sleep":
         ok = True
+        if level.get("bed_by") is not None:
+            ok &= evening_minutes(night.bedtime.time()) <= evening_minutes(parse_hhmm(level["bed_by"]))
         if level.get("wake_by") is not None:
             ok &= night.wake.time() <= parse_hhmm(level["wake_by"])
         if level.get("min_sleep_h") is not None:
@@ -444,6 +586,8 @@ def _actual_text(kind: str, obs: Observation, night: Night | None, unit: str = "
 
 def tolerance_warning(kind: str, obs: Observation, night: Night | None, spec: dict) -> str:
     actual = _actual_text(kind, obs, night)
+    if kind == "sleep" and night is not None and any((spec.get(k) or {}).get("bed_by") for k in ("level", "tolerance")):
+        actual = f"заснув {night.bedtime:%H:%M}, {actual}"
     target = level_text(kind, spec.get("level"))
     allowed = level_text(kind, spec.get("tolerance"))
     head = f"{actual} — " if actual else ""
@@ -864,6 +1008,22 @@ def recommendation(spec: dict, days: list[Day], episodes: list[Episode], today: 
         check = integration_check(spec, days, episodes, today)
         if check["ready"]:
             return {"to": "integrated", "reason": "Усі автоматичні критерії інтеграції виконано."}
+        cfg = section(spec, "stabilization", DEFAULT_STABILIZATION)
+        stats = rate(days, int(cfg["window_days"]), today)
+        # Never above the promotion threshold, or a passport with a low one would flip every day.
+        drop = min(float(cfg["drop_rate"]), float(cfg["min_success_rate"]))
+        if (
+            stats["observed_days"] >= int(cfg["min_observed_days"])
+            and stats["success_rate"] is not None
+            and stats["success_rate"] < drop
+        ):
+            return {
+                "to": "formation",
+                "reason": (
+                    f"За {cfg['window_days']} дн. успішних днів лише {stats['success_rate']:.0%} "
+                    f"(поріг падіння {drop:.0%})."
+                ),
+            }
         return None
     if stage == "integrated":
         cfg = section(spec, "maintenance", DEFAULT_MAINTENANCE)
