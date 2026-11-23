@@ -982,6 +982,57 @@ try {
   await pausedEntry.first().waitFor({ timeout: 10000 });
   check('a paused habit is listed among all habits', (await pausedEntry.count()) >= 1);
 
+  console.log('\n[14] Paused habit');
+  const pausedName = `Пауза ${stamp}`;
+  const paused = await page.evaluate(async (name) => {
+    const response = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'boolean',
+        spec: { name, stage: 'formation', level: { done_by: '18:00' } },
+        reason: 'e2e'
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const habit = await response.json();
+    return { id: habit.id, trackerId: habit.tracker.id };
+  }, pausedName);
+  const setTrackerState = (action) =>
+    page.evaluate(
+      async ({ trackerId, action: verb }) => {
+        const response = await fetch(`/trackers/${trackerId}/${verb}`, { method: 'PUT', credentials: 'include' });
+        return response.ok;
+      },
+      { trackerId: paused.trackerId, action }
+    );
+
+  check('the tracker can be paused', await setTrackerState('stop'));
+  await page.goto(`${BASE}/practice/${paused.id}`, { waitUntil: 'networkidle' });
+  await page.locator('[data-testid="habit-paused"]').first().waitFor({ timeout: 10000 });
+  check('the habit page shows the paused badge', (await page.locator('[data-testid="habit-paused"]').count()) >= 1);
+  check('the habit page explains the pause', (await page.locator('[data-testid="habit-paused-note"]').count()) === 1);
+  await page.goto(`${BASE}/practice`, { waitUntil: 'networkidle' });
+  const pausedCard = page.locator('[data-testid="readiness-row"]', { hasText: pausedName });
+  await pausedCard.first().waitFor({ timeout: 10000 });
+  check(
+    'the practice list marks the paused habit',
+    (await pausedCard.first().locator('[data-testid="habit-paused"]').count()) === 1
+  );
+
+  check('the tracker can be resumed', await setTrackerState('start'));
+  await page.goto(`${BASE}/practice/${paused.id}`, { waitUntil: 'networkidle' });
+  await page.locator('[data-testid="habit-content"]').waitFor({ timeout: 10000 });
+  check('the paused badge is gone after resuming', (await page.locator('[data-testid="habit-paused"]').count()) === 0);
+  await page.goto(`${BASE}/practice`, { waitUntil: 'networkidle' });
+  const resumedCard = page.locator('[data-testid="readiness-row"]', { hasText: pausedName });
+  await resumedCard.first().waitFor({ timeout: 10000 });
+  check(
+    'the practice badge is gone after resuming',
+    (await resumedCard.first().locator('[data-testid="habit-paused"]').count()) === 0
+  );
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);

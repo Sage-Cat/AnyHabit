@@ -967,6 +967,138 @@ def main() -> int:
         and bad_rungs("build", [{}]),
     )
 
+    print("\n[4a3] Pause")
+
+    def pvers(spec=None, pause=(3, 9), later=()):
+        """A quit habit paused from day pause[0] up to (not including) day pause[1]; ``later`` adds versions."""
+        base = {**(spec or quit_ladder), "current_level": 1, "level_set": False, "stage_set": False}
+        out = [{"id": 1, "effective_from": D0, "spec": {**base, "stage_set": True, "paused": False}}]
+        out.append({"id": 2, "effective_from": D0 + timedelta(days=pause[0]), "spec": {**base, "paused": True}})
+        out.append(
+            {"id": 3, "effective_from": D0 + timedelta(days=pause[1]), "spec": {**base, "paused": False}}
+        )
+        return out + list(later)
+
+    def pwalk(vers, last, marks=()):
+        until = D0 + timedelta(days=last)
+        marked = {D0 + timedelta(days=n): {"status": "fail", "reason": ""} for n in marks}
+        days_ = cv.build_days("quit", vers, {}, marked, [], until)
+        att_, log_ = {}, []
+        st_, ch_ = cv.staged_versions(vers, days_, until, att_, log_)
+        return days_, st_, ch_, att_, log_
+
+    pdays, *_rest = pwalk(pvers(), 12, marks=[7])
+    by_day = {d_.date: d_ for d_ in pdays}
+    check(
+        "paused days are not judged, but a day mark still wins",
+        all(by_day[D0 + timedelta(days=n)].status == "no_data" for n in (3, 4, 5, 6, 8))
+        and by_day[D0 + timedelta(days=4)].detail == "пауза"
+        and by_day[D0 + timedelta(days=7)].status == "fail"
+        and by_day[D0 + timedelta(days=2)].status == "success"
+        and by_day[D0 + timedelta(days=10)].status == "success",
+        str([(d_.date.day, d_.status) for d_ in pdays]),
+    )
+    short = {**quit_ladder, "stabilization": {"formation_days": 3}}
+    _, fst, _, fatt, _ = pwalk(pvers(short, pause=(1, 10)), 14)
+    check(
+        "formation does not run out while paused and its window restarts from the resume",
+        all(fatt[D0 + timedelta(days=n)].failed_on is None for n in range(12))
+        and fatt[D0 + timedelta(days=10)].formation_since == D0 + timedelta(days=10)
+        and fatt[D0 + timedelta(days=10)].start == D0 + timedelta(days=10)
+        and fatt[D0 + timedelta(days=12)].failed_on == D0 + timedelta(days=12)
+        and stage_on(fst, 5) == "formation",
+    )
+    flat_quit = {k: v for k, v in quit_ladder.items() if k != "levels"}
+    _, mst, mch, matt2, _ = pwalk(pvers(flat_quit, pause=(3, 20)), 30)
+    check(
+        "nothing moves on its own while paused; a resume begins a new attempt on the same stage",
+        stage_on(mst, 15) == "formation"
+        and stage_on(mst, 28) == "formation"
+        and stage_on(mst, 29) == "stabilization"
+        and matt2[D0 + timedelta(days=20)].start == D0 + timedelta(days=20)
+        and not any(D0 + timedelta(days=3) <= c["date"] < D0 + timedelta(days=20) for c in mch),
+        str([(c["date"].isoformat(), c["to"]) for c in mch]),
+    )
+    _, sst, _, satt, slog = pwalk(pvers(pause=(3, 9)), 20)
+    check(
+        "a pause resets the quit streak and no level comes while paused",
+        satt[D0 + timedelta(days=8)].streak == 0
+        and level_on(sst, 6) == 1
+        and level_on(sst, 14) == 1
+        and level_on(sst, 15) == 2
+        and [c["to"] for c in slog] == [2],
+        str(slog),
+    )
+
+    def with_pause(vers_, until_day):
+        return [
+            {**v, "spec": {**v["spec"], "name": "h", "stage": "integrated"}} for v in vers_ if v["effective_from"] <= D0 + timedelta(days=until_day)
+        ]
+
+    plain_ranks = [
+        {"name": "-", "req": {}},
+        {"name": "active", "req": {"active": True}},
+        {"name": "stabilizing", "req": {"stabilizing": 1}},
+        {"name": "level 1", "req": {"by_level": {"1": 1}}},
+    ]
+    pr = with_pause(pvers(), 12)
+    pr[0]["spec"]["current_level"] = 1
+    states = cv.simulate_stages(1, pr, D0 + timedelta(days=12))
+    check(
+        "a paused habit counts for no rank condition on its paused days; after the resume it counts again",
+        cv.rank_index(plain_ranks, [states[D0 + timedelta(days=2)]]) == 3
+        and cv.rank_index(plain_ranks, [states[D0 + timedelta(days=5)]]) == 0
+        and states[D0 + timedelta(days=5)].paused
+        and not states[D0 + timedelta(days=5)].counted
+        and states[D0 + timedelta(days=5)].credit == 1  # kept, hidden by the rank functions
+        and cv.rank_index(plain_ranks, [states[D0 + timedelta(days=10)]]) == 3
+        and states[D0 + timedelta(days=10)].credit == 1,
+    )
+    report_p = cv.compute_rank({1: pr}, D0 + timedelta(days=5), plain_ranks)
+    check(
+        "the rank history and the habit entry show the pause",
+        report_p["index"] == 0 and report_p["habits"][0]["paused"] is True and report_p["habits"][0]["credit"] == 0,
+        str(report_p["habits"]),
+    )
+
+    # A pause that covers no whole day changes nothing; a failed attempt stays failed through a pause.
+    quick = pvers(short, pause=(5, 5))
+    *_, qatt, _ = pwalk(quick, 8)
+    check(
+        "a pause that did not cover a whole day begins no attempt",
+        qatt[D0 + timedelta(days=5)].start is None and qatt[D0 + timedelta(days=6)].start is None,
+    )
+    *_, katt, _ = pwalk(pvers(short, pause=(6, 9)), 12)
+    check(
+        "a failed attempt stays failed through a pause and its resume",
+        katt[D0 + timedelta(days=5)].failed_on == D0 + timedelta(days=2)
+        and katt[D0 + timedelta(days=11)].failed_on == D0 + timedelta(days=2)
+        and katt[D0 + timedelta(days=11)].start is None,
+    )
+    check(
+        "a paused habit reports no deadline and no recommendation to move",
+        cv.validate_spec("quit", {**quit_ladder, "paused": True}) is None,
+    )
+    try:
+        cv.validate_spec("quit", {**quit_ladder, "paused": "false"})
+        check("paused must be a bool", False)
+    except cv.PassportError:
+        check("paused must be a bool", True)
+    held = with_pause(pvers(), 12)
+    held[0]["spec"]["current_level"] = 2
+    held[1]["spec"]["current_level"] = 2
+    held[2]["spec"]["current_level"] = 2
+    hs = cv.simulate_stages(1, held, D0 + timedelta(days=12))
+    check(
+        "the credit earned before a pause is kept through it",
+        hs[D0 + timedelta(days=5)].credit == 2 and not hs[D0 + timedelta(days=5)].counted and hs[D0 + timedelta(days=10)].counted,
+    )
+    pending_days = [cv.Day(D0, "no_data", detail=cv.PAUSE_DETAIL), cv.Day(D0, "no_data")]
+    stats_p = cv.combined_stats(
+        [{"id": 1, "name": "a", "days": pending_days[:1]}, {"id": 2, "name": "b", "days": pending_days[1:]}], D0, D0
+    )
+    check("a paused habit is not pending today", stats_p["summary"]["today"]["pending"] == 1, str(stats_p["summary"]["today"]))
+
     print("\n[4b] Review regressions")
     dst = night(date(2026, 10, 25), "23:00", "07:00")  # clocks go back at 04:00 that night
     check("night across a DST switch counts elapsed hours", abs(dst.hours - 9) < 0.01, str(dst.hours))
@@ -2598,6 +2730,123 @@ def main() -> int:
             manual_ladder.text[:300],
         )
         client.post(f"/cultivation/habits/{switching['id']}/archive")
+
+        pausing, _start_p = quit_ladder_habit("Pausing", 3)
+        pid, ptid = pausing["id"], pausing["tracker"]["id"]
+        before_p = len(pausing["versions"])
+        stopped = client.put(f"/trackers/{ptid}/stop")
+        paused_out = client.get(f"/cultivation/habits/{pid}").json()
+        check(
+            "stopping the tracker pauses the habit with a version from today",
+            stopped.status_code == 200
+            and paused_out["paused"] is True
+            and len(paused_out["versions"]) == before_p + 1
+            and paused_out["versions"][-1]["reason"] == "Звичку призупинено"
+            and paused_out["versions"][-1]["effective_from"] == local_today.isoformat()
+            and paused_out["versions"][-1]["author"] == "user",
+            str(paused_out["versions"][-1:]),
+        )
+        client.put(f"/trackers/{ptid}/stop")
+        check(
+            "a second stop adds no version",
+            len(client.get(f"/cultivation/habits/{pid}").json()["versions"]) == before_p + 1,
+        )
+        listed = next(h for h in client.get("/cultivation/habits").json() if h["id"] == pid)
+        overview = client.get("/cultivation/overview").json()
+        in_overview = [h for key in ("active", "integrated", "planned") for h in overview[key] if h["id"] == pid]
+        check(
+            "paused shows in the compact habit and in the overview items",
+            listed["paused"] is True and len(in_overview) == 1 and in_overview[0]["paused"] is True,
+            str(in_overview),
+        )
+        forced = client.post(
+            f"/cultivation/habits/{pid}/versions", json={"patch": {"paused": False, "description": "x"}, "reason": "try"}
+        )
+        check(
+            "a passport edit cannot change the pause",
+            forced.status_code == 201 and forced.json()["paused"] is True,
+            forced.text[:200],
+        )
+        exported_p = client.get("/export/?data_type=all&format=json").json()
+        seventh = TestClient(app)
+        seventh.post(
+            "/auth/register", json={"username": "seventh", "email": "seventh@example.com", "password": "seventh-password"}
+        )
+        restore(seventh, exported_p)
+        carried_h = next((h for h in seventh.get("/cultivation/habits").json() if h["name"] == "Pausing"), None)
+        check("an export and import keep the pause", bool(carried_h) and carried_h["paused"] is True, str(carried_h))
+        client.put(f"/trackers/{ptid}/start")
+        resumed = client.get(f"/cultivation/habits/{pid}").json()
+        check(
+            "starting the tracker resumes the habit on the same stage; a pause of no whole day begins no attempt",
+            resumed["paused"] is False
+            and resumed["versions"][-1]["reason"] == "Звичку відновлено"
+            and resumed["attempt"]["start"] == pausing["attempt"]["start"]  # no whole day was paused
+            and resumed["stage"] == paused_out["stage"],
+            str(resumed["attempt"]),
+        )
+        before_r = len(resumed["versions"])
+        client.put(f"/trackers/{ptid}/start")
+        check("a second start adds no version", len(client.get(f"/cultivation/habits/{pid}").json()["versions"]) == before_r)
+        exported_r = client.get("/export/?data_type=all&format=json").json()
+        resume_spec = next(h for h in exported_r["cultivation"]["habits"] if h["id"] == pid)["versions"][-1]["spec"]
+        check(
+            "the resume version is no by-hand stage version",
+            resume_spec.get("paused") is False and resume_spec.get("stage_set") is False,
+            str(resume_spec),
+        ) if "cultivation" in exported_r else None
+        shown_passport = client.get(f"/cultivation/habits/{pid}").json()["passport"]
+        check("the passport shown hides the pause key", "paused" not in shown_passport)
+        read_token_p = client.post("/developer/tokens", json={"name": "reader2", "scope": "read"}).json()["token"]
+        read_stop = agent.put(f"/trackers/{ptid}/stop", headers={"Authorization": f"Bearer {read_token_p}"})
+        check("a read-only token cannot stop a tracker", read_stop.status_code == 403, read_stop.text[:200])
+        client.patch(f"/trackers/{ptid}/", json={"is_active": False})
+        check(
+            "changing is_active through the tracker patch pauses the habit too",
+            client.get(f"/cultivation/habits/{pid}").json()["paused"] is True,
+        )
+        client.patch(f"/trackers/{ptid}/", json={"is_active": True})
+        client.put(f"/trackers/{ptid}/archive")
+        check(
+            "archiving the tracker pauses the habit; unarchiving resumes it",
+            client.get(f"/cultivation/habits/{pid}").json()["paused"] is True
+            and client.put(f"/trackers/{ptid}/unarchive").status_code == 200
+            and client.get(f"/cultivation/habits/{pid}").json()["paused"] is False,
+        )
+        stopped_tracker = client.post(
+            "/trackers/", json={"name": "Idle", "category": "Other", "type": "quit"}
+        ).json()
+        client.put(f"/trackers/{stopped_tracker['id']}/stop")
+        on_stopped = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "quit",
+                "reason": "on a stopped tracker",
+                "tracker_id": stopped_tracker["id"],
+                "spec": {"name": "Idle habit", "stage": "formation"},
+            },
+        )
+        check(
+            "a habit created on a stopped tracker starts paused",
+            on_stopped.status_code == 201 and on_stopped.json()["paused"] is True
+            and on_stopped.json()["attempt"]["deadline"] is None and on_stopped.json()["recommendation"] is None,
+            on_stopped.text[:200],
+        )
+        client.post(f"/cultivation/habits/{on_stopped.json()['id']}/archive")
+        client.put(f"/trackers/{stopped_tracker['id']}/start")
+        client.post(f"/cultivation/habits/{on_stopped.json()['id']}/unarchive")
+        check(
+            "unarchiving a habit brings its pause in step with the tracker",
+            client.get(f"/cultivation/habits/{on_stopped.json()['id']}").json()["paused"] is False,
+        )
+        before_r = len(client.get(f"/cultivation/habits/{pid}").json()["versions"])
+        client.post(f"/cultivation/habits/{pid}/archive")
+        client.put(f"/trackers/{ptid}/stop")
+        gone = client.get(f"/cultivation/habits/{pid}").json()
+        check(
+            "stopping the tracker of an archived habit adds no version",
+            len(gone["versions"]) == before_r and gone["paused"] is False,
+        )
 
         def refused_ladder(kind: str, rung: dict) -> int:
             return client.post(
