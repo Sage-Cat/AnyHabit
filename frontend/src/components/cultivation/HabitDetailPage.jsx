@@ -297,6 +297,8 @@ function Passport({ habit }) {
 function LevelsBlock({ habit, onChanged }) {
   const { notify } = useAppState();
   const ladder = habit.ladder;
+  // After a failed formation the streak countdown is moot: the server's blocker explains what is next.
+  const autoRung = ladder.auto && !habit.attempt?.failed_on;
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -351,7 +353,7 @@ function LevelsBlock({ habit, onChanged }) {
           ))}
         </ol>
       ) : null}
-      {!hasLadder && levelKeys(habit.kind).length > 0 && (
+      {!hasLadder && (levelKeys(habit.kind).length > 0 || habit.kind === 'quit') && (
         <p className="mt-2 text-sm text-gray-500">Поки один рівень. Драбину рівнів можна додати в паспорті.</p>
       )}
       {hasLadder && !habit.archived && (
@@ -365,14 +367,16 @@ function LevelsBlock({ habit, onChanged }) {
             className={INPUT_CLASS}
           />
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={isSaving || !ladder.can_upgrade}
-              onClick={() => change('up')}
-              className={BUTTON_SECONDARY}
-            >
-              Підвищити рівень
-            </button>
+            {!autoRung && (
+              <button
+                type="button"
+                disabled={isSaving || !ladder.can_upgrade}
+                onClick={() => change('up')}
+                className={BUTTON_SECONDARY}
+              >
+                Підвищити рівень
+              </button>
+            )}
             <button
               type="button"
               disabled={isSaving || !ladder.can_downgrade}
@@ -382,16 +386,24 @@ function LevelsBlock({ habit, onChanged }) {
               Знизити рівень
             </button>
           </div>
-          <p className="text-xs text-gray-500" data-testid="upgrade-note">
-            Після підвищення звичка почне формування нового рівня з дня підвищення, а в ранзі й далі рахуватиметься на
-            рівні {ladder.current}.
-          </p>
+          {autoRung && (
+            <p className="text-sm text-stone-800" data-testid="auto-level">
+              Серія без зриву: {ladder.streak ?? 0} дн. Рівень {ladder.current + 1} — після {ladder.next_streak} дн. (ще{' '}
+              {Math.max(0, ladder.next_streak - (ladder.streak ?? 0))}).
+            </p>
+          )}
+          {!autoRung && ladder.current < ladder.count && (
+            <p className="text-xs text-gray-500" data-testid="upgrade-note">
+              Після підвищення звичка почне формування нового рівня з дня підвищення, а в ранзі й далі рахуватиметься на
+              рівні {ladder.current}.
+            </p>
+          )}
           {habit.rank_level >= 1 && (
             <p className="text-xs text-gray-500" data-testid="rank-level-note">
               У ранзі: рівень {habit.rank_level}
             </p>
           )}
-          {!ladder.can_upgrade && ladder.upgrade_blocker && (
+          {!autoRung && !ladder.can_upgrade && ladder.upgrade_blocker && (
             <p className="text-xs text-gray-500" data-testid="upgrade-blocker">
               {ladder.upgrade_blocker}
             </p>
@@ -410,6 +422,7 @@ function LevelsBlock({ habit, onChanged }) {
               <span className="font-medium text-stone-800">
                 {formatDay(item.date)}: рівень {item.from} → {item.to}
               </span>
+              {item.auto && <span className="ml-1 text-xs text-emerald-700">(автоматично)</span>}
               {item.reason && ` — ${item.reason}`}
             </li>
           ))}
@@ -439,8 +452,13 @@ function VersionHistory({ versions }) {
   );
 }
 
+const KNOWN_RUNG_KEYS = ['name', 'level', 'tolerance', 'minimum', 'streak_days'];
+
 const rungFromSpec = (rung) => ({
   name: rung?.name ?? '',
+  streak_days: rung?.streak_days ?? '',
+  // Keys this form does not edit travel along untouched.
+  extra: Object.fromEntries(Object.entries(rung || {}).filter(([key]) => !KNOWN_RUNG_KEYS.includes(key))),
   level: levelFromSpec(rung?.level),
   tolerance: levelFromSpec(rung?.tolerance),
   minimum: levelFromSpec(rung?.minimum)
@@ -466,6 +484,10 @@ function EditPassport({ habit, onSaved }) {
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const isQuit = habit.kind === 'quit';
+  // A quit habit has no level fields, but its rungs can still be earned by a streak.
+  const canLadder = levelKeys(habit.kind).length > 0 || isQuit;
 
   const openForm = () => {
     setName(spec.name || '');
@@ -523,20 +545,30 @@ function EditPassport({ habit, onSaved }) {
         if (hasLevelValue(habit.kind, tolerance)) patch.tolerance = buildLevel(habit.kind, tolerance, { nulls: true });
         else if (spec.tolerance) patch.tolerance = null;
       }
-      if (levelKeys(habit.kind).length > 0) {
+      if (canLadder) {
         if (rungs.length > 0) {
           for (const [index, rung] of rungs.entries()) {
-            if (!hasLevelValue(habit.kind, rung.level)) {
+            const streak = String(rung.streak_days ?? '').trim();
+            if (isQuit && streak && !/^[1-9]\d*$/.test(streak)) {
+              setError(`Рівень ${index + 1}: днів без зриву має бути додатним цілим числом`);
+              return;
+            }
+            if (!isQuit && !hasLevelValue(habit.kind, rung.level)) {
               setError(`Рівень ${index + 1}: вкажіть вимогу`);
               return;
             }
           }
           patch.levels = rungs.map((rung) => {
-            const out = {};
+            const out = { ...rung.extra };
             if (rung.name.trim()) out.name = rung.name.trim();
-            out.level = buildLevel(habit.kind, rung.level);
-            if (hasLevelValue(habit.kind, rung.tolerance)) out.tolerance = buildLevel(habit.kind, rung.tolerance);
-            if (hasLevelValue(habit.kind, rung.minimum)) out.minimum = buildLevel(habit.kind, rung.minimum);
+            const streak = String(rung.streak_days ?? '').trim();
+            // Other kinds do not edit it, but a value already in the passport stays as it was.
+            if (streak) out.streak_days = isQuit ? Number(streak) : rung.streak_days;
+            if (!isQuit) {
+              out.level = buildLevel(habit.kind, rung.level);
+              if (hasLevelValue(habit.kind, rung.tolerance)) out.tolerance = buildLevel(habit.kind, rung.tolerance);
+              if (hasLevelValue(habit.kind, rung.minimum)) out.minimum = buildLevel(habit.kind, rung.minimum);
+            }
             return out;
           });
           // A new ladder starts at level 1; an existing one keeps its level (moves go through /level).
@@ -567,8 +599,9 @@ function EditPassport({ habit, onSaved }) {
   const setRung = (index, key, value) =>
     setRungs((current) => current.map((rung, i) => (i === index ? { ...rung, [key]: value } : rung)));
   // The first rung starts from what the passport asks for now; later ones copy the previous rung.
-  const createLadder = () => setRungs([{ name: '', level, tolerance, minimum }]);
-  const addRung = () => setRungs((current) => [...current, { ...current.at(-1), name: '' }]);
+  const createLadder = () => setRungs([{ name: '', streak_days: '', extra: {}, level, tolerance, minimum }]);
+  const addRung = () =>
+    setRungs((current) => [...current, { ...current.at(-1), name: '', streak_days: '', extra: {} }]);
   const removeRung = (index) => setRungs((current) => current.filter((_, i) => i !== index));
   // Removing the current rung or one below it would shift the habit to another level.
   const currentLevel = spec.levels ? spec.current_level || 1 : 1;
@@ -636,7 +669,7 @@ function EditPassport({ habit, onSaved }) {
               <LevelFields kind={habit.kind} prefix="Допуск: " value={tolerance} onChange={setTolerance} />
             </div>
           )}
-          {hasLevels && (
+          {canLadder && (
             <div className="space-y-3" data-testid="ladder-editor">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Рівні (необов'язково): вимога зростає від рівня до рівня
@@ -667,30 +700,50 @@ function EditPassport({ habit, onSaved }) {
                         className={INPUT_CLASS}
                       />
                     </Field>
-                    <LevelFields
-                      kind={habit.kind}
-                      prefix={`Рівень ${n}: `}
-                      value={rung.level}
-                      onChange={(value) => setRung(index, 'level', value)}
-                    />
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Допуск рівня (порожньо — без допуску)
-                    </p>
-                    <LevelFields
-                      kind={habit.kind}
-                      prefix={`Рівень ${n}, допуск: `}
-                      value={rung.tolerance}
-                      onChange={(value) => setRung(index, 'tolerance', value)}
-                    />
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Мінімум рівня (порожньо — без мінімуму)
-                    </p>
-                    <LevelFields
-                      kind={habit.kind}
-                      prefix={`Рівень ${n}, мінімум: `}
-                      value={rung.minimum}
-                      onChange={(value) => setRung(index, 'minimum', value)}
-                    />
+                    {isQuit && (
+                      <Field
+                        label="Днів без зриву поспіль"
+                        hint="Порожньо — рівень підвищується вручну; з числом — сам, коли серія досягне його"
+                      >
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          aria-label={`Днів без зриву поспіль, рівень ${n}`}
+                          value={rung.streak_days}
+                          onChange={(event) => setRung(index, 'streak_days', event.target.value)}
+                          className={INPUT_CLASS}
+                        />
+                      </Field>
+                    )}
+                    {!isQuit && (
+                      <>
+                        <LevelFields
+                          kind={habit.kind}
+                          prefix={`Рівень ${n}: `}
+                          value={rung.level}
+                          onChange={(value) => setRung(index, 'level', value)}
+                        />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Допуск рівня (порожньо — без допуску)
+                        </p>
+                        <LevelFields
+                          kind={habit.kind}
+                          prefix={`Рівень ${n}, допуск: `}
+                          value={rung.tolerance}
+                          onChange={(value) => setRung(index, 'tolerance', value)}
+                        />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Мінімум рівня (порожньо — без мінімуму)
+                        </p>
+                        <LevelFields
+                          kind={habit.kind}
+                          prefix={`Рівень ${n}, мінімум: `}
+                          value={rung.minimum}
+                          onChange={(value) => setRung(index, 'minimum', value)}
+                        />
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -830,6 +883,11 @@ function AttemptDecision({ habit, onDone }) {
       <p className="text-sm text-stone-800">
         За {attempt.days} дн. звичка не дійшла до стабілізації. Вирішіть, як продовжити.
       </p>
+      {isFallback && (
+        <p className="mt-1 text-sm text-stone-800" data-testid="attempt-fallback-note">
+          Повернення на рівень {attempt.fallback_level} починає його стабілізацію з сьогодні.
+        </p>
+      )}
       {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
       <form onSubmit={submit} className="mt-3 space-y-3">
         <input
@@ -846,7 +904,7 @@ function AttemptDecision({ habit, onDone }) {
           </p>
         )}
         <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
-          {isFallback ? `Повернутися на рівень ${attempt.fallback_level}` : 'Нова спроба'}
+          {isFallback ? `Повернутися на рівень ${attempt.fallback_level} (у стабілізацію)` : 'Нова спроба'}
         </button>
       </form>
     </section>
