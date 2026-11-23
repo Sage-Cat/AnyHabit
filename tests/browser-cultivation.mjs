@@ -893,6 +893,11 @@ try {
   const failedEntry = page.locator('[data-testid="attempt-failed"]', { hasText: failedName });
   await failedEntry.first().waitFor({ timeout: 10000 });
   check('the sidebar marks the tracker with the failed formation', (await failedEntry.count()) >= 1);
+  check(
+    'the failed formation is marked in red',
+    (await failedEntry.first().getAttribute('class')).includes('bg-rose-50') &&
+      (await decision.getAttribute('class')).includes('bg-rose-50')
+  );
 
   await decision.getByLabel('Причина рішення').fill('Нова спроба після перерви');
   await decision.getByRole('button', { name: 'Нова спроба' }).click();
