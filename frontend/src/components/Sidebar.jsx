@@ -286,8 +286,8 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                           }
                           className={`flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-all ${
                             attemptFailed
-                              ? `bg-emerald-50 font-medium text-emerald-700 ${
-                                  selectedTrackerId === tracker.id ? 'ring-2 ring-emerald-500' : ''
+                              ? `bg-rose-50 font-medium text-rose-700 ${
+                                  selectedTrackerId === tracker.id ? 'ring-2 ring-rose-500' : ''
                                 }`
                               : selectedTrackerId === tracker.id
                                 ? 'bg-stone-100 font-medium text-stone-900'

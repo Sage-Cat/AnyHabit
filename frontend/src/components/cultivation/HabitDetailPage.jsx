@@ -876,7 +876,7 @@ function AttemptDecision({ habit, onDone }) {
 
   return (
     <section
-      className="min-w-0 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 shadow-sm xl:col-span-2"
+      className="min-w-0 rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-sm xl:col-span-2"
       data-testid="attempt-decision"
     >
       <h2 className="mb-2 text-base font-bold text-stone-900">Формування не вдалося</h2>
