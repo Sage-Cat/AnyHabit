@@ -962,6 +962,26 @@ try {
     (await page.locator('[data-testid="habit-header"], body').first().innerText()).includes('Формування')
   );
 
+  console.log('\n[13] Active and all habits in the menu');
+  const sidebar = page.locator('.app-sidebar');
+  const activeTab = sidebar.getByRole('button', { name: /^Активні/ });
+  const allTab = sidebar.getByRole('button', { name: /^Усі/ });
+  check('the menu shows active habits by default', (await activeTab.getAttribute('aria-pressed')) === 'true');
+  check(
+    'the menu has no personal or group tabs',
+    (await sidebar.getByRole('button', { name: /^(Особисті|Групові)/ }).count()) === 0
+  );
+  await page.evaluate(async (trackerId) => {
+    const response = await fetch(`/trackers/${trackerId}/stop`, { method: 'PUT', credentials: 'include' });
+    if (!response.ok) throw new Error(await response.text());
+  }, streakHabit.tracker.id);
+  await page.reload({ waitUntil: 'networkidle' });
+  const pausedEntry = sidebar.locator('button', { hasText: streakName });
+  check('a paused habit is hidden among the active ones', (await pausedEntry.count()) === 0);
+  await allTab.click();
+  await pausedEntry.first().waitFor({ timeout: 10000 });
+  check('a paused habit is listed among all habits', (await pausedEntry.count()) >= 1);
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);
