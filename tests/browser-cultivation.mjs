@@ -1033,6 +1033,43 @@ try {
     (await resumedCard.first().locator('[data-testid="habit-paused"]').count()) === 0
   );
 
+  console.log('\n[15] Menu groups by stage');
+  const lowName = `Група А ${stamp}`;
+  const highName = `Група Я ${stamp}`;
+  const plannedName = `Група план ${stamp}`;
+  await page.evaluate(
+    async ({ low, high, planned }) => {
+      const post = async (spec) => {
+        const response = await fetch('/cultivation/habits', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'boolean', spec, reason: 'e2e' })
+        });
+        if (!response.ok) throw new Error(await response.text());
+      };
+      const levels = [{ level: { done_by: '18:00' } }, { level: { done_by: '17:00' } }];
+      // The names sort the other way round, so only the level can put the second habit first.
+      await post({ name: low, stage: 'formation', level: { done_by: '18:00' }, levels, current_level: 1 });
+      await post({ name: high, stage: 'formation', level: { done_by: '17:00' }, levels, current_level: 2 });
+      const future = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+      await post({ name: planned, stage: 'planned', start_date: future, level: { done_by: '18:00' } });
+    },
+    { low: lowName, high: highName, planned: plannedName }
+  );
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await allTab.click();
+  const formationGroup = sidebar.locator('[data-testid="sidebar-stage-group"][data-stage="formation"]');
+  await formationGroup.getByRole('button', { name: highName }).waitFor({ timeout: 10000 });
+  const formationNames = await formationGroup.locator('ul li button').allInnerTexts();
+  const highAt = formationNames.findIndex((text) => text.includes(highName));
+  const lowAt = formationNames.findIndex((text) => text.includes(lowName));
+  check('both habits are in the Формування group', highAt >= 0 && lowAt >= 0, formationNames.join(' | '));
+  check('the higher level is listed first', highAt < lowAt, formationNames.join(' | '));
+  const plannedGroup = sidebar.locator('[data-testid="sidebar-stage-group"][data-stage="planned"]');
+  await plannedGroup.getByRole('button', { name: plannedName }).waitFor({ timeout: 10000 });
+  check('a planned habit is in its own group', (await plannedGroup.innerText()).toLowerCase().includes('заплановані'));
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);
