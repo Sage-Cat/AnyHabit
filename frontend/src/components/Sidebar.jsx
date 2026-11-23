@@ -4,12 +4,20 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { fetchHabitsApi } from '../services/cultivationApi';
 import { TRACKER_COLOR_HEX } from '../constants/tracker';
 import { useAppState } from '../state/appState';
-import { categoryLabel } from '../utils/tracker';
 
 const TABS = [
   { id: 'active', label: 'Активні' },
   { id: 'all', label: 'Усі' }
 ];
+
+// Sidebar groups: the cultivation stage of the tracker's habit, then everything else.
+const STAGE_GROUPS = [
+  { stage: 'formation', title: 'Формування' },
+  { stage: 'stabilization', title: 'Стабілізація' },
+  { stage: 'integrated', title: 'Інтегровані' },
+  { stage: 'planned', title: 'Заплановані' }
+];
+const OTHER_GROUP = { stage: 'other', title: 'Інші звички' };
 
 /** A habit in progress: neither paused nor archived. */
 const isActiveTracker = (tracker) => tracker.is_active && !tracker.archived_at;
@@ -21,7 +29,6 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
     setIsSidebarOpen,
     visibleTrackers,
     sortedCategoryEntries,
-    activeCategory,
     archivedCount,
     showArchived,
     setShowArchived,
@@ -41,7 +48,8 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
   const [trackerTab, setTrackerTab] = useState('active');
   const [query, setQuery] = useState('');
   const { pathname } = useLocation();
-  const [failedTrackerIds, setFailedTrackerIds] = useState(() => new Set());
+  // tracker id -> {stage, level, failed}; null until the habits load for the first time.
+  const [habitInfo, setHabitInfo] = useState(null);
   const [habitsVersion, setHabitsVersion] = useState(0);
 
   // Trackers whose cultivated habit failed its formation and awaits a decision.
@@ -57,13 +65,17 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
     fetchHabitsApi()
       .then((habits) => {
         if (cancelled) return;
-        setFailedTrackerIds(
-          new Set(
-            habits
-              .filter((habit) => habit.attempt?.failed_on && !habit.paused && habit.tracker?.id)
-              .map((habit) => habit.tracker.id)
-          )
-        );
+        const info = new Map();
+        for (const habit of habits) {
+          if (!habit.tracker?.id) continue;
+          info.set(habit.tracker.id, {
+            stage: habit.stage,
+            level: habit.ladder?.current || 1,
+            paused: Boolean(habit.paused),
+            failed: Boolean(habit.attempt?.failed_on) && !habit.paused
+          });
+        }
+        setHabitInfo(info);
       })
       .catch(() => {});
     return () => {
@@ -85,13 +97,6 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
     navigate('/practice');
   };
 
-  const openCategory = (category) => {
-    setSelectedCategory(category);
-    setSelectedTrackerId(null);
-    setIsSidebarOpen(false);
-    navigate(`/category/${encodeURIComponent(category)}`);
-  };
-
   const openTracker = (trackerId, category) => {
     if (category) setSelectedCategory(category);
     setSelectedTrackerId(trackerId);
@@ -101,20 +106,37 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
 
   const tabCounts = { active: visibleTrackers.filter(isActiveTracker).length, all: visibleTrackers.length };
 
-  const filteredEntries = useMemo(() => {
+  const groups = useMemo(() => {
     const search = query.trim().toLowerCase();
+    const matches = (tracker) =>
+      (trackerTab === 'all' || isActiveTracker(tracker)) &&
+      (!search ||
+        tracker.name.toLowerCase().includes(search) ||
+        (tracker.category || '').toLowerCase().includes(search));
 
-    const matchesTab = (tracker) => trackerTab === 'all' || isActiveTracker(tracker);
+    // Until the habits are known the list stays flat, so it does not reshuffle on load.
+    if (!habitInfo) {
+      const items = sortedCategoryEntries.flatMap(([, list]) => list).filter(matches);
+      return items.length ? [{ stage: 'plain', title: null, items }] : [];
+    }
 
-    const matchesQuery = (tracker) =>
-      !search || tracker.name.toLowerCase().includes(search) || (tracker.category || '').toLowerCase().includes(search);
+    const buckets = new Map([...STAGE_GROUPS, OTHER_GROUP].map((group) => [group.stage, { ...group, items: [] }]));
+    for (const [, list] of sortedCategoryEntries) {
+      for (const tracker of list.filter(matches)) {
+        const info = tracker.archived_at ? null : habitInfo.get(tracker.id);
+        buckets.get(info && buckets.has(info.stage) ? info.stage : OTHER_GROUP.stage).items.push(tracker);
+      }
+    }
+    const levelOf = (tracker) => habitInfo.get(tracker.id)?.level || 1;
+    return [...buckets.values()]
+      .filter((group) => group.items.length > 0)
+      .map((group) => ({
+        ...group,
+        items: group.items.sort((x, y) => levelOf(y) - levelOf(x) || x.name.localeCompare(y.name, 'uk'))
+      }));
+  }, [sortedCategoryEntries, trackerTab, query, habitInfo]);
 
-    return sortedCategoryEntries
-      .map(([category, items]) => [category, items.filter((item) => matchesTab(item) && matchesQuery(item))])
-      .filter(([, items]) => items.length > 0);
-  }, [sortedCategoryEntries, trackerTab, query]);
-
-  const hasResults = filteredEntries.length > 0;
+  const hasResults = groups.length > 0;
 
   return (
     <div
@@ -232,103 +254,95 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                 : 'Звичок ще немає.'}
           </li>
         ) : (
-          filteredEntries.map(([category, items]) => (
-            <li key={category} className="pb-1">
-              <div
-                className={`mb-2 flex items-center gap-1 rounded-lg px-1 py-0.5 transition-colors ${
-                  activeCategory === category ? 'bg-stone-50' : ''
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    openCategory(category);
-                    setCollapsedCategories((previous) => ({ ...previous, [category]: false }));
-                  }}
-                  className="flex min-w-0 flex-1 items-center justify-between rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-stone-100/60"
-                >
-                  <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
-                    {categoryLabel(category)}
-                  </span>
-                  <span className="category-count-badge ml-2 rounded-full bg-stone-100/80 px-2 py-0.5 text-[10px] font-medium text-stone-400">
-                    {items.length}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsedCategories((previous) => ({ ...previous, [category]: !previous[category] }))
-                  }
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-stone-100/70 hover:text-stone-700"
-                  aria-label={`${collapsedCategories[category] ? 'Розгорнути' : 'Згорнути'} ${categoryLabel(category)}`}
-                  aria-expanded={!collapsedCategories[category]}
-                >
-                  <ChevronDown
-                    size={14}
-                    className={`transition-transform ${collapsedCategories[category] ? '-rotate-90' : ''}`}
-                  />
-                </button>
-              </div>
+          groups.map((group) => {
+            const groupKey = `stage:${group.stage}`;
+            const collapsed = Boolean(group.title) && collapsedCategories[groupKey];
+            return (
+              <li key={groupKey} className="pb-1" data-testid="sidebar-stage-group" data-stage={group.stage}>
+                {group.title && (
+                  <div className="mb-2 flex items-center gap-1 rounded-lg px-1 py-0.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedCategories((previous) => ({ ...previous, [groupKey]: !previous[groupKey] }))
+                      }
+                      className="flex min-w-0 flex-1 items-center justify-between rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-stone-100/60"
+                      aria-label={`${collapsed ? 'Розгорнути' : 'Згорнути'} ${group.title}`}
+                      aria-expanded={!collapsed}
+                    >
+                      <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
+                        {group.title}
+                      </span>
+                      <span className="category-count-badge ml-2 rounded-full bg-stone-100/80 px-2 py-0.5 text-[10px] font-medium text-stone-400">
+                        {group.items.length}
+                      </span>
+                    </button>
+                    <span className="flex h-7 w-7 items-center justify-center text-gray-400" aria-hidden="true">
+                      <ChevronDown size={14} className={`transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                    </span>
+                  </div>
+                )}
 
-              {!collapsedCategories[category] && (
-                <ul className="ml-2 space-y-1 border-l border-stone-200/70 pl-4 pr-1">
-                  {items.map((tracker) => {
-                    const accent = TRACKER_COLOR_HEX[tracker.color];
-                    const attemptFailed = failedTrackerIds.has(tracker.id);
+                {!collapsed && (
+                  <ul className="ml-2 space-y-1 border-l border-stone-200/70 pl-4 pr-1">
+                    {group.items.map((tracker) => {
+                      const accent = TRACKER_COLOR_HEX[tracker.color];
+                      const attemptFailed = Boolean(habitInfo?.get(tracker.id)?.failed);
 
-                    return (
-                      <li key={tracker.id}>
-                        <button
-                          type="button"
-                          onClick={() => openTracker(tracker.id, category)}
-                          data-testid={attemptFailed ? 'attempt-failed' : undefined}
-                          title={attemptFailed ? 'Формування не вдалося — потрібне рішення' : undefined}
-                          aria-label={
-                            attemptFailed ? `${tracker.name}. Формування не вдалося — потрібне рішення` : undefined
-                          }
-                          className={`flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-all ${
-                            attemptFailed
-                              ? `bg-rose-50 font-medium text-rose-700 ${
-                                  selectedTrackerId === tracker.id ? 'ring-2 ring-rose-500' : ''
-                                }`
-                              : selectedTrackerId === tracker.id
-                                ? 'bg-stone-100 font-medium text-stone-900'
-                                : 'text-gray-500 hover:bg-stone-50 hover:text-stone-700'
-                          }`}
-                        >
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="flex min-w-0 items-center gap-2">
-                              {accent && (
+                      return (
+                        <li key={tracker.id}>
+                          <button
+                            type="button"
+                            onClick={() => openTracker(tracker.id, tracker.category)}
+                            data-testid={attemptFailed ? 'attempt-failed' : undefined}
+                            title={attemptFailed ? 'Формування не вдалося — потрібне рішення' : undefined}
+                            aria-label={
+                              attemptFailed ? `${tracker.name}. Формування не вдалося — потрібне рішення` : undefined
+                            }
+                            className={`flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-all ${
+                              attemptFailed
+                                ? `bg-rose-50 font-medium text-rose-700 ${
+                                    selectedTrackerId === tracker.id ? 'ring-2 ring-rose-500' : ''
+                                  }`
+                                : selectedTrackerId === tracker.id
+                                  ? 'bg-stone-100 font-medium text-stone-900'
+                                  : 'text-gray-500 hover:bg-stone-50 hover:text-stone-700'
+                            }`}
+                          >
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="flex min-w-0 items-center gap-2">
+                                {accent && (
+                                  <span
+                                    className="h-2 w-2 shrink-0 rounded-full"
+                                    style={{ backgroundColor: accent }}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                <span className="truncate">{tracker.name}</span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                {tracker.archived_at && <Archive size={11} className="text-amber-500" />}
                                 <span
-                                  className="h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: accent }}
-                                  aria-hidden="true"
+                                  className={`h-2 w-2 rounded-full ${
+                                    tracker.archived_at
+                                      ? 'bg-amber-400'
+                                      : tracker.is_active
+                                        ? 'bg-emerald-400'
+                                        : 'bg-rose-400'
+                                  }`}
+                                  title={tracker.archived_at ? 'В архіві' : tracker.is_active ? 'Активна' : 'На паузі'}
                                 />
-                              )}
-                              <span className="truncate">{tracker.name}</span>
+                              </span>
                             </span>
-                            <span className="flex shrink-0 items-center gap-1.5">
-                              {tracker.archived_at && <Archive size={11} className="text-amber-500" />}
-                              <span
-                                className={`h-2 w-2 rounded-full ${
-                                  tracker.archived_at
-                                    ? 'bg-amber-400'
-                                    : tracker.is_active
-                                      ? 'bg-emerald-400'
-                                      : 'bg-rose-400'
-                                }`}
-                                title={tracker.archived_at ? 'В архіві' : tracker.is_active ? 'Активна' : 'На паузі'}
-                              />
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </li>
-          ))
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            );
+          })
         )}
       </ul>
 
