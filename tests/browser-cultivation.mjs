@@ -912,6 +912,51 @@ try {
   );
   check('the sidebar highlight is gone after a new attempt', true);
 
+  console.log('\n[12] Levels by streak');
+  const streakName = `Серія ${stamp}`;
+  const streakHabit = await page.evaluate(async (name) => {
+    const start = new Date(Date.now() - 16 * 86400000).toISOString().slice(0, 10);
+    const response = await fetch('/cultivation/habits', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'quit',
+        spec: {
+          name,
+          start_date: start,
+          levels: [{ streak_days: 7 }, { streak_days: 14 }, { streak_days: 30 }]
+        },
+        effective_from: start,
+        reason: 'e2e'
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }, streakName);
+
+  await page.goto(`${BASE}/practice/${streakHabit.id}`, { waitUntil: 'networkidle' });
+  const streakBlock = page.locator('[data-testid="ladder-block"]');
+  await streakBlock.waitFor({ timeout: 10000 });
+  check(
+    'the streak ladder reaches level 2 by itself',
+    (await streakBlock.locator('[data-testid="ladder-level"][data-current="true"]').innerText()).includes('Рівень 2')
+  );
+  check(
+    'the habit badge shows level 2',
+    (await page.locator('[data-testid="level-badge"]').first().innerText()).trim() === 'Рівень 2'
+  );
+  const autoText = await streakBlock.locator('[data-testid="auto-level"]').innerText();
+  check('the next level is automatic and mentions 30 days', autoText.includes('30'), autoText);
+  check(
+    'there is no upgrade button for an automatic level',
+    (await streakBlock.getByRole('button', { name: 'Підвищити рівень' }).count()) === 0
+  );
+  check(
+    'the new level starts in formation',
+    (await page.locator('[data-testid="habit-header"], body').first().innerText()).includes('Формування')
+  );
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 } catch (error) {
   failures.push(`Unhandled: ${error.message}`);

@@ -402,19 +402,31 @@ def main() -> int:
     check("ranks are climbed in order: a lone integrated habit", rank_name(lone, 0) == "Адепт другого рівня")
     check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Звичайна людина")
     pair = {1: stage_versions(("integrated", 0)), 2: stage_versions(("integrated", 0))}
+    check("the default ranks ask for no hold: two integrated habits are Magus rank 2 at once", rank_name(pair, 0) == "Маг другого рангу")
+    check("no default rank has a hold", not any("durable" in r["req"] for r in cv.DEFAULT_RANKS))
+    # A custom ladder may still ask habits to be held.
+    held_ranks = [dict(r) for r in cv.DEFAULT_RANKS]
+    held_ranks[5] = {**held_ranks[5], "req": {**held_ranks[5]["req"], "durable": [1, 30]}}
+    held_ranks[6] = {**held_ranks[6], "req": {**held_ranks[6]["req"], "durable": [2, 60]}}
+    held_ranks[10] = {**held_ranks[10], "req": {**held_ranks[10]["req"], "durable": [20, 365]}}
+    held_ranks[13] = {**held_ranks[13], "req": {**held_ranks[13]["req"], "durable": [128, 1825]}}
+
+    def rank_name(habits: dict, on: int, ranks=held_ranks) -> str:
+        return cv.compute_rank(habits, D0 + timedelta(days=on), ranks)["name"]
+
     check("Magus rank 2 needs a habit held 1 month: 29 days", rank_name(pair, 28) == "Маг першого рангу")
     check("Magus rank 2 needs a habit held 1 month: 30 days", rank_name(pair, 29) == "Маг другого рангу")
     dropped = {
         1: stage_versions(("integrated", 0), ("stabilization", 40), ("integrated", 50)),
         2: stage_versions(("integrated", 0), ("stabilization", 40), ("integrated", 50)),
     }
-    fallen = cv.compute_rank(dropped, D0 + timedelta(days=40))
+    fallen = cv.compute_rank(dropped, D0 + timedelta(days=40), held_ranks)
     check(
         "a habit back in stabilization stops counting at once, peak remembered",
         fallen["name"] == "Адепт третього рівня" and fallen["peak_name"] == "Маг другого рангу" and fallen["warnings"],
         f"{fallen['name']} / {fallen['peak_name']}",
     )
-    again = cv.compute_rank(dropped, D0 + timedelta(days=60))
+    again = cv.compute_rank(dropped, D0 + timedelta(days=60), held_ranks)
     check(
         "re-integration starts the hold again",
         again["name"] == "Маг першого рангу" and {h["held_days"] for h in again["habits"]} == {11},
@@ -424,18 +436,18 @@ def main() -> int:
     four = {i: stage_versions(("integrated", 0)) for i in range(1, 5)}
     check("Magus rank 3 needs two habits held 2 months", rank_name(four, 58) == "Маг другого рангу")
     check("Magus rank 3 after 60 days", rank_name(four, 59) == "Маг третього рангу")
-    ladder = cv.compute_rank(four, D0)["ladder"]
+    ladder = cv.compute_rank(four, D0, held_ranks)["ladder"]
     starting = {1: stage_versions(("formation", 0))}
     check("Прорив without readiness is 0", cv.compute_rank(starting, D0)["next"]["breakthrough"] == 0)
     half = cv.compute_rank(starting, D0, readiness={1: 0.5})["next"]
     check("Прорив counts readiness for the next stage", half["breakthrough"] == 50, str(half))
-    holding = cv.compute_rank(pair, D0 + timedelta(days=14))["next"]
+    holding = cv.compute_rank(pair, D0 + timedelta(days=14), held_ranks)["next"]
     check(
         "Прорив counts the hold already behind: 2 of 2 integrated, 15 of 30 days",
         holding["name"] == "Маг другого рангу" and holding["breakthrough"] == 75,
         str(holding),
     )
-    report = cv.compute_rank(dropped, D0 + timedelta(days=60))
+    report = cv.compute_rank(dropped, D0 + timedelta(days=60), held_ranks)
     check(
         "habits per stage today",
         report["stages"] == {"planned": 0, "formation": 0, "stabilization": 0, "integrated": 2},
@@ -645,21 +657,26 @@ def main() -> int:
     check("min_level is gone from the rank requirements", refused([{"name": "A", "req": {"min_level": 2}}]))
     check(
         "the default ranks follow the table",
-        [(r["req"].get("by_level"), r["req"].get("durable")) for r in cv.DEFAULT_RANKS[4:]]
+        [r["req"] for r in cv.DEFAULT_RANKS[4:]]
         == [
-            ({"1": 1}, None),
-            ({"1": 2}, [1, 30]),
-            ({"1": 4}, [2, 60]),
-            ({"1": 8, "2": 1}, [4, 120]),
-            ({"1": 16, "2": 2, "3": 1}, [8, 120]),
-            ({"1": 25, "2": 4, "3": 2, "4": 1}, [16, 240]),
-            ({"2": 8, "3": 4, "4": 2, "5": 1}, [20, 365]),
-            ({"3": 8, "4": 4, "5": 2}, [40, 730]),
-            ({"4": 8, "5": 4}, [80, 1095]),
-            ({"5": 8}, [128, 1825]),
+            {"by_level": {"1": 1}},
+            {"by_level": {"1": 2}},
+            {"by_level": {"1": 4}},
+            {"by_level": {"1": 8, "2": 1}},
+            {"by_level": {"1": 16, "2": 2, "3": 1}},
+            {"by_level": {"1": 25, "2": 4, "3": 2, "4": 1}},
+            {"by_level": {"2": 8, "3": 4, "4": 2, "5": 1}},
+            {"by_level": {"3": 8, "4": 4, "5": 2}},
+            {"by_level": {"4": 8, "5": 4}},
+            {"by_level": {"5": 8}},
         ]
         and all(r.get("confirmed") for r in cv.DEFAULT_RANKS)
         and cv.validate_ranks(cv.DEFAULT_RANKS) == cv.DEFAULT_RANKS,
+    )
+    check(
+        "the default requirement texts name only the integrated counts",
+        cv.rank_requirement_text(cv.DEFAULT_RANKS[5]["req"]) == "інтегрованих звичок ≥ 2"
+        and cv.rank_requirement_text(cv.DEFAULT_RANKS[7]["req"]) == "інтегрованих звичок: рівня 1+ ≥ 8, рівня 2+ ≥ 1",
     )
     check(
         "a requirement with one level reads as before",
@@ -765,6 +782,189 @@ def main() -> int:
             or {}
         ).get("to")
         == "stabilization",
+    )
+
+    print("\n[4a2] Levels by streak")
+
+    rungs_q = [{"name": "Start"}, {"name": "Week", "streak_days": 7}, {"streak_days": 15}]
+    quit_ladder = {"name": "Quit", "stage": "formation", "start_date": D0.isoformat(), "level": {}, "levels": rungs_q}
+
+    def qwalk(marks, last, spec=None):
+        """A quit habit with the streak ladder: staged versions, the attempt per day and the level log."""
+        vers = [{"id": 1, "effective_from": D0, "spec": {**(spec or quit_ladder), "stage_set": True, "current_level": 1}}]
+        until = D0 + timedelta(days=last)
+        marked = {D0 + timedelta(days=n): {"status": "fail", "reason": ""} for n in marks}
+        days_ = cv.build_days("quit", vers, {}, marked, [], until)
+        attempts: dict = {}
+        log: list = []
+        staged_, changes_ = cv.staged_versions(vers, days_, until, attempts, log)
+        return staged_, changes_, attempts, log
+
+    def level_on(staged_, on: int) -> int:
+        return cv.current_level_number(cv.spec_for(staged_, D0 + timedelta(days=on)))
+
+    st, ch, att, log = qwalk([], 8)
+    check(
+        "a streak raises the level by itself on the day it is reached",
+        level_on(st, 5) == 1 and level_on(st, 6) == 2 and stage_on(st, 6) == "formation",
+        str(log),
+    )
+    check(
+        "the automatic level starts a new attempt in formation",
+        att[D0 + timedelta(days=6)].start == D0 + timedelta(days=6)
+        and att[D0 + timedelta(days=6)].formation_since == D0 + timedelta(days=6)
+        and att[D0 + timedelta(days=6)].level == 2
+        and att[D0 + timedelta(days=5)].start is None,
+    )
+    check(
+        "the level log marks the automatic step",
+        log
+        == [
+            {
+                "date": (D0 + timedelta(days=6)).isoformat(),
+                "from": 1,
+                "to": 2,
+                "reason": "Серія без зриву 7 дн. — рівень 2",
+                "author": "auto",
+                "auto": True,
+            }
+        ],
+        str(log),
+    )
+    st_i, ch_i, _, _ = qwalk([], 8, {**quit_ladder, "stage": "integrated"})
+    check(
+        "from integration the automatic level puts the habit in formation",
+        stage_on(st_i, 5) == "integrated" and stage_on(st_i, 6) == "formation"
+        and any(c["auto"] and c["from"] == "integrated" and c["to"] == "formation" for c in ch_i),
+        str(ch_i),
+    )
+
+    st, ch, att, log = qwalk([10], 30)
+    check(
+        "a relapse keeps the level and starts the streak over",
+        level_on(st, 10) == 2 and level_on(st, 12) == 2 and att[D0 + timedelta(days=12)].streak == 2,
+    )
+    check(
+        "the next level needs a new streak of its own length",
+        level_on(st, 24) == 2 and level_on(st, 25) == 3 and [c["to"] for c in log] == [2, 3],
+        str(log),
+    )
+
+    st, ch, att, log = qwalk([], 20, {**quit_ladder, "stabilization": {"formation_days": 3}})
+    check(
+        "a failed attempt stops the streak from raising the level",
+        att[D0 + timedelta(days=2)].failed_on == D0 + timedelta(days=2) and level_on(st, 20) == 1 and not log,
+        str(log),
+    )
+
+    manual = [
+        {"id": 1, "effective_from": D0, "spec": {**quit_ladder, "stage_set": True, "current_level": 2}},
+        {"id": 2, "effective_from": D0 + timedelta(days=10), "spec": {**quit_ladder, "stage_set": False, "current_level": 1, "level_set": {"from": 2, "to": 1}}},
+    ]
+    mdays = cv.build_days("quit", manual, {}, {}, [], D0 + timedelta(days=20))
+    mlog: list = []
+    mst, _ = cv.staged_versions(manual, mdays, D0 + timedelta(days=20), None, mlog)
+    check(
+        "a level moved down by hand is earned again from that day",
+        level_on(mst, 10) == 1 and level_on(mst, 15) == 1 and level_on(mst, 16) == 2
+        and [(c["auto"], c["to"]) for c in mlog] == [(False, 1), (True, 2)],
+        str(mlog),
+    )
+    derived_edit = manual + [
+        {"id": 3, "effective_from": D0 + timedelta(days=19), "spec": {**quit_ladder, "stage_set": False, "current_level": 2, "level_set": False}}
+    ]
+    elog: list = []
+    eatt: dict = {}
+    cv.staged_versions(derived_edit, mdays, D0 + timedelta(days=20), eatt, elog)
+    check(
+        "an edit that stores the derived level is not a level change",
+        eatt[D0 + timedelta(days=20)].start == D0 + timedelta(days=16) and [c["to"] for c in elog] == [1, 2],
+        str(elog),
+    )
+
+    pending_streak = {**quit_ladder, "stage": "planned", "start_date": (D0 + timedelta(days=10)).isoformat()}
+    pst, _, patt, _ = qwalk([], 22, pending_streak)
+    check(
+        "days before the start of a planned habit do not count towards the streak",
+        patt[D0 + timedelta(days=10)].streak == 0 and level_on(pst, 16) == 1 and level_on(pst, 17) == 2,
+        str([(n, patt[D0 + timedelta(days=n)].streak) for n in (9, 10, 11, 16, 17)]),
+    )
+
+    def walk_levels(*stored_specs):
+        vers_ = [
+            {"id": i + 1, "effective_from": D0 + timedelta(days=on), "spec": {**quit_ladder, "stage_set": False, **extra}}
+            for i, (on, extra) in enumerate(stored_specs)
+        ]
+        until = D0 + timedelta(days=5)
+        days_ = cv.build_days("quit", vers_, {}, {}, [], until)
+        att_, log_ = {}, []
+        st_, _ = cv.staged_versions(vers_, days_, until, att_, log_)
+        return st_, att_, log_
+
+    st_old, att_old, log_old = walk_levels((0, {"current_level": 1}), (3, {"current_level": 2}))
+    check(
+        "an old version without the mark moves the level when its stored level differs",
+        level_on(st_old, 3) == 2 and att_old[D0 + timedelta(days=4)].start == D0 + timedelta(days=3)
+        and [(c["from"], c["to"], c["auto"]) for c in log_old] == [(1, 2, False)],
+        str(log_old),
+    )
+    st_off, att_off, log_off = walk_levels((0, {"current_level": 1}), (3, {"current_level": 2, "level_set": False}))
+    check(
+        "a version marked level_set false never moves the level",
+        level_on(st_off, 3) == 1 and att_off[D0 + timedelta(days=4)].start is None and not log_off,
+        str(log_off),
+    )
+    st_mv, _att_mv, log_mv = walk_levels((0, {"current_level": 1}), (3, {"current_level": 2, "level_set": {"from": 1, "to": 2}}))
+    st_miss, att_miss, log_miss = walk_levels(
+        (0, {"current_level": 1}), (3, {"current_level": 2, "level_set": {"from": 2, "to": 3}})
+    )
+    check(
+        "a level move holds only from the level it was made from; otherwise the derived level stays and a new attempt begins",
+        level_on(st_mv, 3) == 2
+        and level_on(st_miss, 3) == 1
+        and not log_miss
+        and att_miss[D0 + timedelta(days=4)].start == D0 + timedelta(days=3),
+        str((log_mv, log_miss)),
+    )
+
+    ladder_q = cv.build_ladder("quit", {**quit_ladder, "current_level": 1}, "formation", "", 5)
+    check(
+        "the ladder shows the streak rungs, the streak and the next goal",
+        [x["requirement"] for x in ladder_q["levels"]] == ["без зриву", "7 дн. без зриву поспіль", "15 дн. без зриву поспіль"]
+        and [x["name"] for x in ladder_q["levels"]] == ["Start", "Week", None]
+        and [x["streak_days"] for x in ladder_q["levels"]] == [None, 7, 15]
+        and ladder_q["auto"] is True
+        and ladder_q["streak"] == 5
+        and ladder_q["next_streak"] == 7
+        and not ladder_q["can_upgrade"]
+        and ladder_q["upgrade_blocker"] == "Рівень підвищиться сам після серії 7 дн. без зриву",
+        str(ladder_q),
+    )
+    top = cv.build_ladder("quit", {**quit_ladder, "current_level": 3}, "formation", "", 20)
+    check("the last rung has no automatic goal", top["auto"] is None and top["next_streak"] is None and top["streak"] == 20)
+
+    def bad_rungs(kind, rungs) -> bool:
+        base = {**SPEC, "levels": rungs}
+        try:
+            cv.validate_spec(kind, base)
+        except cv.PassportError:
+            return True
+        return False
+
+    lvl = {"wake_by": "08:00"}
+    check(
+        "streak_days is an integer from 1 to 36500 that grows along the ladder",
+        all(bad_rungs("quit", [{"name": "a"}, {"streak_days": v}]) for v in (0, 36501, 1.5, 7.0, "7", True))
+        and bad_rungs("quit", [{"streak_days": 7}, {"streak_days": 7}])
+        and bad_rungs("quit", [{"streak_days": 30}, {"streak_days": 7}])
+        and not bad_rungs("quit", [{"name": "a"}, {"streak_days": 7}, {"streak_days": 36500}]),
+    )
+    check(
+        "streak_days belongs to quit habits only; any other rung needs its requirement",
+        all(bad_rungs(kind, [{"level": lvl}, {"level": lvl, "streak_days": 7}]) for kind in ("sleep", "build", "boolean"))
+        and not bad_rungs("quit", [{"name": "a"}, {"streak_days": 7}])
+        and bad_rungs("sleep", [{"level": lvl}, {}])
+        and bad_rungs("build", [{}]),
     )
 
     print("\n[4b] Review regressions")
@@ -1036,6 +1236,7 @@ def main() -> int:
                 {
                     "number": 1,
                     "name": None,
+                    "streak_days": None,
                     "requirement": "підйом до 08:00, сон ≥ 7 год",
                     "tolerance": None,
                     "minimum": "підйом до 09:00, сон ≥ 5.5 год",
@@ -1045,6 +1246,9 @@ def main() -> int:
             "can_upgrade": False,
             "upgrade_blocker": "Наступного рівня в паспорті немає",
             "can_downgrade": False,
+            "auto": None,
+            "streak": None,
+            "next_streak": None,
         },
         str(cv.build_ladder("sleep", SPEC, "integrated")),
     )
@@ -1058,18 +1262,6 @@ def main() -> int:
         and cv.build_ladder("sleep", {**laddered, "current_level": 1}, "integrated")["can_upgrade"],
         str(ladder),
     )
-    lvers = [
-        {"id": 1, "effective_from": D0, "reason": "start", "author": "user", "spec": SPEC},
-        {"id": 2, "effective_from": D0 + timedelta(days=5), "reason": "up", "author": "api", "spec": laddered},
-        {"id": 3, "effective_from": D0 + timedelta(days=6), "reason": "edit", "author": "user", "spec": laddered},
-    ]
-    check(
-        "level changes come from the versions that move current_level",
-        cv.level_changes(lvers)
-        == [{"date": (D0 + timedelta(days=5)).isoformat(), "from": 1, "to": 2, "reason": "up", "author": "api"}],
-        str(cv.level_changes(lvers)),
-    )
-
     fall_nights = [night(D0 + timedelta(i), "23:00", "07:00") for i in range(10)]
     fall_nights += [night(D0 + timedelta(i), "04:00", "12:00") for i in range(10, 30)]
     fall_vers = versions((D0, SPEC))
@@ -1757,7 +1949,7 @@ def main() -> int:
             and first["ladder"]["count"] == 2
             and first["ladder"]["levels"][0]["requirement"] == "заснути до 23:30, підйом до 08:00, сон ≥ 7 год"
             and first["ladder"]["levels"][1]["name"] == "Firm"
-            and first["ladder"]["upgrade_blocker"] == "Підвищити рівень можна лише інтегрованій звичці"
+            and first["ladder"]["upgrade_blocker"] == "Формування провалено — потрібне рішення"  # 50 days in formation
             and not first["ladder"]["can_upgrade"]
             and first["level_changes"] == [],
             str(first["ladder"]),
@@ -1855,6 +2047,7 @@ def main() -> int:
                     "to": 2,
                     "reason": "ready",
                     "author": "user",
+                    "auto": False,
                 }
             ],
             str((up["ladder"], up["level_changes"])),
@@ -2107,11 +2300,11 @@ def main() -> int:
         fell = client.post(f"/cultivation/habits/{rid}/level", json={"direction": "down", "reason": "too hard"})
         soft = fell.json()
         check(
-            "the fallback puts the habit back on the easier level as integrated",
+            "the fallback after a failed attempt puts the habit back in stabilization on the easier level",
             fell.status_code == 201
-            and soft["stage"] == "integrated"
+            and soft["stage"] == "stabilization"
             and soft["passport"]["current_level"] == 1
-            and soft["rank_level"] == 1
+            and soft["rank_level"] == 0
             and soft["attempt"]["failed_on"] is None
             and soft["attempt"]["start"] == local_today.isoformat(),
             fell.text[:300],
@@ -2121,6 +2314,7 @@ def main() -> int:
             json={"patch": {"current_level": 2, cv.STAGE_SET: True}, "reason": "sneaky"},
         )
         check("a passport edit cannot fake a level change", forged.status_code == 409, forged.text[:200])
+        client.post(f"/cultivation/habits/{rid}/stage", json={"stage": "integrated", "reason": "earned again"})
         client.post(f"/cultivation/habits/{rid}/level", json={"direction": "up", "reason": "again"})
         stripped = client.post(
             f"/cultivation/habits/{rid}/versions", json={"patch": {"levels": None}, "reason": "no ladder"}
@@ -2154,6 +2348,291 @@ def main() -> int:
         )
         client.post(f"/cultivation/habits/{plain['id']}/archive")
         client.post(f"/cultivation/habits/{rid}/archive")
+
+        # Levels by streak: a quit habit whose ladder rises by itself.
+        began = local_today - timedelta(days=20)
+        streak_rungs = [{"name": "Base"}, {"name": "Week", "streak_days": 7}, {"streak_days": 15}]
+        streaker = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "quit",
+                "reason": "streak ladder",
+                "effective_from": began.isoformat(),
+                "spec": {
+                    "name": "Streak",
+                    "stage": "formation",
+                    "start_date": began.isoformat(),
+                    "levels": streak_rungs,
+                    "current_level": 1,
+                },
+            },
+        )
+        check("a quit habit with a streak ladder and no level requirements is created", streaker.status_code == 201, streaker.text[:300])
+        sid = streaker.json()["id"]
+        streaked = streaker.json()
+        check(
+            "the streak raised the level twice by itself, with no stored version",
+            streaked["passport"]["current_level"] == 3
+            and streaked["ladder"]["current"] == 3
+            and len(streaked["versions"]) == 1
+            and [(c["to"], c["auto"], c["author"]) for c in streaked["level_changes"]] == [(2, True, "auto"), (3, True, "auto")]
+            and streaked["level_changes"][0]["date"] == (began + timedelta(days=6)).isoformat()
+            and streaked["level_changes"][0]["reason"] == "Серія без зриву 7 дн. — рівень 2"
+            and streaked["attempt"]["start"] == (began + timedelta(days=14)).isoformat()
+            and streaked["stage"] == "formation"
+            and streaked["ladder"]["auto"] is None
+            and streaked["ladder"]["streak"] == 20,
+            str((streaked["level_changes"], streaked["attempt"], streaked["ladder"]["streak"])),
+        )
+        edit_text = client.post(
+            f"/cultivation/habits/{sid}/versions", json={"patch": {"description": "note"}, "reason": "describe"}
+        )
+        edited_streak = edit_text.json()
+        check(
+            "a passport edit that stores the derived level begins no attempt and is no level change",
+            edit_text.status_code == 201
+            and edited_streak["passport"]["current_level"] == 3
+            and edited_streak["attempt"]["start"] == streaked["attempt"]["start"]
+            and edited_streak["level_changes"] == streaked["level_changes"],
+            edit_text.text[:300],
+        )
+        back_one = client.post(f"/cultivation/habits/{sid}/level", json={"direction": "down", "reason": "easier"})
+        check(
+            "a voluntary step back from the streak level is a new attempt that is earned again",
+            back_one.status_code == 201
+            and back_one.json()["passport"]["current_level"] == 2
+            and back_one.json()["attempt"]["start"] == local_today.isoformat()
+            and back_one.json()["level_changes"][-1]["auto"] is False,
+            back_one.text[:300],
+        )
+        client.post(f"/cultivation/habits/{sid}/archive")
+
+        recent = local_today - timedelta(days=5)
+        slow = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "quit",
+                "reason": "slow ladder",
+                "effective_from": recent.isoformat(),
+                "spec": {
+                    "name": "Slow",
+                    "stage": "integrated",
+                    "start_date": recent.isoformat(),
+                    "levels": [{"name": "Base"}, {"name": "Month", "streak_days": 30}],
+                    "current_level": 1,
+                },
+            },
+        )
+        slow_out = slow.json()
+        check(
+            "the ladder shows the streak and the goal of the next automatic level",
+            slow.status_code == 201
+            and slow_out["ladder"]["auto"] is True
+            and slow_out["ladder"]["streak"] == 5
+            and slow_out["ladder"]["next_streak"] == 30
+            and slow_out["ladder"]["levels"][1]["requirement"] == "30 дн. без зриву поспіль"
+            and slow_out["ladder"]["levels"][1]["streak_days"] == 30
+            and slow_out["ladder"]["levels"][1]["name"] == "Month"
+            and not slow_out["ladder"]["can_upgrade"],
+            str(slow_out.get("ladder")),
+        )
+        by_hand_up = client.post(f"/cultivation/habits/{slow_out['id']}/level", json={"direction": "up", "reason": "now"})
+        check(
+            "a level with a streak cannot be raised by hand",
+            by_hand_up.status_code == 409
+            and by_hand_up.json()["detail"] == "Рівень підвищиться сам після серії 30 дн. без зриву",
+            by_hand_up.text[:200],
+        )
+        def quit_ladder_habit(name: str, days_ago: int, threshold: int = 7):
+            start = local_today - timedelta(days=days_ago)
+            made_ = client.post(
+                "/cultivation/habits",
+                json={
+                    "kind": "quit",
+                    "reason": name,
+                    "effective_from": start.isoformat(),
+                    "spec": {
+                        "name": name,
+                        "stage": "formation",
+                        "start_date": start.isoformat(),
+                        "levels": [{"name": "Base"}, {"streak_days": threshold}],
+                        "current_level": 1,
+                    },
+                },
+            )
+            return made_.json(), start
+
+        raised, start_a = quit_ladder_habit("Raised", 10)
+        up_day = start_a + timedelta(days=6)
+        check(
+            "the streak ladder habit rose on the seventh clean day",
+            raised["passport"]["current_level"] == 2
+            and raised["attempt"]["start"] == up_day.isoformat()
+            and raised["ladder"]["streak"] == 10,
+            str((raised.get("attempt"), raised["ladder"])),
+        )
+        edit_on = client.post(
+            f"/cultivation/habits/{raised['id']}/versions",
+            json={"patch": {"description": "note"}, "reason": "edit", "effective_from": up_day.isoformat()},
+        )
+        edited_on = edit_on.json()
+        check(
+            "an edit on the day of the automatic level keeps the level and the streak",
+            edit_on.status_code == 201
+            and edited_on["passport"]["current_level"] == 2
+            and edited_on["ladder"]["streak"] == 10
+            and edited_on["attempt"]["start"] == up_day.isoformat()
+            and [c["auto"] for c in edited_on["level_changes"]] == [True],
+            edit_on.text[:300],
+        )
+        stage_on_day = client.post(
+            f"/cultivation/habits/{raised['id']}/stage",
+            json={"stage": "stabilization", "reason": "by hand", "effective_from": (up_day + timedelta(days=1)).isoformat()},
+        )
+        staged_on = stage_on_day.json()
+        check(
+            "a stage set by hand the next day keeps the level and the streak too",
+            stage_on_day.status_code == 201
+            and staged_on["passport"]["current_level"] == 2
+            and staged_on["ladder"]["streak"] == 10
+            and [c["auto"] for c in staged_on["level_changes"]] == [True]
+            and staged_on["stage"] == "stabilization",
+            stage_on_day.text[:300],
+        )
+        moved_level = client.post(
+            f"/cultivation/habits/{raised['id']}/versions",
+            json={"patch": {"current_level": 1}, "reason": "sneaky"},
+        )
+        check(
+            "a passport edit cannot change the level of a streak ladder",
+            moved_level.status_code == 409 and moved_level.json()["detail"] == cv.LEVEL_MOVE_REFUSED,
+            moved_level.text[:200],
+        )
+        client.post(f"/cultivation/habits/{raised['id']}/archive")
+
+        lowered, start_b = quit_ladder_habit("Lowered", 10)
+        up_b = start_b + timedelta(days=6)
+        stepped = client.post(
+            f"/cultivation/habits/{lowered['id']}/level",
+            json={"direction": "down", "reason": "easier", "effective_from": up_b.isoformat()},
+        )
+        stepped_out = stepped.json()
+        check(
+            "a step back on the day of the automatic level sticks and the streak restarts that day",
+            stepped.status_code == 201
+            and stepped_out["passport"]["current_level"] == 1
+            and stepped_out["ladder"]["streak"] == 4
+            and stepped_out["attempt"]["start"] == up_b.isoformat()
+            and [(c["from"], c["to"], c["auto"]) for c in stepped_out["level_changes"]] == [(2, 1, False)]
+            and stepped_out["level_changes"][0]["date"] == up_b.isoformat(),
+            str((stepped_out["passport"]["current_level"], stepped_out["ladder"]["streak"], stepped_out["attempt"], stepped_out["level_changes"])),
+        )
+        client.post(f"/cultivation/habits/{lowered['id']}/archive")
+
+        later, start_c = quit_ladder_habit("Later", 10)
+        client.post(
+            f"/cultivation/habits/{later['id']}/versions",
+            json={"patch": {"description": "note"}, "reason": "edit", "effective_from": (start_c + timedelta(days=8)).isoformat()},
+        )
+        relapse = client.post(
+            f"/cultivation/habits/{later['id']}/marks",
+            json={"date": (start_c + timedelta(days=3)).isoformat(), "status": "fail", "reason": "slip"},
+        )
+        after_relapse = client.get(f"/cultivation/habits/{later['id']}").json()
+        check(
+            "a relapse added afterwards does not turn an earlier edit into a manual level up",
+            relapse.status_code == 201
+            and after_relapse["passport"]["current_level"] == 1
+            and after_relapse["level_changes"] == []
+            and after_relapse["attempt"]["start"] == start_c.isoformat(),
+            str((after_relapse["level_changes"], after_relapse["attempt"])),
+        )
+        client.post(f"/cultivation/habits/{later['id']}/archive")
+
+        lates = local_today - timedelta(days=20)
+        tall = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "quit",
+                "reason": "three rungs",
+                "effective_from": lates.isoformat(),
+                "spec": {
+                    "name": "Tall",
+                    "stage": "formation",
+                    "start_date": lates.isoformat(),
+                    "levels": [{"name": "Base"}, {"streak_days": 7}, {"streak_days": 14}],
+                    "current_level": 1,
+                },
+            },
+        ).json()
+        step_down = client.post(f"/cultivation/habits/{tall['id']}/level", json={"direction": "down", "reason": "easier"})
+        for n in (5, 10, 15):
+            client.post(
+                f"/cultivation/habits/{tall['id']}/marks",
+                json={"date": (lates + timedelta(days=n)).isoformat(), "status": "fail", "reason": "slip"},
+            )
+        tall_after = client.get(f"/cultivation/habits/{tall['id']}").json()
+        check(
+            "late relapses cannot turn a step back into a rise onto an automatic level",
+            tall["passport"]["current_level"] == 3
+            and step_down.status_code == 201
+            and step_down.json()["passport"]["current_level"] == 2
+            and tall_after["passport"]["current_level"] == 1
+            and all(c["to"] < c["from"] or c["auto"] for c in tall_after["level_changes"]),
+            str((tall_after["passport"]["current_level"], tall_after["level_changes"])),
+        )
+        client.post(f"/cultivation/habits/{tall['id']}/archive")
+
+        switching, start_s = quit_ladder_habit("Switching", 10)
+        manual_ladder = client.post(
+            f"/cultivation/habits/{switching['id']}/versions",
+            json={"patch": {"levels": [{"name": "Base"}, {"name": "Top"}]}, "reason": "manual ladder"},
+        )
+        manual_out = manual_ladder.json()
+        check(
+            "switching a streak ladder to a manual one keeps the level and begins no attempt",
+            manual_ladder.status_code == 201
+            and manual_out["passport"]["current_level"] == 2
+            and manual_out["attempt"]["start"] == (start_s + timedelta(days=6)).isoformat()
+            and [c["auto"] for c in manual_out["level_changes"]] == [True],
+            manual_ladder.text[:300],
+        )
+        client.post(f"/cultivation/habits/{switching['id']}/archive")
+
+        def refused_ladder(kind: str, rung: dict) -> int:
+            return client.post(
+                "/cultivation/habits",
+                json={
+                    "kind": kind,
+                    "reason": "no streak here",
+                    "spec": {"name": "Bad", "stage": "formation", "levels": [{"level": {}}, rung], "current_level": 1},
+                },
+            ).status_code
+
+        check(
+            "streak_days on a rung of any other kind is refused",
+            refused_ladder("boolean", {"level": {}, "streak_days": 7}) == 422
+            and refused_ladder("build", {"level": {"min_amount": 2}, "streak_days": 7}) == 422
+            and refused_ladder("sleep", {"level": {"wake_by": "08:00"}, "streak_days": 7}) == 422
+            and refused_ladder("quit", {"streak_days": 7.0}) == 422
+            and refused_ladder("quit", {"streak_days": True}) == 422
+            and refused_ladder("quit", {"streak_days": 7}) == 201,
+        )
+        sixth = TestClient(app)
+        sixth.post(
+            "/auth/register", json={"username": "sixth", "email": "sixth@example.com", "password": "sixth-password"}
+        )
+        carried = restore(sixth, client.get("/export/?data_type=all&format=json").json())
+        carried_habit = next((h for h in sixth.get("/cultivation/habits").json() if h["name"] == "Slow"), None)
+        carried_full = sixth.get(f"/cultivation/habits/{carried_habit['id']}").json() if carried_habit else {}
+        check(
+            "an export with streak rungs imports and keeps them",
+            carried.status_code == 200
+            and carried_full.get("passport", {}).get("levels") == [{"name": "Base"}, {"name": "Month", "streak_days": 30}]
+            and carried_full["ladder"]["next_streak"] == 30,
+            str(carried_full.get("passport")),
+        )
+        client.post(f"/cultivation/habits/{slow_out['id']}/archive")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
