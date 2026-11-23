@@ -152,6 +152,12 @@ export function useCultivationOverview() {
     reload();
   }, [reload]);
 
+  // A tracker pause or resume changes the habits in the overview.
+  useEffect(() => {
+    window.addEventListener('habits-changed', reload);
+    return () => window.removeEventListener('habits-changed', reload);
+  }, [reload]);
+
   return { overview, error, isLoading, reload };
 }
 

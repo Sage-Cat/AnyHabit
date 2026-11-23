@@ -16,6 +16,7 @@ import {
 import { fetchProgressApi } from '../../services/cultivationApi';
 import { formatChartDate } from '../../utils/labels';
 import { pluralCount } from '../../utils/plural';
+import { PausedBadge } from './common';
 import { habitColorMap } from './habitColors';
 import { CARD_CLASS, formatPercent } from './helpers';
 import { DAY_MS, STAGE_COLOUR, STAGE_META, toIso, toTime } from './stageMeta';
@@ -201,9 +202,12 @@ function ReadinessNow({ habits, colours }) {
           return (
             <li key={habit.id} className="space-y-1.5" data-testid="readiness-row">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <Link to={`/practice/${habit.id}`} className="font-medium text-stone-800 hover:underline">
-                  {habit.name}
-                </Link>
+                <span className="flex items-center gap-2">
+                  <Link to={`/practice/${habit.id}`} className="font-medium text-stone-800 hover:underline">
+                    {habit.name}
+                  </Link>
+                  {habit.paused && <PausedBadge />}
+                </span>
                 <span className="text-xs text-gray-500">
                   {habit.stage_label}
                   {progress && ` → ${progress.target_label}`}

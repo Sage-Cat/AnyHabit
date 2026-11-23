@@ -61,6 +61,8 @@ function HomeRankCard({ rank }) {
 function HomeTodayCard({ overview, onSleep, onChanged }) {
   const { notify } = useAppState();
   const [busyId, setBusyId] = useState(null);
+  // A paused habit does not remind about itself.
+  const activeHabits = overview.active.filter((habit) => !habit.paused);
 
   const markDone = async (habit) => {
     setBusyId(habit.id);
@@ -83,11 +85,11 @@ function HomeTodayCard({ overview, onSleep, onChanged }) {
           Усі звички
         </Link>
       </div>
-      {overview.active.length === 0 ? (
+      {activeHabits.length === 0 ? (
         <p className="mt-2 text-sm text-gray-500">Активних звичок немає.</p>
       ) : (
         <ul className="mt-2 divide-y divide-gray-100">
-          {overview.active.map((habit) => {
+          {activeHabits.map((habit) => {
             const day = habit.today?.day;
             const done = day?.status === 'success';
             const requirement = habit.today?.requirement;

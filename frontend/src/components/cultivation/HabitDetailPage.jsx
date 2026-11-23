@@ -20,7 +20,7 @@ import { formatDateTime } from '../../utils/date';
 import LevelFields from './LevelFields';
 import { buildLevel, hasLevelValue, levelFromSpec, levelKeys } from './levelHelpers';
 import SleepEntryModal from './SleepEntryModal';
-import { DayStatusPill, Field, LevelBadge, ModeBadge, StageBadge } from './common';
+import { DayStatusPill, Field, LevelBadge, ModeBadge, PausedBadge, StageBadge } from './common';
 import {
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
@@ -496,7 +496,8 @@ function EditPassport({ habit, onSaved }) {
     setMinimum(levelFromSpec(spec.minimum));
     setTolerance(levelFromSpec(spec.tolerance));
     setRungs((spec.levels || []).map(rungFromSpec));
-    setJson(JSON.stringify(spec, null, 2));
+    // The pause belongs to the tracker toggle, not to the passport.
+    setJson(JSON.stringify({ ...spec, paused: undefined }, null, 2));
     setReason('');
     setEffectiveFrom('');
     setError('');
@@ -525,6 +526,7 @@ function EditPassport({ habit, onSaved }) {
       try {
         const parsed = JSON.parse(json);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+        delete parsed.paused;
         payload.spec = parsed;
       } catch {
         setError('JSON паспорта некоректний');
@@ -1017,6 +1019,7 @@ function HabitDetailPage() {
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StageBadge stage={habit.stage} label={habit.stage_label} />
                 <LevelBadge ladder={habit.ladder} />
+                {habit.paused && <PausedBadge />}
                 {(habit.mode || habit.today?.degraded) && <ModeBadge />}
                 <span className="text-xs text-gray-400">{KIND_LABELS[habit.kind] || habit.kind}</span>
                 {habit.archived && (
@@ -1070,7 +1073,7 @@ function HabitDetailPage() {
           className="mx-auto grid w-full max-w-screen-2xl items-start gap-5 xl:grid-cols-2"
           data-testid="habit-content"
         >
-          {attempt?.failed_on && !habit.archived && <AttemptDecision habit={habit} onDone={refresh} />}
+          {attempt?.failed_on && !habit.paused && !habit.archived && <AttemptDecision habit={habit} onDone={refresh} />}
 
           <Section title="Сьогодні" testId="today-block">
             <p className="text-sm text-gray-500">
@@ -1089,6 +1092,12 @@ function HabitDetailPage() {
               <DayStatusPill day={habit.today?.day} />
             </div>
             {habit.today?.day?.detail && <p className="mt-1 text-xs text-gray-500">{habit.today.day.detail}</p>}
+            {habit.paused && (
+              <p className="mt-2 text-xs text-gray-500" data-testid="habit-paused-note">
+                Звичка на паузі: дні не оцінюються, етап не змінюється, і в ранг вона не рахується. Після відновлення
+                критерії рахуються з дня відновлення.
+              </p>
+            )}
             {lastStageChange?.auto && (
               <p className="mt-3 text-xs text-gray-500" data-testid="stage-change">
                 Етап «{lastStageChange.to_label}» з {formatDay(lastStageChange.date)} — автоматично.{' '}
@@ -1100,7 +1109,7 @@ function HabitDetailPage() {
                 <span className="font-semibold">Наступного дня етап зміниться сам:</span> {habit.recommendation.reason}
               </p>
             )}
-            {attempt && !attempt.failed_on && attempt.day != null && attempt.days != null && (
+            {attempt && !habit.paused && !attempt.failed_on && attempt.day != null && attempt.days != null && (
               <p className="mt-3 text-xs text-gray-500" data-testid="attempt-day">
                 Спроба: день {attempt.day} з {attempt.days}
                 {attempt.deadline ? `, до ${formatDay(attempt.deadline)}` : ''}

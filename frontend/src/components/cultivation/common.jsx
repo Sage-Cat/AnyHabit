@@ -33,6 +33,18 @@ export function LevelBadge({ ladder }) {
   );
 }
 
+/** The habit's tracker is paused: its days are not judged. */
+export function PausedBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
+      data-testid="habit-paused"
+    >
+      На паузі
+    </span>
+  );
+}
+
 export function ModeBadge() {
   return (
     <span className="inline-flex items-center rounded-full bg-lime-50 px-2.5 py-0.5 text-xs font-medium text-lime-700">

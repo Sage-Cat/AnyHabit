@@ -59,7 +59,9 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
         if (cancelled) return;
         setFailedTrackerIds(
           new Set(
-            habits.filter((habit) => habit.attempt?.failed_on && habit.tracker?.id).map((habit) => habit.tracker.id)
+            habits
+              .filter((habit) => habit.attempt?.failed_on && !habit.paused && habit.tracker?.id)
+              .map((habit) => habit.tracker.id)
           )
         );
       })

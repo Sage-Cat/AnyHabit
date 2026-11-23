@@ -5,7 +5,7 @@ import { useAppState } from '../../state/appState';
 import CultivationProgress from './CultivationProgress';
 import NewHabitModal from './NewHabitModal';
 import RankCard from './RankCard';
-import { DayStatusPill, LevelBadge, StageBadge } from './common';
+import { DayStatusPill, LevelBadge, PausedBadge, StageBadge } from './common';
 import { BUTTON_PRIMARY, CARD_CLASS, formatPercent, useCultivationOverview } from './helpers';
 
 function CompactList({ title, habits, testId }) {
@@ -25,6 +25,7 @@ function CompactList({ title, habits, testId }) {
               {habit.stage === 'integrated' && <DayStatusPill day={habit.today?.day} />}
               <StageBadge stage={habit.stage} label={habit.stage_label} />
               <LevelBadge ladder={habit.ladder} />
+              {habit.paused && <PausedBadge />}
             </span>
           </li>
         ))}

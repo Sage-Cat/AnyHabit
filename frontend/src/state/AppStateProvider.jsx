@@ -179,10 +179,18 @@ export function AppStateProvider({ children }) {
     });
 
   const handleToggleTrackerStatus = async (tracker) =>
-    runAction(() => trackerData.toggleTrackerStatus(tracker), {
-      success: tracker.is_active ? 'Звичку призупинено' : 'Звичку відновлено',
-      failure: 'Не вдалося оновити звичку'
-    });
+    runAction(
+      async () => {
+        const result = await trackerData.toggleTrackerStatus(tracker);
+        // Pausing also pauses the cultivated habit: cultivation views reload.
+        window.dispatchEvent(new Event('habits-changed'));
+        return result;
+      },
+      {
+        success: tracker.is_active ? 'Звичку призупинено' : 'Звичку відновлено',
+        failure: 'Не вдалося оновити звичку'
+      }
+    );
 
   const handleResetTracker = async (trackerId) => {
     const accepted = await confirm({
