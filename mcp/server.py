@@ -34,10 +34,11 @@ mcp = MCPServer(
         "set by hand is an override the criteria then continue from. A habit may "
         "have a ladder of levels: moving up is allowed only for an integrated habit "
         "and only with the user's approval; it starts formation of the new level "
-        "from that day while the rank keeps counting the previous level; moving "
-        "down is allowed from level 2 up. A failed formation attempt (`attempt.failed_on`) needs the "
+        "from that day while the rank keeps counting the previous level; a quit "
+        "habit's rung with `streak_days` is reached by itself after that many days "
+        "in a row without a relapse (a manual level change restarts the count); moving down is allowed from level 2 up. A failed formation attempt (`attempt.failed_on`) needs the "
         "user's decision: a new attempt (start_new_attempt) on level 1, a return to "
-        "the previous level (change_habit_level down) above it; never act without "
+        "the previous level's stabilization (change_habit_level down, the rank can drop) above it; never act without "
         "the user's explicit approval. Ranks count integrated habits per level "
         "(`rank_level`)."
     ),
@@ -580,7 +581,9 @@ def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any
     monthly dynamics, integration criteria check and the stage changes.
 
     Also `ladder` (levels, current level, can_upgrade / upgrade_blocker,
-    can_downgrade) and `level_changes` (each move between levels).
+    can_downgrade; for a quit habit's automatic rungs `auto`, the current
+    `streak` and the `next_streak` needed) and `level_changes` (each move
+    between levels, `auto` for a move made by the streak).
     """
     return api.get(f"/cultivation/habits/{habit_id}", params={"history_days": history_days})
 
@@ -706,8 +709,9 @@ def create_cultivated_habit(
     spec keys: name, description, why, trait, priority, stage, goal, level,
     minimum, subgoals, levels, current_level, rules, stabilization, integration,
     maintenance — see get_cultivation_vocabulary for defaults. levels is an
-    optional ladder: a list of {name?, level, tolerance?, minimum?}; current_level
-    is 1-based. A sleep level may set bed_by (HH:MM, fall asleep no later than).
+    optional ladder: a list of {name?, level, tolerance?, minimum?} (a quit
+    habit's rung: {name?, streak_days?}, reached by itself after that many days
+    in a row without a relapse); current_level is 1-based. A sleep level may set bed_by (HH:MM, fall asleep no later than).
     Requires the user's approval.
     """
     _require_user_confirmation(user_confirmed, "Creating a habit passport")
@@ -736,7 +740,12 @@ def change_habit_passport(
     """Append a new passport version (merge patch or full spec) with its reason.
 
     Goals, criteria and sub-goals change only with the user's explicit approval.
-    The patch may edit the ladder (`levels`) and a sleep level's `bed_by`. The
+    The patch may edit the ladder (`levels`) and a sleep level's `bed_by`. A rung
+    of a quit habit may carry `streak_days` (days in a row without a relapse;
+    refused on other kinds): when the next rung has it, the habit moves up by
+    itself once the streak reaches it and starts formation of that level; quit
+    rungs need only a name and optional `streak_days`. A manual level change
+    restarts the streak. The
     passport's own level, tolerance and minimum follow its current rung; the
     level itself moves only with change_habit_level, and `levels: null` removes
     the ladder.
@@ -790,10 +799,11 @@ def change_habit_level(
 
     Up needs an integrated habit that has a next level; the new level starts
     its formation from that day, while the rank keeps counting the previous
-    level. Down (only from level 2) returns to the lower level, integrated
-    again if the habit was credited there; it is also how a failed attempt
-    above level 1 (attempt action `fallback`) is confirmed. Requires the
-    user's approval.
+    level. Up onto an automatic (`streak_days`) rung is refused. Down (only from
+    level 2) after a failed attempt (attempt action `fallback`) returns the habit
+    to stabilization of the previous level (the rank can drop); a voluntary down
+    otherwise returns it to the lower level, integrated again if the habit was
+    credited there. Requires the user's approval.
     """
     _require_user_confirmation(user_confirmed, "Changing a habit level")
     return api.post(

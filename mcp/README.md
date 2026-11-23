@@ -180,8 +180,10 @@ its reason. Stages move by themselves once the passport's criteria are met;
 each move is listed in the habit's `stage_changes`. A passport may hold a ladder
 of `levels` (with `current_level`; a sleep level may set `bed_by`). Moving up is
 allowed only for an integrated habit and starts formation of the new level
-while the rank keeps counting the previous one; moving down needs level 2 or
-higher and returns to the lower level. A failed formation attempt
+while the rank keeps counting the previous one; a quit habit's rung with
+`streak_days` is reached by itself after that many days in a row without a
+relapse (manual up onto it is refused, a manual level change restarts the count); moving down needs level 2 or higher and returns to the
+lower level, into stabilization after a failed attempt. A failed formation attempt
 (`attempt.failed_on`) needs the user's decision: `start_new_attempt` on level 1,
 `change_habit_level` down above it. Ranks count integrated habits per level
 (`rank_level`); the habit shows `ladder` and `level_changes`. The rank system itself can
