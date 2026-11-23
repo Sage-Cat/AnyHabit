@@ -122,3 +122,10 @@ def test_new_attempt_errors_pass_through(server, monkeypatch):
     monkeypatch.setattr(server.api, "post", refuse)
     with pytest.raises(RuntimeError, match="409"):
         server.start_new_attempt(3, "again", user_confirmed=True)
+
+
+def test_habit_archive_is_forwarded(server):
+    server.archive_cultivated_habit(4)
+    assert server.calls[-1][:2] == ("POST", "/cultivation/habits/4/archive")
+    server.unarchive_cultivated_habit(4)
+    assert server.calls[-1][:2] == ("POST", "/cultivation/habits/4/unarchive")
