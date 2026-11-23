@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from ..access import (
 from ..analytics import build_tracker_analytics
 from ..deps import get_current_user, get_db, get_period_context
 from ..time_utils import PeriodContext, to_utc, utcnow
-from .cultivation import tracker_day_states
+from .cultivation import _require_write, sync_pause, tracker_day_states
 
 router = APIRouter(prefix="/trackers", tags=["trackers"])
 
@@ -375,11 +375,14 @@ def reset_tracker(
 @router.put("/{tracker_id}/stop", response_model=schemas.Tracker)
 def stop_tracker(
     tracker_id: int,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     tracker = require_tracker_access(db, current_user.id, tracker_id, write=True)
+    _require_write(request)
     tracker.is_active = False
+    sync_pause(db, tracker, request)
     db.commit()
     db.refresh(tracker)
     return _decorate(db, tracker)
@@ -388,11 +391,14 @@ def stop_tracker(
 @router.put("/{tracker_id}/start", response_model=schemas.Tracker)
 def start_tracker(
     tracker_id: int,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     tracker = require_tracker_access(db, current_user.id, tracker_id, write=True)
+    _require_write(request)
     tracker.is_active = True
+    sync_pause(db, tracker, request)
     db.commit()
     db.refresh(tracker)
     return _decorate(db, tracker)
@@ -401,6 +407,7 @@ def start_tracker(
 @router.put("/{tracker_id}/archive", response_model=schemas.Tracker)
 def archive_tracker(
     tracker_id: int,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -412,6 +419,7 @@ def archive_tracker(
     tracker = require_tracker_access(db, current_user.id, tracker_id, write=True)
     tracker.archived_at = utcnow()
     tracker.is_active = False
+    sync_pause(db, tracker, request)
     db.commit()
     db.refresh(tracker)
 
@@ -427,12 +435,14 @@ def archive_tracker(
 @router.put("/{tracker_id}/unarchive", response_model=schemas.Tracker)
 def unarchive_tracker(
     tracker_id: int,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     tracker = require_tracker_access(db, current_user.id, tracker_id, write=True)
     tracker.archived_at = None
     tracker.is_active = True
+    sync_pause(db, tracker, request)
     db.commit()
     db.refresh(tracker)
     return _decorate(db, tracker)
@@ -442,6 +452,7 @@ def unarchive_tracker(
 def edit_tracker(
     tracker_id: int,
     entry: schemas.TrackerUpdate,
+    request: Request,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -479,6 +490,8 @@ def edit_tracker(
     for field_name, field_value in payload.items():
         setattr(tracker, field_name, field_value)
 
+    if "is_active" in payload:
+        sync_pause(db, tracker, request)
     db.commit()
     db.refresh(tracker)
     return _decorate(db, tracker)

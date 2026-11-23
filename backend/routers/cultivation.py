@@ -311,7 +311,9 @@ def _version_out(version: dict, with_spec: bool = True, keep_internal: bool = Fa
     if with_spec:
         spec = version["spec"]
         out["spec"] = (
-            spec if keep_internal else {k: v for k, v in spec.items() if k not in (cv.STAGE_SET, cv.LEVEL_SET)}
+            spec
+            if keep_internal
+            else {k: v for k, v in spec.items() if k not in (cv.STAGE_SET, cv.LEVEL_SET, cv.PAUSED)}
         )
     return out
 
@@ -366,13 +368,14 @@ def _attempt_out(data: dict, stage: str | None, level: int) -> dict:
     today, att = data["today"], _attempt_on(data)
     first = data["versions"][0]["effective_from"] if data["versions"] else today
     forming = stage == "formation" and att is not None and att.formation_since is not None
+    running = forming and not data["staged"][-1]["spec"].get(cv.PAUSED)  # no count of days or deadline while paused
     failed = att.failed_on if att else None
     return {
         "start": ((att.start if att else None) or first).isoformat(),
         "formation_since": att.formation_since.isoformat() if forming else None,
-        "deadline": att.deadline.isoformat() if forming else None,
-        "day": (today - att.formation_since).days + 1 if forming else None,
-        "days": att.formation_days if forming else None,
+        "deadline": att.deadline.isoformat() if running else None,
+        "day": (today - att.formation_since).days + 1 if running else None,
+        "days": att.formation_days if running else None,
         "failed_on": failed.isoformat() if failed else None,
         "level": level,
         "action": None if not failed else ("new_attempt" if level <= 1 else "fallback"),
@@ -407,6 +410,8 @@ def _analyse(
     level = cv.current_level_number(spec)
     credit = cv.simulate_stages(habit.id, data["staged"], today).get(today)
     failed = bool(att and att.failed_on)
+    paused = bool(spec.get(cv.PAUSED))
+    shown = {k: v for k, v in spec.items() if k != cv.PAUSED}
 
     return {
         "id": habit.id,
@@ -416,12 +421,13 @@ def _analyse(
         "name": spec.get("name", ""),
         "stage": stage,
         "stage_label": cv.STAGE_LABELS.get(stage, ""),
-        "passport": spec,
+        "paused": paused,
+        "passport": shown,
         "versions": [_version_out(v) for v in versions],
         "ladder": cv.build_ladder(habit.kind, spec, stage, unit, att.streak if att else None, failed),
         "level_changes": data["level_log"],
         "attempt": _attempt_out(data, stage, level),
-        "rank_level": credit.credit if credit else 0,
+        "rank_level": credit.credit if credit and not credit.paused else 0,
         # Every stage change, made by the criteria ("auto") or by hand.
         "stage_changes": [
             {
@@ -477,7 +483,9 @@ def _analyse(
         "monthly": cv.monthly(all_episodes, days),
         "integration": integration,
         # Nothing moves a habit whose formation failed, so nothing is recommended either.
-        "recommendation": cv.recommendation(spec, seen_days, episodes, today) if spec and not failed else None,
+        "recommendation": cv.recommendation(spec, seen_days, episodes, today)
+        if spec and not failed and not paused
+        else None,
         "readiness": cv.stage_readiness(spec, seen_days, episodes, today, failed) if spec else None,
         "days": [d.as_dict() for d in days[-history_days:]] if history_days else [],
         # A day marked by hand has no log, so the tracker's recent entries list these beside its logs.
@@ -496,6 +504,7 @@ def _compact(analysis: dict) -> dict:
         "name",
         "stage",
         "stage_label",
+        "paused",
         "today",
         "next_subgoal",
         "ladder",
@@ -691,6 +700,7 @@ def progress(
                 "color": row["tracker"]["color"] if row["tracker"] else "",
                 "stage": stage,
                 "stage_label": cv.STAGE_LABELS.get(stage, ""),
+                "paused": bool(spec.get("paused")),
                 "progress": cv.stage_progress(spec, row["seen_days"], row["episodes"], today, row["failed"])
                 if spec
                 else None,
@@ -732,6 +742,7 @@ def create_habit(
     spec.setdefault("stage", "formation")
     spec[cv.STAGE_SET] = True
     spec[cv.LEVEL_SET] = False
+    spec[cv.PAUSED] = False
     today = _today(current_user)
     spec.setdefault("start_date", today.isoformat())
     if payload.effective_from is not None:
@@ -758,6 +769,7 @@ def create_habit(
                 detail=f"Для звички типу «{payload.kind}» потрібна звичка-трекер типу «{tracker_type}»",
             )
         tracker_id = tracker.id
+        spec[cv.PAUSED] = not tracker.is_active  # a habit on a stopped tracker starts paused
     elif payload.create_tracker:
         level = spec.get("level") or {}
         tracker = models.Tracker(
@@ -887,10 +899,13 @@ def _add_version(
     effective_from: Optional[date],
     author: str,
     level_move: tuple[int, int] | None = None,
+    paused: bool | None = None,
 ) -> dict:
     # Like stage_set, the level_set mark belongs to this version alone: only the level button writes a move.
     spec = {k: v for k, v in spec.items() if k != cv.LEVEL_SET}
     spec[cv.LEVEL_SET] = {"from": level_move[0], "to": level_move[1]} if level_move else False
+    # The pause is the tracker switch's alone: every other writer keeps the value in force.
+    spec[cv.PAUSED] = bool((cv.latest_spec(_versions(db, habit)) or {}).get(cv.PAUSED)) if paused is None else paused
     try:
         cv.validate_spec(habit.kind, spec)
     except cv.PassportError as exc:
@@ -996,6 +1011,49 @@ def _current_spec(
     found = cv.spec_for(data["staged"], day) or cv.latest_spec(data["staged"]) or {}
     current = copy.deepcopy(found)
     return current, current.get("stage")
+
+
+def sync_habit_pause(db: Session, habit: models.CultivatedHabit, paused: bool, author: str) -> bool:
+    """Bring one habit's pause in step with its tracker: a version from today, only on a change.
+
+    Nothing is committed here and the passport is not validated again, so an old passport cannot
+    block the tracker switch; the caller commits the tracker and the version together.
+    """
+    user = db.get(models.User, habit.user_id)
+    raw = cv.latest_spec(_versions(db, habit)) or {}
+    if user is None or not raw or bool(raw.get(cv.PAUSED)) == paused:
+        return False
+    spec, _stage = _current_spec(db, user, habit, None)
+    # Not a hand-made move: a resume after a whole paused day begins a new attempt by itself.
+    spec[cv.STAGE_SET] = False
+    spec[cv.LEVEL_SET] = False
+    spec[cv.PAUSED] = paused
+    db.add(
+        models.CultivationPassportVersion(
+            habit_id=habit.id,
+            effective_from=_today(user).isoformat(),
+            reason="Звичку призупинено" if paused else "Звичку відновлено",
+            author=author,
+            spec_json=json.dumps(spec, ensure_ascii=False),
+        )
+    )
+    db.flush()
+    return True
+
+
+def sync_pause(db: Session, tracker: models.Tracker, request: Request) -> None:
+    """Pause or resume the habits a tracker feeds so that they follow it (a stopped or archived tracker pauses)."""
+    habits = (
+        db.query(models.CultivatedHabit)
+        .filter(models.CultivatedHabit.tracker_id == tracker.id, models.CultivatedHabit.archived_at.is_(None))
+        .all()
+    )
+    changes = [h for h in habits if bool((cv.latest_spec(_versions(db, h)) or {}).get(cv.PAUSED)) == tracker.is_active]
+    if not changes:
+        return
+    author = _require_write(request)
+    for habit in changes:
+        sync_habit_pause(db, habit, not tracker.is_active, author)
 
 
 @router.post("/habits/{habit_id}/stage", status_code=status.HTTP_201_CREATED)
@@ -1257,6 +1315,9 @@ def unarchive_habit(
     _require_write(request)
     habit = _get_habit(db, current_user, habit_id)
     habit.archived_at = None
+    tracker = db.get(models.Tracker, habit.tracker_id) if habit.tracker_id else None
+    if tracker is not None:
+        sync_habit_pause(db, habit, not tracker.is_active, _author(request))
     db.commit()
     return {"id": habit.id, "archived": False}
 

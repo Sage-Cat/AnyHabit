@@ -212,6 +212,8 @@ def validate_spec(kind: str, spec: dict) -> None:
         raise PassportError(f"Етап має бути одним із: {', '.join(STAGES)}")
     if spec.get("start_date") is not None:
         check_date("start_date", spec["start_date"])
+    if spec.get(PAUSED) is not None and not isinstance(spec[PAUSED], bool):
+        raise PassportError("paused: очікується true або false")
     if spec.get("priority") is not None:
         check_number("priority", spec["priority"])
     _check_level("level", spec.get("level"))
@@ -688,6 +690,11 @@ def classify(
     if mark:
         result.status, result.reason = mark["status"], mark.get("reason", "")
         result.detail, result.marked = "позначено вручну", True
+        return result
+
+    if spec is not None and spec.get(PAUSED):
+        # A paused habit is not judged: the day is out of every share, episode and window.
+        result.detail = PAUSE_DETAIL
         return result
 
     has_data = result.night is not None if kind == "sleep" else obs.events > 0
@@ -1170,6 +1177,9 @@ def stage_readiness(
 # on its stage by hand.  Versions from before that lack the key, and there a
 # change of the stored stage was the hand-made move.
 STAGE_SET = "stage_set"
+# ``paused`` is inherited by later versions; only the tracker's stop/start switch writes it.
+PAUSED = "paused"
+PAUSE_DETAIL = "пауза"
 # Every version carries ``level_set``: ``{"from": F, "to": T}`` when the level button wrote it
 # (the move applies only if the habit has level F that day), false for any other version,
 # whose stored ``current_level`` is then ignored in favour of the derived one.
@@ -1266,6 +1276,7 @@ def staged_versions(
     failed: date | None = None
     level: int | None = None  # the level the habit has, derived: a streak may have raised it
     previous_stored: int | None = None
+    was_paused = False  # paused at the end of the previous day
     streak = 0
     auto_reason = ""
     pending = list(versions)
@@ -1314,6 +1325,9 @@ def staged_versions(
                         )
                     level = stored_level
             previous_stored = stored_level
+        now_paused = source is not None and bool(source["spec"].get(PAUSED))
+        if was_paused and not now_paused and failed is None:
+            fresh = True  # a resume after a whole paused day begins a new attempt; a failed one stays failed
         if fresh:
             attempt_start, failed = current, None
             seen_days = []
@@ -1349,8 +1363,9 @@ def staged_versions(
         if stored.get("levels") and current_level_number(stored) != level:
             spec = apply_rung(spec, level)
         spec["stage"] = stage
-        if stage == "planned":
-            streak = 0  # a day before the start counts for nothing
+        paused = bool(stored.get(PAUSED))
+        if stage == "planned" or paused:
+            streak = 0  # a day before the start, or a paused one, counts for nothing
         levels = spec.get("levels") or []
         for move, origin in moves:
             # A move from the level button holds only if the habit has that level (counting a rise it earned today).
@@ -1367,7 +1382,7 @@ def staged_versions(
             streak = 1 if today_status == "success" else 0  # counted again from the day of the move
         autoed = False
         goal = levels[level].get("streak_days") if level is not None and level < len(levels) else None
-        if goal is not None and not failed and stage != "planned" and streak >= int(goal):
+        if goal is not None and not failed and not paused and stage != "planned" and streak >= int(goal):
             # The streak earns the next level by itself: a new attempt in formation from today.
             auto_reason = f"Серія без зриву {int(goal)} дн. — рівень {level + 1}"
             if stage != "formation":
@@ -1393,7 +1408,7 @@ def staged_versions(
             )
         )
         recent = seen_days[-window:]
-        move = None if failed or autoed else _stage_move(spec, recent, episodes, current)  # one step a day
+        move = None if failed or autoed or paused else _stage_move(spec, recent, episodes, current)  # one step a day
         if move:
             changes.append({"date": current, "from": stage, "to": move["to"], "reason": move["reason"], "auto": True})
             stage = spec["stage"] = move["to"]
@@ -1402,8 +1417,15 @@ def staged_versions(
         elif before != "formation" or fresh or since is None:
             since = current
         limit = formation_days(spec)
-        if stage == "formation" and failed is None and since and current >= since + timedelta(days=limit - 1):
+        if (
+            stage == "formation"
+            and not paused
+            and failed is None
+            and since
+            and current >= since + timedelta(days=limit - 1)
+        ):
             failed = current
+        was_paused = paused
         if attempts is not None:
             attempts[current] = AttemptDay(attempt_start, since, failed, current_level_number(spec), limit, streak)
         level_moved = current_level_number(staged[-1]["spec"]) != current_level_number(spec) if staged else False
@@ -1483,13 +1505,14 @@ class HabitRankState:
     habit_id: int
     name: str
     stage: str | None
-    credit: int = 0  # the level the habit counts at in ranks (0 — nowhere)
+    credit: int = 0  # the level the habit counts at in ranks (0 — nowhere); kept through a pause
     held_days: int = 0  # unbroken run of days with a credit
     level: int = 1  # passport level that day (missing counts as 1)
+    paused: bool = False  # a paused habit counts neither as active nor as stabilizing, and has no credit
 
     @property
     def counted(self) -> bool:
-        return self.credit >= 1
+        return self.credit >= 1 and not self.paused
 
 
 def simulate_stages(habit_id: int, versions: list[dict], until: date) -> dict[date, HabitRankState]:
@@ -1515,8 +1538,11 @@ def simulate_stages(habit_id: int, versions: list[dict], until: date) -> dict[da
             run_start = run_start or current
         else:
             run_start = None
+        paused = bool(spec.get(PAUSED))
+        if paused:
+            run_start = None  # a pause breaks the hold; the credit itself comes back with the resume
         held = (current - run_start).days + 1 if run_start else 0
-        out[current] = HabitRankState(habit_id, spec.get("name", ""), stage, credit, held, level)
+        out[current] = HabitRankState(habit_id, spec.get("name", ""), stage, credit, held, level, paused)
         current += timedelta(days=1)
     return out
 
@@ -1538,6 +1564,7 @@ def _stabilizing_have(states: list[HabitRankState]) -> int:
 
 
 def _rank_met(req: dict, states: list[HabitRankState]) -> bool:
+    states = [s for s in states if not s.paused]
     if req.get("active") and not any(s.stage in ACTIVE_STAGES or s.counted for s in states):
         return False
     if _stabilizing_have(states) < _stabilizing_need(req):
@@ -1616,6 +1643,7 @@ def rank_progress(
     habits add the share of the hold period already behind them.
     """
     readiness = readiness or {}
+    states = [s for s in states if not s.paused]
 
     def ready(stage: str) -> list[float]:
         return [readiness.get(s.habit_id) or 0.0 for s in states if s.stage == stage and not s.counted]
@@ -1762,7 +1790,8 @@ def compute_rank(
                 "name": s.name,
                 "stage": s.stage,
                 "counted": s.counted,
-                "credit": s.credit,
+                "credit": 0 if s.paused else s.credit,
+                "paused": s.paused,
                 "held_days": s.held_days,
                 "level": s.level,
             }
@@ -1961,7 +1990,10 @@ def combined_stats(habits: list[dict], since: date, today: date) -> dict:
         "daily": daily,
         "summary": {
             "habits": len(habits),
-            "today": {**_counts(today_days), "pending": sum(1 for d in today_days if d.status == "no_data")},
+            "today": {
+                **_counts(today_days),
+                "pending": sum(1 for d in today_days if d.status == "no_data" and d.detail != PAUSE_DETAIL),
+            },
             "rates": {
                 key: _counts([day for days in by_habit for day in _window(days, today, length)])
                 for key, length in (("7", 7), ("30", 30))
