@@ -1462,7 +1462,7 @@ DEFAULT_RANKS: list[dict] = [
     {"name": "Звичайна людина", "req": {}, "confirmed": True},
     {"name": "Адепт першого рівня", "req": {"active": True}, "confirmed": True},
     {"name": "Адепт другого рівня", "req": {"stabilizing": 1}, "confirmed": True},
-    {"name": "Адепт третього рівня", "req": {"stabilizing": 2}, "confirmed": True},
+    {"name": "Адепт третього рівня", "req": {"stabilizing": 3}, "confirmed": True},
     {"name": "Маг першого рангу", "req": {"by_level": {"1": 1}}, "confirmed": True},
     {"name": "Маг другого рангу", "req": {"by_level": {"1": 2}}, "confirmed": True},
     {"name": "Маг третього рангу", "req": {"by_level": {"1": 4}}, "confirmed": True},
