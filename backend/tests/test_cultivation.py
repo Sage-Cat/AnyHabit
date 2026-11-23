@@ -395,17 +395,26 @@ def main() -> int:
     }
     check("3 integrated habits: Magus rank 2", rank_name(habits, 300) == "Маг другого рангу", rank_name(habits, 300))
     two_stab = {1: stage_versions(("stabilization", 0)), 2: stage_versions(("stabilization", 0))}
-    check("two habits in stabilization: adept 3", rank_name(two_stab, 0) == "Адепт третього рівня")
+    check("two habits in stabilization: still adept 2", rank_name(two_stab, 0) == "Адепт другого рівня")
+    three_stab = {**two_stab, 3: stage_versions(("stabilization", 0))}
+    check("three habits in stabilization: adept 3", rank_name(three_stab, 0) == "Адепт третього рівня")
     one_each = {1: stage_versions(("integrated", 0)), 2: stage_versions(("stabilization", 0))}
-    check("one integrated and one stabilizing: Magus rank 1", rank_name(one_each, 0) == "Маг першого рангу")
+    check("one integrated and one stabilizing: adept 2", rank_name(one_each, 0) == "Адепт другого рівня")
+    one_of_three = {**one_each, 3: stage_versions(("stabilization", 0))}
+    check("one integrated and two stabilizing: Magus rank 1", rank_name(one_of_three, 0) == "Маг першого рангу")
     lone = {1: stage_versions(("integrated", 0))}
     check("ranks are climbed in order: a lone integrated habit", rank_name(lone, 0) == "Адепт другого рівня")
     check("planned habit is not active", rank_name({1: stage_versions(("planned", 0))}, 0) == "Звичайна людина")
     pair = {1: stage_versions(("integrated", 0)), 2: stage_versions(("integrated", 0))}
-    check("the default ranks ask for no hold: two integrated habits are Magus rank 2 at once", rank_name(pair, 0) == "Маг другого рангу")
+    pair_and_one = {**pair, 3: stage_versions(("stabilization", 0))}
+    check(
+        "the default ranks ask for no hold: two integrated habits and a third stabilizing are Magus rank 2 at once",
+        rank_name(pair_and_one, 0) == "Маг другого рангу",
+    )
     check("no default rank has a hold", not any("durable" in r["req"] for r in cv.DEFAULT_RANKS))
-    # A custom ladder may still ask habits to be held.
+    # A custom ladder may still ask habits to be held (and asks two stabilizing habits for adept 3).
     held_ranks = [dict(r) for r in cv.DEFAULT_RANKS]
+    held_ranks[3] = {**held_ranks[3], "req": {"stabilizing": 2}}
     held_ranks[5] = {**held_ranks[5], "req": {**held_ranks[5]["req"], "durable": [1, 30]}}
     held_ranks[6] = {**held_ranks[6], "req": {**held_ranks[6]["req"], "durable": [2, 60]}}
     held_ranks[10] = {**held_ranks[10], "req": {**held_ranks[10]["req"], "durable": [20, 365]}}
