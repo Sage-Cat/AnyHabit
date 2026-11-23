@@ -767,6 +767,18 @@ def change_habit_stage(
 
 
 @mcp.tool()
+def archive_cultivated_habit(habit_id: int) -> dict[str, Any]:
+    """Archive a cultivated habit: it leaves the lists, the rank and the reminders; its history is kept."""
+    return api.post(f"/cultivation/habits/{habit_id}/archive")
+
+
+@mcp.tool()
+def unarchive_cultivated_habit(habit_id: int) -> dict[str, Any]:
+    """Restore an archived cultivated habit."""
+    return api.post(f"/cultivation/habits/{habit_id}/unarchive")
+
+
+@mcp.tool()
 def change_habit_level(
     habit_id: int,
     direction: Literal["up", "down"],
