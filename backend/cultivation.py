@@ -172,6 +172,7 @@ def _check_levels(kind: str, spec: dict) -> None:
         return
     if not isinstance(levels, list) or not levels:
         raise PassportError("levels: очікується непорожній список")
+    previous_streak = None
     for i, rung in enumerate(levels):
         if not isinstance(rung, dict):
             raise PassportError(f"levels[{i}]: очікується об'єкт")
@@ -179,8 +180,19 @@ def _check_levels(kind: str, spec: dict) -> None:
             raise PassportError(f"levels[{i}].name: очікується рядок")
         for key in ("level", "tolerance", "minimum"):
             _check_level(f"levels[{i}].{key}", rung.get(key))
-        # A rung without a requirement would leave every day unrated once the habit reached it.
-        if rung.get("level") is None or not level_defined(kind, rung["level"]):
+        streak = rung.get("streak_days")
+        if streak is not None:
+            if kind != "quit":
+                raise PassportError(f"levels[{i}].streak_days: серія без зриву можлива лише для звичок quit")
+            if not isinstance(streak, int) or isinstance(streak, bool):
+                raise PassportError(f"levels[{i}].streak_days: очікується ціле число")
+            check_number(f"levels[{i}].streak_days", streak, integer=True, low=1, high=36500)
+            if previous_streak is not None and streak <= previous_streak:
+                raise PassportError(f"levels[{i}].streak_days: має зростати по драбині")
+            previous_streak = streak
+        # A rung without a requirement would leave every day unrated once the habit reached it;
+        # a quit habit has none to give (a day without a relapse is the requirement).
+        if kind != "quit" and (rung.get("level") is None or not level_defined(kind, rung["level"])):
             raise PassportError(f"levels[{i}].level: рівню потрібна вимога")
     if spec.get("current_level") is not None:
         check_number("current_level", spec["current_level"], integer=True, low=1, high=len(levels))
@@ -345,12 +357,25 @@ def level_text(kind: str, level: dict | None, unit: str = "") -> str:
     return "виконати"
 
 
+def streak_text(days: int) -> str:
+    return f"{days} дн. без зриву поспіль"
+
+
+def auto_level_text(days: int) -> str:
+    return f"Рівень підвищиться сам після серії {days} дн. без зриву"
+
+
 def _level_entry(kind: str, number: int, name: str | None, rung: dict, unit: str, current: bool) -> dict:
     tolerance, minimum = rung.get("tolerance"), rung.get("minimum")
+    streak = rung.get("streak_days")
+    requirement = level_text(kind, rung.get("level"), unit)
+    if streak is not None:
+        requirement = streak_text(streak)
     return {
         "number": number,
         "name": name,
-        "requirement": level_text(kind, rung.get("level"), unit),
+        "streak_days": streak,
+        "requirement": requirement,
         "tolerance": level_text(kind, tolerance, unit) if tolerance_defined(kind, tolerance) else None,
         "minimum": level_text(kind, minimum, unit) if minimum else None,
         "current": current,
@@ -391,10 +416,14 @@ def current_level_number(spec: dict | None) -> int:
     return int((spec or {}).get("current_level") or 1)
 
 
-def build_ladder(kind: str, spec: dict | None, stage: str | None, unit: str = "") -> dict:
+def build_ladder(
+    kind: str, spec: dict | None, stage: str | None, unit: str = "", streak: int | None = None, failed: bool = False
+) -> dict:
     """The level ladder of a passport, with what the current stage allows.
 
     A habit without ``levels`` has one rung made of its own level, tolerance and minimum.
+    ``auto`` tells whether the next rung comes by itself after a streak (``next_streak`` days); ``streak``
+    is the current streak when the ladder has such rungs.
     """
     spec = spec or {}
     levels = spec.get("levels")
@@ -407,13 +436,22 @@ def build_ladder(kind: str, spec: dict | None, stage: str | None, unit: str = ""
             "can_upgrade": False,
             "upgrade_blocker": NO_NEXT_LEVEL,
             "can_downgrade": False,
+            "auto": None,
+            "streak": None,
+            "next_streak": None,
         }
     current = current_level_number(spec)
     blocker = None
+    next_streak = None
     if current >= len(levels):
         blocker = NO_NEXT_LEVEL
+    elif levels[current].get("streak_days") is not None:
+        next_streak = int(levels[current]["streak_days"])
+        blocker = auto_level_text(next_streak)
     elif stage != "integrated":
         blocker = UPGRADE_NEEDS_INTEGRATION
+    if failed and blocker != NO_NEXT_LEVEL:
+        blocker = FORMATION_FAILED
     return {
         "current": current,
         "count": len(levels),
@@ -423,27 +461,25 @@ def build_ladder(kind: str, spec: dict | None, stage: str | None, unit: str = ""
         "can_upgrade": blocker is None,
         "upgrade_blocker": blocker,
         "can_downgrade": current > 1,
+        "auto": None if current >= len(levels) else next_streak is not None,
+        "streak": streak if any(r.get("streak_days") is not None for r in levels) else None,
+        "next_streak": next_streak,
     }
 
 
-def level_changes(versions: list[dict]) -> list[dict]:
-    """Every version that moved ``current_level`` (a missing one counts as 1)."""
-    out = []
-    previous: int | None = None
-    for version in versions:
-        number = current_level_number(version["spec"])
-        if previous is not None and number != previous:
-            out.append(
-                {
-                    "date": version["effective_from"].isoformat(),
-                    "from": previous,
-                    "to": number,
-                    "reason": version.get("reason", ""),
-                    "author": version.get("author", "user"),
-                }
-            )
-        previous = number
-    return out
+def _level_change(day: date, before: int, after: int, reason: str, author: str) -> dict:
+    return {
+        "date": day.isoformat(),
+        "from": before,
+        "to": after,
+        "reason": reason,
+        "author": author,
+        "auto": author == "auto",
+    }
+
+
+def author_of(version: dict) -> str:
+    return version.get("author", "user")
 
 
 def _hours_text(hours: float) -> str:
@@ -1134,6 +1170,10 @@ def stage_readiness(
 # on its stage by hand.  Versions from before that lack the key, and there a
 # change of the stored stage was the hand-made move.
 STAGE_SET = "stage_set"
+# Every version carries ``level_set``: ``{"from": F, "to": T}`` when the level button wrote it
+# (the move applies only if the habit has level F that day), false for any other version,
+# whose stored ``current_level`` is then ignored in favour of the derived one.
+LEVEL_SET = "level_set"
 
 
 def _sets_stage(version: dict, previous: dict | None) -> bool:
@@ -1153,21 +1193,6 @@ def _stage_move(spec: dict, days: list[Day], episodes: list[Episode], day: date)
     return recommendation(spec, days, episodes, day)
 
 
-def _level_moved(version: dict, previous: dict | None) -> bool:
-    return previous is not None and current_level_number(version["spec"]) != current_level_number(previous["spec"])
-
-
-def attempt_starts(versions: list[dict]) -> list[dict]:
-    """The versions after the first that begin an attempt: a stage set by hand or a changed level."""
-    out = []
-    previous = None
-    for version in versions:
-        if previous is not None and (_sets_stage(version, previous) or _level_moved(version, previous)):
-            out.append(version)
-        previous = version
-    return out
-
-
 def formation_days(spec: dict) -> int:
     """How many days formation may last: ``stabilization.formation_days``, by default the stabilization window."""
     cfg = section(spec, "stabilization", DEFAULT_STABILIZATION)
@@ -1183,6 +1208,7 @@ class AttemptDay:
     failed_on: date | None  # the day formation ran out of time, once it did
     level: int
     formation_days: int
+    streak: int = 0  # successful days in a row that count towards the next level
 
     @property
     def deadline(self) -> date | None:
@@ -1197,7 +1223,11 @@ def clip_attempt(days: list[Day], versions: list[dict], start: date | None) -> t
 
 
 def staged_versions(
-    versions: list[dict], days: list[Day], today: date, attempts: dict[date, AttemptDay] | None = None
+    versions: list[dict],
+    days: list[Day],
+    today: date,
+    attempts: dict[date, AttemptDay] | None = None,
+    level_log: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """The passport versions with the stage the habit really had, and its stage changes.
 
@@ -1208,19 +1238,24 @@ def staged_versions(
     which a version setting the stage by hand or changing the level begins.  A
     habit still in formation at the end of its formation window has failed the
     attempt: nothing moves it on its own until a new attempt begins.  Pass a
-    dict as ``attempts`` to get the attempt of each day.
+    dict as ``attempts`` to get the attempt of each day, and a list as ``level_log`` to get every
+    level change (by hand, or by the streak with ``auto`` set) (``level_changes`` of the habit output).
+    A rung with ``streak_days`` is reached by itself once that many successful days in a row
+    (counted from the last level moved by hand) have passed without a failed attempt.
     ``days`` must run without gaps up to ``today``, as :func:`build_days` makes
     them, or be empty while the habit waits for a future start date.
     """
     if not versions:
         return [], []
     by_hand: dict[date, dict] = {}  # the last version that sets the stage that day
+    by_hand_ids: set[int] = set()
     previous = None
     for version in versions:
         if _sets_stage(version, previous):
             by_hand[version["effective_from"]] = version
+            by_hand_ids.add(id(version))
         previous = version
-    begins = {id(v) for v in attempt_starts(versions)}
+    first = versions[0]
 
     staged: list[dict] = []
     changes: list[dict] = []
@@ -1229,6 +1264,10 @@ def staged_versions(
     attempt_start: date | None = None
     since: date | None = None
     failed: date | None = None
+    level: int | None = None  # the level the habit has, derived: a streak may have raised it
+    previous_stored: int | None = None
+    streak = 0
+    auto_reason = ""
     pending = list(versions)
     seen_days: list[Day] = []  # the days of the current attempt
     walk = iter_episodes(seen_days, versions)
@@ -1238,11 +1277,44 @@ def staged_versions(
     while current <= today:
         started = None
         fresh = False
+        moves: list[tuple[dict, dict]] = []  # (the move, the version that wrote it)
+        today_status = None
+        auto_reason = ""
         while pending and pending[0]["effective_from"] <= current:
             source = started = pending.pop(0)
-            fresh = fresh or id(started) in begins
+            stored_level = current_level_number(source["spec"])
+            top = len(source["spec"].get("levels") or []) or 1
+            mark = source["spec"].get(LEVEL_SET, None)
+            if started is first:
+                level = stored_level
+            elif isinstance(mark, dict):
+                # The level button wrote a move: it is applied below, once the day's streak is known.
+                moves.append((mark, source))
+                fresh = True
+            elif mark is True:  # an absolute target (old form)
+                target = min(stored_level, top)
+                fresh = True
+                streak = 0
+                if target != level and level_log is not None:
+                    level_log.append(_level_change(current, level, target, source.get("reason", ""), author_of(source)))
+                level = target
+            elif mark is False:
+                # Written by every other version: the stored level is not a move, the derived one stays.
+                level = min(level, top)
+                fresh = fresh or id(started) in by_hand_ids
+            else:
+                # An old version without the mark: a stored level that differs from the one before moved it.
+                moved = stored_level != previous_stored
+                fresh = fresh or id(started) in by_hand_ids or moved
+                if moved:
+                    streak = 0
+                    if level_log is not None:
+                        level_log.append(
+                            _level_change(current, level, stored_level, source.get("reason", ""), author_of(source))
+                        )
+                    level = stored_level
+            previous_stored = stored_level
         if fresh:
-            # The deviations of the new attempt are found again from its first day.
             attempt_start, failed = current, None
             seen_days = []
             walk = iter_episodes(seen_days, versions)
@@ -1251,6 +1323,11 @@ def staged_versions(
             seen_days.append(days[index + 1])
             _day, episodes = next(walk)
             index += 1
+            status = today_status = days[index].status
+            if status == "success":
+                streak += 1
+            elif status != "no_data" or current < today:
+                streak = 0  # only today may still be open
         if source is None:
             current += timedelta(days=1)
             continue
@@ -1268,8 +1345,45 @@ def staged_versions(
                     }
                 )
             stage = stored.get("stage")
-        spec = {key: value for key, value in stored.items() if key != STAGE_SET}
+        spec = {key: value for key, value in stored.items() if key not in (STAGE_SET, LEVEL_SET)}
+        if stored.get("levels") and current_level_number(stored) != level:
+            spec = apply_rung(spec, level)
         spec["stage"] = stage
+        if stage == "planned":
+            streak = 0  # a day before the start counts for nothing
+        levels = spec.get("levels") or []
+        for move, origin in moves:
+            # A move from the level button holds only if the habit has that level (counting a rise it earned today).
+            reach = levels[level].get("streak_days") if level < len(levels) else None
+            rises = reach is not None and not failed and stage != "planned" and streak >= int(reach)
+            if level + (1 if rises else 0) == move.get("from"):
+                target = min(int(move["to"]), len(levels) or 1)
+                if level_log is not None:
+                    level_log.append(
+                        _level_change(current, int(move["from"]), target, origin.get("reason", ""), author_of(origin))
+                    )
+                level = target
+                spec = apply_rung(spec, level) if levels and current_level_number(spec) != level else spec
+            streak = 1 if today_status == "success" else 0  # counted again from the day of the move
+        autoed = False
+        goal = levels[level].get("streak_days") if level is not None and level < len(levels) else None
+        if goal is not None and not failed and stage != "planned" and streak >= int(goal):
+            # The streak earns the next level by itself: a new attempt in formation from today.
+            auto_reason = f"Серія без зриву {int(goal)} дн. — рівень {level + 1}"
+            if stage != "formation":
+                changes.append({"date": current, "from": stage, "to": "formation", "reason": auto_reason, "auto": True})
+            if level_log is not None:
+                level_log.append(_level_change(current, level, level + 1, auto_reason, "auto"))
+            autoed = True
+            level += 1
+            spec = apply_rung(spec, level)
+            stage = spec["stage"] = "formation"
+            attempt_start, failed, fresh = current, None, True
+            seen_days = [days[index]] if index >= 0 else []
+            walk = iter_episodes(seen_days, versions)
+            episodes = []
+            if seen_days:
+                _day, episodes = next(walk)
         window = max(
             int(section(spec, key, defaults)["window_days"])
             for key, defaults in (
@@ -1279,7 +1393,7 @@ def staged_versions(
             )
         )
         recent = seen_days[-window:]
-        move = None if failed else _stage_move(spec, recent, episodes, current)
+        move = None if failed or autoed else _stage_move(spec, recent, episodes, current)  # one step a day
         if move:
             changes.append({"date": current, "from": stage, "to": move["to"], "reason": move["reason"], "auto": True})
             stage = spec["stage"] = move["to"]
@@ -1291,14 +1405,15 @@ def staged_versions(
         if stage == "formation" and failed is None and since and current >= since + timedelta(days=limit - 1):
             failed = current
         if attempts is not None:
-            attempts[current] = AttemptDay(attempt_start, since, failed, current_level_number(spec), limit)
-        if started or staged[-1]["spec"]["stage"] != stage:
+            attempts[current] = AttemptDay(attempt_start, since, failed, current_level_number(spec), limit, streak)
+        level_moved = current_level_number(staged[-1]["spec"]) != current_level_number(spec) if staged else False
+        if started or level_moved or staged[-1]["spec"]["stage"] != stage:
             staged.append(
                 {
                     "id": source["id"],
                     "effective_from": current,
                     "created_at": source.get("created_at") if started else None,
-                    "reason": source.get("reason", "") if started else move["reason"],
+                    "reason": source.get("reason", "") if started else (auto_reason or move["reason"]),
                     "author": source.get("author", "user") if started else "auto",
                     "spec": spec,
                 }
@@ -1327,37 +1442,37 @@ DEFAULT_RANKS: list[dict] = [
     {"name": "Адепт другого рівня", "req": {"stabilizing": 1}, "confirmed": True},
     {"name": "Адепт третього рівня", "req": {"stabilizing": 2}, "confirmed": True},
     {"name": "Маг першого рангу", "req": {"by_level": {"1": 1}}, "confirmed": True},
-    {"name": "Маг другого рангу", "req": {"by_level": {"1": 2}, "durable": [1, 30]}, "confirmed": True},
-    {"name": "Маг третього рангу", "req": {"by_level": {"1": 4}, "durable": [2, 60]}, "confirmed": True},
-    {"name": "Маг Нової Зірки", "req": {"by_level": {"1": 8, "2": 1}, "durable": [4, 120]}, "confirmed": True},
+    {"name": "Маг другого рангу", "req": {"by_level": {"1": 2}}, "confirmed": True},
+    {"name": "Маг третього рангу", "req": {"by_level": {"1": 4}}, "confirmed": True},
+    {"name": "Маг Нової Зірки", "req": {"by_level": {"1": 8, "2": 1}}, "confirmed": True},
     {
         "name": "Маг Нейтронної Зорі",
-        "req": {"by_level": {"1": 16, "2": 2, "3": 1}, "durable": [8, 120]},
+        "req": {"by_level": {"1": 16, "2": 2, "3": 1}},
         "confirmed": True,
     },
     {
         "name": "Маг Прямого Колапсу",
-        "req": {"by_level": {"1": 25, "2": 4, "3": 2, "4": 1}, "durable": [16, 240]},
+        "req": {"by_level": {"1": 25, "2": 4, "3": 2, "4": 1}},
         "confirmed": True,
     },
     {
         "name": "Маг Законів",
-        "req": {"by_level": {"2": 8, "3": 4, "4": 2, "5": 1}, "durable": [20, 365]},
+        "req": {"by_level": {"2": 8, "3": 4, "4": 2, "5": 1}},
         "confirmed": True,
     },
     {
         "name": "Великий Маг Законів",
-        "req": {"by_level": {"3": 8, "4": 4, "5": 2}, "durable": [40, 730]},
+        "req": {"by_level": {"3": 8, "4": 4, "5": 2}},
         "confirmed": True,
     },
     {
         "name": "Верховний Маг рангу Вічності",
-        "req": {"by_level": {"4": 8, "5": 4}, "durable": [80, 1095]},
+        "req": {"by_level": {"4": 8, "5": 4}},
         "confirmed": True,
     },
     {
         "name": "Той, хто знайшов свій Шлях",
-        "req": {"by_level": {"5": 8}, "durable": [128, 1825]},
+        "req": {"by_level": {"5": 8}},
         "confirmed": True,
     },
 ]

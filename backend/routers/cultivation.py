@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any, Literal, Optional
@@ -309,7 +310,9 @@ def _version_out(version: dict, with_spec: bool = True, keep_internal: bool = Fa
     }
     if with_spec:
         spec = version["spec"]
-        out["spec"] = spec if keep_internal else {k: v for k, v in spec.items() if k != cv.STAGE_SET}
+        out["spec"] = (
+            spec if keep_internal else {k: v for k, v in spec.items() if k not in (cv.STAGE_SET, cv.LEVEL_SET)}
+        )
     return out
 
 
@@ -330,9 +333,11 @@ def _load(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict
         tracked=tracker is not None,
     )
     attempts: dict[date, cv.AttemptDay] = {}
-    staged, changes = cv.staged_versions(versions, days, today, attempts)
+    level_log: list[dict] = []
+    staged, changes = cv.staged_versions(versions, days, today, attempts, level_log)
     return {
         "attempts": attempts,
+        "level_log": level_log,
         "today": today,
         "versions": versions,
         "staged": staged,
@@ -413,8 +418,8 @@ def _analyse(
         "stage_label": cv.STAGE_LABELS.get(stage, ""),
         "passport": spec,
         "versions": [_version_out(v) for v in versions],
-        "ladder": cv.build_ladder(habit.kind, spec, stage, unit),
-        "level_changes": cv.level_changes(versions),
+        "ladder": cv.build_ladder(habit.kind, spec, stage, unit, att.streak if att else None, failed),
+        "level_changes": data["level_log"],
         "attempt": _attempt_out(data, stage, level),
         "rank_level": credit.credit if credit else 0,
         # Every stage change, made by the criteria ("auto") or by hand.
@@ -726,6 +731,7 @@ def create_habit(
     spec = dict(payload.spec)
     spec.setdefault("stage", "formation")
     spec[cv.STAGE_SET] = True
+    spec[cv.LEVEL_SET] = False
     today = _today(current_user)
     spec.setdefault("start_date", today.isoformat())
     if payload.effective_from is not None:
@@ -880,7 +886,11 @@ def _add_version(
     reason: str,
     effective_from: Optional[date],
     author: str,
+    level_move: tuple[int, int] | None = None,
 ) -> dict:
+    # Like stage_set, the level_set mark belongs to this version alone: only the level button writes a move.
+    spec = {k: v for k, v in spec.items() if k != cv.LEVEL_SET}
+    spec[cv.LEVEL_SET] = {"from": level_move[0], "to": level_move[1]} if level_move else False
     try:
         cv.validate_spec(habit.kind, spec)
     except cv.PassportError as exc:
@@ -981,11 +991,11 @@ def _current_spec(
 ) -> tuple[dict, str | None]:
     """The latest passport with the stage the habit has on ``effective_from`` (today by default)."""
     data = _load(db, user, habit)
-    stage = _stage_now(data, effective_from or data["today"])
-    current = {key: value for key, value in (cv.latest_spec(data["versions"]) or {}).items() if key != cv.STAGE_SET}
-    if stage is not None:
-        current["stage"] = stage
-    return current, stage
+    day = effective_from or data["today"]
+    # The staged passport carries the derived level and rung, so every edit builds on what the habit really has.
+    found = cv.spec_for(data["staged"], day) or cv.latest_spec(data["staged"]) or {}
+    current = copy.deepcopy(found)
+    return current, current.get("stage")
 
 
 @router.post("/habits/{habit_id}/stage", status_code=status.HTTP_201_CREATED)
@@ -1023,6 +1033,10 @@ def change_level(
     if payload.direction == "up":
         if number >= len(levels):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.NO_NEXT_LEVEL)
+        if levels[number].get("streak_days") is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=cv.auto_level_text(int(levels[number]["streak_days"]))
+            )
         if stage != "integrated":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=cv.UPGRADE_NEEDS_INTEGRATION)
         target = number + 1
@@ -1036,15 +1050,23 @@ def change_level(
         spec["stage"] = "formation"
         spec[cv.STAGE_SET] = True
     else:
-        # Back to an easier level: a habit that earned it is integrated there at once, any other keeps its stage.
         data = _load(db, current_user, habit)
         day = payload.effective_from or data["today"]
-        credit = cv.simulate_stages(habit.id, data["staged"], day).get(day)
-        earned = credit is not None and credit.credit >= target
-        if earned:
-            spec["stage"] = "integrated"
-        spec[cv.STAGE_SET] = earned
-    return _add_version(db, habit, current_user, spec, payload.reason, payload.effective_from, author)
+        att = _attempt_on(data, day)
+        if att is not None and att.failed_on is not None:
+            # The fallback after a failed attempt: back to stabilization on the easier level.
+            spec["stage"] = "stabilization"
+            spec[cv.STAGE_SET] = True
+        else:
+            # A voluntary step back: a habit that earned the level is integrated there, any other keeps its stage.
+            credit = cv.simulate_stages(habit.id, data["staged"], day).get(day)
+            earned = credit is not None and credit.credit >= target
+            if earned:
+                spec["stage"] = "integrated"
+            spec[cv.STAGE_SET] = earned
+    return _add_version(
+        db, habit, current_user, spec, payload.reason, payload.effective_from, author, level_move=(number, target)
+    )
 
 
 ABOVE_FIRST_LEVEL = "Вище рівня 1 провалена спроба повертає на попередній рівень"
