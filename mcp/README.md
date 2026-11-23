@@ -167,6 +167,8 @@ to `backend:8000`.
 - `change_habit_stage`
 - `change_habit_level`
 - `start_new_attempt`
+- `archive_cultivated_habit`
+- `unarchive_cultivated_habit`
 
 Recording facts (sleep, day marks) works directly. Creating a passport,
 changing its goals or criteria, moving a stage or a level by hand and starting or ending minimum
