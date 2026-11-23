@@ -7,10 +7,12 @@ import { useAppState } from '../state/appState';
 import { categoryLabel } from '../utils/tracker';
 
 const TABS = [
-  { id: 'all', label: 'Усі' },
-  { id: 'private', label: 'Особисті' },
-  { id: 'groups', label: 'Групові' }
+  { id: 'active', label: 'Активні' },
+  { id: 'all', label: 'Усі' }
 ];
+
+/** A habit in progress: neither paused nor archived. */
+const isActiveTracker = (tracker) => tracker.is_active && !tracker.archived_at;
 
 function Sidebar({ isHomeActive, isPracticeActive }) {
   const navigate = useNavigate();
@@ -36,7 +38,7 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
     setSelectedTrackerId
   } = useAppState();
 
-  const [trackerTab, setTrackerTab] = useState('all');
+  const [trackerTab, setTrackerTab] = useState('active');
   const [query, setQuery] = useState('');
   const { pathname } = useLocation();
   const [failedTrackerIds, setFailedTrackerIds] = useState(() => new Set());
@@ -95,16 +97,12 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
     navigate(`/tracker/${trackerId}`);
   };
 
-  const privateCount = visibleTrackers.filter((tracker) => !tracker.group_id).length;
-  const groupCount = visibleTrackers.filter((tracker) => tracker.group_id).length;
+  const tabCounts = { active: visibleTrackers.filter(isActiveTracker).length, all: visibleTrackers.length };
 
   const filteredEntries = useMemo(() => {
     const search = query.trim().toLowerCase();
 
-    const matchesTab = (tracker) =>
-      trackerTab === 'all' ||
-      (trackerTab === 'private' && !tracker.group_id) ||
-      (trackerTab === 'groups' && tracker.group_id);
+    const matchesTab = (tracker) => trackerTab === 'all' || isActiveTracker(tracker);
 
     const matchesQuery = (tracker) =>
       !search || tracker.name.toLowerCase().includes(search) || (tracker.category || '').toLowerCase().includes(search);
@@ -198,9 +196,7 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
                   trackerTab === tab.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
-                {tab.label}
-                {tab.id === 'private' && ` (${privateCount})`}
-                {tab.id === 'groups' && ` (${groupCount})`}
+                {tab.label} ({tabCounts[tab.id]})
               </button>
             ))}
           </div>
@@ -227,7 +223,11 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
       <ul className="flex-1 space-y-4 overflow-y-auto pr-1">
         {!hasResults ? (
           <li className="mt-6 text-center text-sm text-gray-400">
-            {query ? 'Жодна звичка не підходить під фільтр.' : 'Звичок ще немає.'}
+            {query
+              ? 'Жодна звичка не підходить під фільтр.'
+              : visibleTrackers.length
+                ? 'Активних звичок немає.'
+                : 'Звичок ще немає.'}
           </li>
         ) : (
           filteredEntries.map(([category, items]) => (
@@ -333,7 +333,11 @@ function Sidebar({ isHomeActive, isPracticeActive }) {
       {archivedCount > 0 && (
         <button
           type="button"
-          onClick={() => setShowArchived(!showArchived)}
+          onClick={() => {
+            // Archived habits are never active: showing the archive shows every habit.
+            if (!showArchived) setTrackerTab('all');
+            setShowArchived(!showArchived);
+          }}
           aria-pressed={showArchived}
           className={`mt-3 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
             showArchived ? 'bg-stone-100 text-stone-800' : 'text-gray-500 hover:bg-gray-100 hover:text-stone-800'
