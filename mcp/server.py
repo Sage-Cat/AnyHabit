@@ -251,13 +251,21 @@ def update_tracker(
 
 @mcp.tool()
 def start_tracker(tracker_id: int) -> dict[str, Any]:
-    """Resume a paused tracker."""
+    """Resume a paused tracker.
+
+    A cultivated habit fed by it resumes too: its criteria count again from
+    today (a new attempt in its current stage; a failed attempt stays failed).
+    """
     return api.put(f"/trackers/{tracker_id}/start")
 
 
 @mcp.tool()
 def stop_tracker(tracker_id: int) -> dict[str, Any]:
-    """Pause an active tracker."""
+    """Pause an active tracker.
+
+    A cultivated habit fed by it pauses too: its days are not judged, its stage
+    and formation deadline stand still and it does not count for the rank.
+    """
     return api.put(f"/trackers/{tracker_id}/stop")
 
 
@@ -583,7 +591,8 @@ def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any
     Also `ladder` (levels, current level, can_upgrade / upgrade_blocker,
     can_downgrade; for a quit habit's automatic rungs `auto`, the current
     `streak` and the `next_streak` needed) and `level_changes` (each move
-    between levels, `auto` for a move made by the streak).
+    between levels, `auto` for a move made by the streak). `paused` is true while
+    the habit's tracker is paused.
     """
     return api.get(f"/cultivation/habits/{habit_id}", params={"history_days": history_days})
 

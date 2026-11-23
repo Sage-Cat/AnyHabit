@@ -186,8 +186,10 @@ relapse (manual up onto it is refused, a manual level change restarts the count)
 lower level, into stabilization after a failed attempt. A failed formation attempt
 (`attempt.failed_on`) needs the user's decision: `start_new_attempt` on level 1,
 `change_habit_level` down above it. Ranks count integrated habits per level
-(`rank_level`); the habit shows `ladder` and `level_changes`. The rank system itself can
-only be changed in the web UI.
+(`rank_level`); the habit shows `ladder` and `level_changes`. Pausing a habit's tracker
+(`stop_tracker`) pauses the habit (`paused`): its days are not judged, its stage and
+formation deadline stand still and it leaves the rank until `start_tracker` resumes it;
+its criteria then count from that day (a failed attempt stays failed). The rank system itself can only be changed in the web UI.
 
 ## Destructive operations
 
