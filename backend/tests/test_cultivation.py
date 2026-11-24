@@ -10,7 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -1912,6 +1912,54 @@ def main() -> int:
             work_cells[yesterday.isoformat()]["first_at"] == "18:40"
             and work_cells[local_today.isoformat()]["first_at"] is None,
             str(work_cells.get(yesterday.isoformat())),
+        )
+        # An evening "done by" habit done after midnight counts for the evening before.
+        two_back, three_back = local_today - timedelta(days=2), local_today - timedelta(days=3)
+        for moment in (time(5, 59), time(6, 0)):
+            client.post(
+                f"/trackers/{work_tracker}/logs/",
+                json={"amount": 1, "timestamp": datetime.combine(two_back, moment, TZ).isoformat()},
+            )
+        work_by_date = {x["date"]: x for x in client.get(f"/cultivation/habits/{work_id}/days").json()}
+        small_hours, morning = work_by_date.get(three_back.isoformat(), {}), work_by_date.get(two_back.isoformat(), {})
+        check(
+            "after midnight an evening habit is done late, for the evening before",
+            small_hours.get("status") == "fail"
+            and small_hours.get("first_at") == "05:59"
+            and small_hours.get("first_next_day") is True,
+            str(small_hours),
+        )
+        check(
+            "from 06:00 on a log belongs to its own day",
+            morning.get("status") == "success"
+            and morning.get("first_at") == "06:00"
+            and "first_next_day" not in morning,
+            str(morning),
+        )
+        work_analytics = client.get(f"/trackers/{work_tracker}/analytics").json()
+        night_cell = {c["date"]: c for week in work_analytics["build_heatmap"]["columns"] for c in week}[
+            three_back.isoformat()
+        ]
+        check(
+            "the tracker map marks a time after midnight",
+            night_cell["first_at"] == "05:59" and night_cell["first_next_day"] is True,
+            str(night_cell),
+        )
+        window_start = datetime.fromisoformat(work_analytics["daily_progress"]["window_start"].replace("Z", "+00:00"))
+        check(
+            "an evening habit's tracker day starts at 06:00, not at midnight",
+            window_start.tzinfo is not None and window_start.astimezone(TZ).time() == time(6, 0),
+            str(work_analytics["daily_progress"]),
+        )
+        check(
+            "only an evening deadline moves the small hours to the day before",
+            cv.evening_habit("boolean", {"level": {"done_by": "18:00"}})
+            and cv.evening_habit(
+                "boolean", {"levels": [{"level": {"done_by": "09:00"}}, {"level": {"done_by": "18:00"}}]}
+            )
+            and not cv.evening_habit("boolean", {"level": {"done_by": "09:00"}, "tolerance": {"done_by": "10:00"}})
+            and not cv.evening_habit("build", {"level": {"done_by": "18:00"}})
+            and not cv.evening_habit("boolean", {}),
         )
         detail = client.get(f"/cultivation/habits/{work_id}").json()
         check(
