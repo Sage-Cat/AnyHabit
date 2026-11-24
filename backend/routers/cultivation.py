@@ -270,7 +270,12 @@ def _observations(
     for log in logs:
         wake_utc = ensure_utc(log.timestamp)
         local = wake_utc.astimezone(tz)
-        late = local.time() < cv.EVENING_DAY_END and evening_on(local.date() - timedelta(days=1))
+        # Only when that day is an evening habit's too: a new morning passport keeps its early logs.
+        late = (
+            local.time() < cv.EVENING_DAY_END
+            and evening_on(local.date() - timedelta(days=1))
+            and evening_on(local.date())
+        )
         day = local.date() - timedelta(days=1) if late else local.date()
         obs = out.get(day)
         if obs is None:
@@ -878,8 +883,15 @@ def _evening_window(db: Session, user: models.User, habit: models.CultivatedHabi
     tz = resolve_timezone(user.timezone)
     now = utcnow().astimezone(tz)
     day = now.date() - timedelta(days=1) if now.time() < cv.EVENING_DAY_END else now.date()
-    if not cv.evening_habit(habit.kind, cv.spec_for(_versions(db, habit), day)):
-        return None
+    try:
+        versions = _versions(db, habit)
+        if not (
+            cv.evening_habit(habit.kind, cv.spec_for(versions, day))
+            and cv.evening_habit(habit.kind, cv.spec_for(versions, now.date()))
+        ):
+            return None
+    except (cv.PassportError, ValueError, TypeError, KeyError):
+        return None  # an unreadable passport must not break the tracker page or the dashboard
     start = datetime.combine(day, cv.EVENING_DAY_END, tz)
     end = datetime.combine(day + timedelta(days=1), cv.EVENING_DAY_END, tz)
     return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
