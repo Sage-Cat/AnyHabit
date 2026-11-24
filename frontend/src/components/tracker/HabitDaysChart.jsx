@@ -16,6 +16,8 @@ import { formatNumber } from '../../utils/number';
 const DAYS = 30;
 const HOUR = 60;
 const DAY_MINUTES = 24 * HOUR;
+const EVENING_FROM = 12 * HOUR;
+const EVENING_DAY_END = 6 * HOUR;
 const AXIS_TICK = { fontSize: 11, fill: '#9ca3af' };
 const GOAL_COLOR = '#059669';
 const TOLERANCE_COLOR = '#d97706';
@@ -47,9 +49,19 @@ function tickOf(kind, value) {
   return `${day}.${String(month).padStart(2, '0')}`;
 }
 
-/** A passport level's bounds on the chart's scale. */
-function boundsOf(scale, spec) {
-  if (scale === 'time') return spec?.done_by ? [minutesOf(spec.done_by)] : [];
+/** An evening habit: its goal's deadline (without one, the tolerance's) is from noon on. */
+const isEvening = (level, tolerance) => {
+  const deadline = level?.done_by || tolerance?.done_by;
+  return Boolean(deadline) && minutesOf(deadline) >= EVENING_FROM;
+};
+
+/** A passport level's bounds on the chart's scale; an evening habit's deadline before 06:00 is after midnight. */
+function boundsOf(scale, spec, evening = false) {
+  if (scale === 'time') {
+    if (!spec?.done_by) return [];
+    const deadline = minutesOf(spec.done_by);
+    return [evening && deadline < EVENING_DAY_END ? deadline + DAY_MINUTES : deadline];
+  }
   const bounds = scale === 'hours' ? [spec?.min_sleep_h, spec?.max_sleep_h] : [spec?.min_amount];
   return scale === 'state' ? [] : bounds.filter((value) => value != null).map(Number);
 }
@@ -71,10 +83,11 @@ function boundsText(scale, spec, unit) {
  * the goal's is the same line) and a legend naming them, so no text sits on the bars.
  */
 function thresholds(scale, level, tolerance, unit) {
-  const goal = boundsOf(scale, level);
+  const evening = isEvening(level, tolerance);
+  const goal = boundsOf(scale, level, evening);
   const lines = [
     ...goal.map((y) => ({ y, color: GOAL_COLOR })),
-    ...boundsOf(scale, tolerance)
+    ...boundsOf(scale, tolerance, evening)
       .filter((y) => !goal.includes(y))
       .map((y) => ({ y, color: TOLERANCE_COLOR }))
   ];
