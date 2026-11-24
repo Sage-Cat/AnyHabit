@@ -15,6 +15,7 @@ import { formatNumber } from '../../utils/number';
 
 const DAYS = 30;
 const HOUR = 60;
+const DAY_MINUTES = 24 * HOUR;
 const AXIS_TICK = { fontSize: 11, fill: '#9ca3af' };
 const GOAL_COLOR = '#059669';
 const TOLERANCE_COLOR = '#d97706';
@@ -107,8 +108,9 @@ function DayTip({ active, payload, kind, scale, unit }) {
   if (!active || !payload?.length) return null;
   const day = payload[0].payload;
   let measure = null;
-  if (scale === 'time') measure = day.unknown ? 'час не записано' : `виконано о ${day.firstAt}`;
-  else if (scale !== 'state') measure = `${amountText(day.value)} ${unit}`;
+  if (scale === 'time') {
+    measure = day.unknown ? 'час не записано' : `виконано о ${day.firstAt}${day.firstNextDay ? ' після півночі' : ''}`;
+  } else if (scale !== 'state') measure = `${amountText(day.value)} ${unit}`;
   return (
     <div className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs shadow-sm">
       <p className="font-medium text-stone-800">{formatHabitDay(kind, day.date)}</p>
@@ -125,7 +127,8 @@ function DayTip({ active, payload, kind, scale, unit }) {
 function HabitDaysChart({ columns, kind, level, tolerance, unit = '', className = '' }) {
   const scale = scaleOf(kind, level, tolerance);
   const valueOf = (cell) => {
-    if (scale === 'time') return cell.firstAt ? minutesOf(cell.firstAt) : null;
+    // After midnight an evening habit is drawn past 24:00, above the evening goal.
+    if (scale === 'time') return cell.firstAt ? minutesOf(cell.firstAt) + (cell.firstNextDay ? DAY_MINUTES : 0) : null;
     if (scale === 'state') return cell.status === 'no_data' ? null : 1;
     return cell.amount;
   };

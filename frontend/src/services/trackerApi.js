@@ -127,7 +127,8 @@ export function normalizeTrackerAnalytics(data) {
               isRelapse: Boolean(cell.is_relapse),
               status: cell.status ?? null,
               warning: cell.warning ?? '',
-              firstAt: cell.first_at ?? null
+              firstAt: cell.first_at ?? null,
+              firstNextDay: Boolean(cell.first_next_day)
             }))
           )
         }
