@@ -525,6 +525,30 @@ class Observation:
     events: int = 0  # number of logs (or relapses for quit)
     notes: list[str] = field(default_factory=list)
     first_at: time | None = None  # local time of the day's earliest log (not sleep)
+    first_late: bool = False  # first_at is after midnight: an evening habit done in the small hours
+
+
+# An evening "done by" habit (a time from noon on) ends in the small hours: a log
+# before this time belongs to the evening before, not to the new day.
+EVENING_DAY_END = time(6, 0)
+
+
+def done_minutes(moment: time, late: bool = False) -> int:
+    """Minutes since the day's midnight; a moment after midnight of an evening habit counts past 24:00."""
+    return moment.hour * 60 + moment.minute + (24 * 60 if late else 0)
+
+
+def evening_habit(kind: str, spec: dict | None) -> bool:
+    """A "done by" habit whose goal, tolerance or minimum (on any rung) is an evening time."""
+    if kind != "boolean" or not spec:
+        return False
+    blocks = [spec.get(key) for key in ("level", "tolerance", "minimum")]
+    for rung in spec.get("levels") or []:
+        blocks += [rung.get(key) for key in ("level", "tolerance", "minimum")]
+    return any(
+        isinstance(block, dict) and block.get("done_by") and parse_hhmm(block["done_by"]) >= time(12, 0)
+        for block in blocks
+    )
 
 
 def parse_note(note: str) -> dict:
@@ -572,6 +596,7 @@ class Day:
     marked: bool = False
     warning: str = ""  # met only within the tolerance band: counts, but is flagged
     first_at: time | None = None  # not sleep: local time of the day's earliest log
+    first_late: bool = False  # first_at falls after midnight, on the next calendar day
 
     @property
     def met(self) -> bool | None:
@@ -600,6 +625,8 @@ class Day:
         }
         if self.first_at is not None:
             out["first_at"] = f"{self.first_at:%H:%M}"
+            if self.first_late:
+                out["first_next_day"] = True
         if self.night:
             out["sleep"] = {
                 "log_id": self.night.log_id,
@@ -633,8 +660,8 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
             return False
         if level.get("done_by") is None or obs.first_at is None:
             return True
-        # Minute precision: "by 18:00" includes a tap at 18:00:40.
-        return obs.first_at.replace(second=0, microsecond=0) <= parse_hhmm(level["done_by"])
+        # Minute precision: "by 18:00" includes a tap at 18:00:40; after midnight is later than any evening.
+        return done_minutes(obs.first_at, obs.first_late) <= done_minutes(parse_hhmm(level["done_by"]))
     return True
 
 
@@ -642,7 +669,7 @@ def _actual_text(kind: str, obs: Observation, night: Night | None, unit: str = "
     if kind == "sleep" and night is not None:
         return f"підйом {night.wake:%H:%M}, сон {_hours_text(night.hours)} год"
     if kind == "boolean" and obs.first_at is not None:
-        return f"виконано о {obs.first_at:%H:%M}"
+        return f"виконано о {obs.first_at:%H:%M}" + (" після півночі" if obs.first_late else "")
     if kind == "build":
         return f"{obs.amount:g} {unit}".strip()
     return ""
@@ -671,7 +698,7 @@ def classify(
     obs = obs or Observation()
     result = Day(day, "no_data", degraded=degraded, amount=obs.amount, events=obs.events)
     if kind != "sleep":
-        result.first_at = obs.first_at
+        result.first_at, result.first_late = obs.first_at, obs.first_late
 
     if kind == "sleep":
         real = [n for n in obs.nights if n.hours >= MIN_NIGHT_HOURS]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -16,8 +17,8 @@ from ..access import (
 )
 from ..analytics import build_tracker_analytics
 from ..deps import get_current_user, get_db, get_period_context
-from ..time_utils import PeriodContext, to_utc, utcnow
-from .cultivation import _require_write, sync_pause, tracker_day_states
+from ..time_utils import PeriodContext, ensure_utc, to_utc, utcnow
+from .cultivation import _require_write, sync_pause, tracker_day_states, tracker_evening_window
 
 router = APIRouter(prefix="/trackers", tags=["trackers"])
 
@@ -206,7 +207,23 @@ def _analytics_for(
         for week in analytics.build_heatmap.columns:
             for cell in week:
                 if not cell.is_filler and cell.date in (states or {}):
-                    cell.status, cell.warning, cell.first_at = states[cell.date]
+                    cell.status, cell.warning, cell.first_at, cell.first_next_day = states[cell.date]
+    progress = analytics.daily_progress
+    window = tracker_evening_window(db, current_user, tracker.id) if tracker.type == "boolean" else None
+    if (
+        window is not None
+        and progress.window_start
+        and progress.window_end - progress.window_start <= timedelta(hours=25)
+    ):
+        # An evening habit done after midnight belongs to the evening before: its day runs 06:00 to 06:00.
+        start, end = window
+        progress.total = sum(
+            float(log.amount or 0)
+            for log in habit_logs
+            if log.user_id == current_user.id and start <= ensure_utc(log.timestamp) < end
+        )
+        progress.percentage = min(100.0, progress.total / progress.target * 100) if progress.target > 0 else 0.0
+        progress.window_start, progress.window_end = start, end
     return analytics, habit_logs, journal_entries
 
 

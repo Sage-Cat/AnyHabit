@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -227,7 +227,9 @@ def _modes(db: Session, habit: models.CultivatedHabit) -> list[dict]:
     ]
 
 
-def _observations(db: Session, habit: models.CultivatedHabit, user: models.User) -> dict[date, cv.Observation]:
+def _observations(
+    db: Session, habit: models.CultivatedHabit, user: models.User, versions: list[dict] | None = None
+) -> dict[date, cv.Observation]:
     if habit.tracker_id is None:
         return {}
     tz = resolve_timezone(user.timezone)
@@ -255,15 +257,18 @@ def _observations(db: Session, habit: models.CultivatedHabit, user: models.User)
         .order_by(models.HabitLog.timestamp)
         .all()
     )
+    # An evening "done by" habit done after midnight belongs to the evening before.
+    evening = cv.evening_habit(habit.kind, cv.latest_spec(versions if versions is not None else _versions(db, habit)))
     for log in logs:
         wake_utc = ensure_utc(log.timestamp)
         local = wake_utc.astimezone(tz)
-        obs = out.setdefault(local.date(), cv.Observation())
+        late = evening and local.time() < cv.EVENING_DAY_END
+        obs = out.setdefault(local.date() - timedelta(days=1) if late else local.date(), cv.Observation())
         obs.events += 1
         obs.amount += float(log.amount or 0)
         obs.notes.append(log.note or "")
         if obs.first_at is None and habit.kind != "sleep":
-            obs.first_at = local.time()  # logs are ordered, so this is the earliest
+            obs.first_at, obs.first_late = local.time(), late  # logs are ordered, so this is the earliest
         if habit.kind == "sleep" and log.amount and log.amount > 0:
             # Subtract in UTC: local wall-clock arithmetic is off by an hour across DST.
             # The amount is stored rounded to 0.01 h, so snap back to whole minutes.
@@ -328,7 +333,7 @@ def _load(db: Session, user: models.User, habit: models.CultivatedHabit) -> dict
     days = cv.build_days(
         habit.kind,
         versions,
-        _observations(db, habit, user),
+        _observations(db, habit, user, versions),
         marks,
         modes,
         today,
@@ -833,7 +838,7 @@ def habit_days(
     days = cv.build_days(
         habit.kind,
         versions,
-        _observations(db, habit, current_user),
+        _observations(db, habit, current_user, versions),
         _marks(db, habit),
         _modes(db, habit),
         min(end or today, today),
@@ -843,22 +848,49 @@ def habit_days(
     return [d.as_dict() for d in days if (start is None or d.date >= start)]
 
 
+def _tracker_habit(db: Session, user: models.User, tracker_id: int) -> models.CultivatedHabit | None:
+    """The user's habit fed by this tracker: an active one before an archived one."""
+    return (
+        db.query(models.CultivatedHabit)
+        .filter(models.CultivatedHabit.tracker_id == tracker_id, models.CultivatedHabit.user_id == user.id)
+        .order_by(models.CultivatedHabit.archived_at.isnot(None), models.CultivatedHabit.id)
+        .first()
+    )
+
+
+def tracker_evening_window(db: Session, user: models.User, tracker_id: int) -> tuple[datetime, datetime] | None:
+    """The current day of an evening "done by" habit on this tracker, in UTC: from 06:00 to 06:00 local.
+
+    Done after midnight, such a habit still counts for the evening before, so
+    the tracker's "today" must not start at midnight either. None for any other tracker.
+    """
+    habit = _tracker_habit(db, user, tracker_id)
+    if habit is None:
+        return None
+    try:
+        if not cv.evening_habit(habit.kind, cv.latest_spec(_versions(db, habit))):
+            return None
+    except (cv.PassportError, ValueError, TypeError, KeyError):
+        return None
+    tz = resolve_timezone(user.timezone)
+    now = utcnow().astimezone(tz)
+    day = now.date() - timedelta(days=1) if now.time() < cv.EVENING_DAY_END else now.date()
+    start = datetime.combine(day, cv.EVENING_DAY_END, tz)
+    end = datetime.combine(day + timedelta(days=1), cv.EVENING_DAY_END, tz)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
 def tracker_day_states(
     db: Session, user: models.User, tracker_id: int
-) -> Optional[dict[str, tuple[str, str, str | None]]]:
-    """``{date: (status, warning, first_at)}`` of the user's habit on this tracker, for its heatmap.
+) -> Optional[dict[str, tuple[str, str, str | None, bool]]]:
+    """``{date: (status, warning, first_at, first_next_day)}`` of the user's habit on this tracker, for its heatmap.
 
     The amount alone hides a failure: a late wake still logs hours of sleep.
     ``first_at`` is the HH:MM of the day's first log, which a "done by" goal
     is judged by. None when no readable habit feeds the tracker; a habit that
     has not started yet gives an empty dict, and its map is still one of day states.
     """
-    habit = (
-        db.query(models.CultivatedHabit)
-        .filter(models.CultivatedHabit.tracker_id == tracker_id, models.CultivatedHabit.user_id == user.id)
-        .order_by(models.CultivatedHabit.archived_at.isnot(None), models.CultivatedHabit.id)
-        .first()
-    )
+    habit = _tracker_habit(db, user, tracker_id)
     if habit is None:
         return None
     try:
@@ -873,7 +905,12 @@ def tracker_day_states(
     except (cv.PassportError, ValueError, TypeError, KeyError):
         return None  # an unreadable passport must not break the tracker page
     return {
-        day.date.isoformat(): (day.status, day.warning, f"{day.first_at:%H:%M}" if day.first_at else None)
+        day.date.isoformat(): (
+            day.status,
+            day.warning,
+            f"{day.first_at:%H:%M}" if day.first_at else None,
+            day.first_late,
+        )
         for day in days
     }
 

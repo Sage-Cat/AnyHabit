@@ -330,6 +330,8 @@ class TrackerHeatmapCell(BaseModel):
     warning: str = ""
     # Local time (HH:MM) of the day's first log, which a "done by" goal is judged by.
     first_at: str | None = None
+    # True when that log came after midnight: an evening habit done in the small hours.
+    first_next_day: bool = False
 
 
 class TrackerHeatmap(BaseModel):
