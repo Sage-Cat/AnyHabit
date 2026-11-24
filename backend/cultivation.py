@@ -554,9 +554,9 @@ def evening_habit(kind: str, spec: dict | None) -> bool:
 
 
 def deadline_minutes(done_by: str, evening: bool) -> int:
-    """A "done by" time in minutes since the day's midnight; an evening habit's time before 06:00 is after midnight."""
+    """A "done by" time in minutes since the day's midnight; an evening habit's time up to 06:00 is after midnight."""
     moment = parse_hhmm(done_by)
-    return done_minutes(moment, evening and moment < EVENING_DAY_END)
+    return done_minutes(moment, evening and moment <= EVENING_DAY_END)
 
 
 def parse_note(note: str) -> dict:

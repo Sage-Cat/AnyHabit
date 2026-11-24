@@ -55,12 +55,12 @@ const isEvening = (level, tolerance) => {
   return Boolean(deadline) && minutesOf(deadline) >= EVENING_FROM;
 };
 
-/** A passport level's bounds on the chart's scale; an evening habit's deadline before 06:00 is after midnight. */
+/** A passport level's bounds on the chart's scale; an evening habit's deadline up to 06:00 is after midnight. */
 function boundsOf(scale, spec, evening = false) {
   if (scale === 'time') {
     if (!spec?.done_by) return [];
     const deadline = minutesOf(spec.done_by);
-    return [evening && deadline < EVENING_DAY_END ? deadline + DAY_MINUTES : deadline];
+    return [evening && deadline <= EVENING_DAY_END ? deadline + DAY_MINUTES : deadline];
   }
   const bounds = scale === 'hours' ? [spec?.min_sleep_h, spec?.max_sleep_h] : [spec?.min_amount];
   return scale === 'state' ? [] : bounds.filter((value) => value != null).map(Number);
