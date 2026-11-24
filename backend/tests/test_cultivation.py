@@ -1952,15 +1952,107 @@ def main() -> int:
             str(work_analytics["daily_progress"]),
         )
         check(
-            "only an evening deadline moves the small hours to the day before",
+            "the goal's deadline decides whether a habit is an evening one",
             cv.evening_habit("boolean", {"level": {"done_by": "18:00"}})
-            and cv.evening_habit(
-                "boolean", {"levels": [{"level": {"done_by": "09:00"}}, {"level": {"done_by": "18:00"}}]}
-            )
-            and not cv.evening_habit("boolean", {"level": {"done_by": "09:00"}, "tolerance": {"done_by": "10:00"}})
+            and cv.evening_habit("boolean", {"tolerance": {"done_by": "18:00"}})
+            and not cv.evening_habit("boolean", {"level": {"done_by": "09:00"}, "tolerance": {"done_by": "12:00"}})
             and not cv.evening_habit("build", {"level": {"done_by": "18:00"}})
+            and not cv.evening_habit("boolean", {"level": {"done_by": "bad"}})
             and not cv.evening_habit("boolean", {}),
         )
+        late_spec = {"level": {"done_by": "18:00"}, "tolerance": {"done_by": "01:00"}}
+        after_midnight = cv.Observation(events=1, first_at=time(0, 30), first_late=True, evening=True)
+        check(
+            "an evening deadline before 06:00 is after midnight",
+            not cv._meets("boolean", after_midnight, late_spec["level"], None)
+            and cv._meets("boolean", after_midnight, late_spec["tolerance"], None)
+            and cv._meets(
+                "boolean", cv.Observation(events=1, first_at=time(17, 0), evening=True), late_spec["tolerance"], None
+            )
+            and not cv._meets(
+                "boolean",
+                cv.Observation(events=1, first_at=time(1, 30), first_late=True, evening=True),
+                late_spec["tolerance"],
+                None,
+            ),
+        )
+        # The evening is judged by the passport in force that evening: a later passport regroups nothing.
+        drifted = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Morning stretch",
+                    "stage": "formation",
+                    "level": {"done_by": "09:00"},
+                    "start_date": three_back.isoformat(),
+                },
+                "reason": "morning habit",
+                "effective_from": three_back.isoformat(),
+            },
+        ).json()
+        client.post(
+            f"/trackers/{drifted['tracker']['id']}/logs/",
+            json={"amount": 1, "timestamp": datetime.combine(two_back, time(5, 30), TZ).isoformat()},
+        )
+        client.post(
+            f"/cultivation/habits/{drifted['id']}/versions",
+            json={
+                "patch": {"level": {"done_by": "18:00"}},
+                "reason": "evening now",
+                "effective_from": local_today.isoformat(),
+            },
+        )
+        drifted_days = {x["date"]: x for x in client.get(f"/cultivation/habits/{drifted['id']}/days").json()}
+        check(
+            "a later evening passport leaves an early-morning day where it was",
+            drifted_days.get(two_back.isoformat(), {}).get("first_at") == "05:30"
+            and drifted_days.get(two_back.isoformat(), {}).get("status") == "success"
+            and drifted_days.get(three_back.isoformat(), {}).get("events") == 0,
+            str([drifted_days.get(d.isoformat()) for d in (three_back, two_back)]),
+        )
+        starter = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Late start",
+                    "stage": "formation",
+                    "level": {"done_by": "18:00"},
+                    "start_date": yesterday.isoformat(),
+                },
+                "reason": "evening habit",
+                "effective_from": yesterday.isoformat(),
+            },
+        ).json()
+        client.post(
+            f"/trackers/{starter['tracker']['id']}/logs/",
+            json={"amount": 1, "timestamp": datetime.combine(yesterday, time(0, 30), TZ).isoformat()},
+        )
+        starter_days = client.get(f"/cultivation/habits/{starter['id']}/days").json()
+        check(
+            "after midnight on the first day there is no evening before to count for",
+            [d["date"] for d in starter_days][:1] == [yesterday.isoformat()]
+            and starter_days[0]["first_at"] == "00:30"
+            and "first_next_day" not in starter_days[0],
+            str(starter_days[:2]),
+        )
+        if datetime.now(TZ).time() >= time(6, 0):
+            client.post(
+                f"/trackers/{starter['tracker']['id']}/logs/",
+                json={"amount": 1, "timestamp": datetime.combine(local_today, time(0, 30), TZ).isoformat()},
+            )
+            starter_progress = client.get(f"/trackers/{starter['tracker']['id']}/analytics").json()["daily_progress"]
+            summary_row = next(
+                row
+                for row in client.get("/dashboard/summary").json()["impact_rows"]
+                if row["tracker"]["id"] == starter["tracker"]["id"]
+            )
+            check(
+                "the tracker page and the dashboard both count the small hours for the evening before",
+                starter_progress["total"] == 0 and summary_row["progress_percentage"] == 0,
+                f"{starter_progress} / {summary_row['progress_percentage']}",
+            )
         detail = client.get(f"/cultivation/habits/{work_id}").json()
         check(
             "today shows the deadline and the tolerance",
