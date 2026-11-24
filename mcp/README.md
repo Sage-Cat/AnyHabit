@@ -189,7 +189,10 @@ lower level, into stabilization after a failed attempt. A failed formation attem
 (`rank_level`); the habit shows `ladder` and `level_changes`. Pausing a habit's tracker
 (`stop_tracker`) pauses the habit (`paused`): its days are not judged, its stage and
 formation deadline stand still and it leaves the rank until `start_tracker` resumes it;
-its criteria then count from that day (a failed attempt stays failed). The rank system itself can only be changed in the web UI.
+its criteria then count from that day (a failed attempt stays failed). A yes/no habit
+with an evening `done_by` (from 12:00 on) is done for the evening before when it is
+logged after midnight and before 06:00: that day shows `first_next_day`, and the
+tracker's own day runs from 06:00 to 06:00. The rank system itself can only be changed in the web UI.
 
 ## Destructive operations
 

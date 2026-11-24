@@ -334,7 +334,8 @@ def log_progress(
     """Record progress/activity.
 
     timestamp is optional ISO-8601. Use record_relapse instead for a quit
-    tracker relapse.
+    tracker relapse. For a yes/no habit with an evening done_by, a time after
+    midnight and before 06:00 counts for the evening before: log the real moment.
     """
     payload: dict[str, Any] = {"amount": amount, "note": note}
     if timestamp is not None:
@@ -601,7 +602,9 @@ def get_cultivated_habit(habit_id: int, history_days: int = 90) -> dict[str, Any
 def get_habit_days(habit_id: int, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
     """Day-by-day states (success, minimum, fail, exception, no_data, unrated, invalid).
 
-    Dates are YYYY-MM-DD in the user's timezone.
+    Dates are YYYY-MM-DD in the user's timezone. A yes/no habit with an evening
+    done_by counts a log made after midnight (before 06:00) for the evening
+    before; that day carries first_next_day.
     """
     return api.get(f"/cultivation/habits/{habit_id}/days", params=_without_none(start=start, end=end))
 
