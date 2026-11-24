@@ -1969,6 +1969,15 @@ def main() -> int:
             and cv._meets(
                 "boolean", cv.Observation(events=1, first_at=time(17, 0), evening=True), late_spec["tolerance"], None
             )
+            and cv._meets(
+                "boolean",
+                cv.Observation(events=1, first_at=time(5, 59), first_late=True, evening=True),
+                {"done_by": "06:00"},
+                None,
+            )
+            and cv._meets(
+                "boolean", cv.Observation(events=1, first_at=time(19, 0), evening=True), {"done_by": "06:00"}, None
+            )
             and not cv._meets(
                 "boolean",
                 cv.Observation(events=1, first_at=time(1, 30), first_late=True, evening=True),
@@ -2036,6 +2045,60 @@ def main() -> int:
             and starter_days[0]["first_at"] == "00:30"
             and "first_next_day" not in starter_days[0],
             str(starter_days[:2]),
+        )
+        turned = client.post(
+            "/cultivation/habits",
+            json={
+                "kind": "boolean",
+                "spec": {
+                    "name": "Night to morning",
+                    "stage": "formation",
+                    "level": {"done_by": "18:00"},
+                    "start_date": three_back.isoformat(),
+                },
+                "reason": "evening habit",
+                "effective_from": three_back.isoformat(),
+            },
+        ).json()
+        client.post(
+            f"/cultivation/habits/{turned['id']}/versions",
+            json={
+                "patch": {"level": {"done_by": "07:00"}},
+                "reason": "morning now",
+                "effective_from": two_back.isoformat(),
+            },
+        )
+        client.post(
+            f"/trackers/{turned['tracker']['id']}/logs/",
+            json={"amount": 1, "timestamp": datetime.combine(two_back, time(5, 30), TZ).isoformat()},
+        )
+        turned_days = {x["date"]: x for x in client.get(f"/cultivation/habits/{turned['id']}/days").json()}
+        check(
+            "a new morning passport keeps an early log on its own day",
+            turned_days.get(two_back.isoformat(), {}).get("status") == "success"
+            and turned_days.get(two_back.isoformat(), {}).get("first_at") == "05:30"
+            and turned_days.get(three_back.isoformat(), {}).get("events") == 0,
+            str([turned_days.get(d.isoformat()) for d in (three_back, two_back)]),
+        )
+        from backend import models as db_models
+        from backend.database import SessionLocal
+
+        with SessionLocal() as session:
+            rows = session.query(db_models.CultivationPassportVersion).filter_by(habit_id=starter["id"]).all()
+            saved = {row.id: row.spec_json for row in rows}
+            for row in rows:
+                row.spec_json = "{broken"
+            session.commit()
+        damaged = [
+            client.get(f"/trackers/{starter['tracker']['id']}/analytics").status_code,
+            client.get("/dashboard/summary").status_code,
+        ]
+        with SessionLocal() as session:
+            for row in session.query(db_models.CultivationPassportVersion).filter_by(habit_id=starter["id"]):
+                row.spec_json = saved[row.id]
+            session.commit()
+        check(
+            "a damaged passport breaks neither the tracker page nor the dashboard", damaged == [200, 200], str(damaged)
         )
         if datetime.now(TZ).time() >= time(6, 0):
             client.post(
