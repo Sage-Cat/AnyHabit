@@ -257,13 +257,24 @@ def _observations(
         .order_by(models.HabitLog.timestamp)
         .all()
     )
-    # An evening "done by" habit done after midnight belongs to the evening before.
-    evening = cv.evening_habit(habit.kind, cv.latest_spec(versions if versions is not None else _versions(db, habit)))
+    # An evening "done by" habit done after midnight belongs to the evening before,
+    # judged by the passport of that evening: a later passport does not regroup history.
+    versions = versions if versions is not None else _versions(db, habit)
+    evenings: dict[date, bool] = {}
+
+    def evening_on(day: date) -> bool:
+        if day not in evenings:
+            evenings[day] = cv.evening_habit(habit.kind, cv.spec_for(versions, day))
+        return evenings[day]
+
     for log in logs:
         wake_utc = ensure_utc(log.timestamp)
         local = wake_utc.astimezone(tz)
-        late = evening and local.time() < cv.EVENING_DAY_END
-        obs = out.setdefault(local.date() - timedelta(days=1) if late else local.date(), cv.Observation())
+        late = local.time() < cv.EVENING_DAY_END and evening_on(local.date() - timedelta(days=1))
+        day = local.date() - timedelta(days=1) if late else local.date()
+        obs = out.get(day)
+        if obs is None:
+            obs = out[day] = cv.Observation(evening=evening_on(day))
         obs.events += 1
         obs.amount += float(log.amount or 0)
         obs.notes.append(log.note or "")
@@ -858,26 +869,43 @@ def _tracker_habit(db: Session, user: models.User, tracker_id: int) -> models.Cu
     )
 
 
-def tracker_evening_window(db: Session, user: models.User, tracker_id: int) -> tuple[datetime, datetime] | None:
-    """The current day of an evening "done by" habit on this tracker, in UTC: from 06:00 to 06:00 local.
+def _evening_window(db: Session, user: models.User, habit: models.CultivatedHabit) -> tuple[datetime, datetime] | None:
+    """The current day of an evening "done by" habit, in UTC: from 06:00 to 06:00 local; None for any other habit.
 
     Done after midnight, such a habit still counts for the evening before, so
-    the tracker's "today" must not start at midnight either. None for any other tracker.
+    its tracker's "today" must not start at midnight either.
     """
-    habit = _tracker_habit(db, user, tracker_id)
-    if habit is None:
-        return None
-    try:
-        if not cv.evening_habit(habit.kind, cv.latest_spec(_versions(db, habit))):
-            return None
-    except (cv.PassportError, ValueError, TypeError, KeyError):
-        return None
     tz = resolve_timezone(user.timezone)
     now = utcnow().astimezone(tz)
     day = now.date() - timedelta(days=1) if now.time() < cv.EVENING_DAY_END else now.date()
+    if not cv.evening_habit(habit.kind, cv.spec_for(_versions(db, habit), day)):
+        return None
     start = datetime.combine(day, cv.EVENING_DAY_END, tz)
     end = datetime.combine(day + timedelta(days=1), cv.EVENING_DAY_END, tz)
     return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
+def tracker_evening_window(db: Session, user: models.User, tracker_id: int) -> tuple[datetime, datetime] | None:
+    """The day window of the evening habit this tracker feeds, if it feeds one."""
+    habit = _tracker_habit(db, user, tracker_id)
+    return _evening_window(db, user, habit) if habit is not None else None
+
+
+def evening_windows(db: Session, user: models.User) -> dict[int, tuple[datetime, datetime]]:
+    """``{tracker_id: day window}`` for every tracker of the user that feeds an evening habit."""
+    out: dict[int, tuple[datetime, datetime]] = {}
+    tracker_ids = {
+        row.tracker_id
+        for row in db.query(models.CultivatedHabit.tracker_id).filter(
+            models.CultivatedHabit.user_id == user.id, models.CultivatedHabit.kind == "boolean"
+        )
+        if row.tracker_id is not None
+    }
+    for tracker_id in tracker_ids:
+        window = tracker_evening_window(db, user, tracker_id)
+        if window is not None:
+            out[tracker_id] = window
+    return out
 
 
 def tracker_day_states(

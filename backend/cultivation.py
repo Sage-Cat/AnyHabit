@@ -526,6 +526,7 @@ class Observation:
     notes: list[str] = field(default_factory=list)
     first_at: time | None = None  # local time of the day's earliest log (not sleep)
     first_late: bool = False  # first_at is after midnight: an evening habit done in the small hours
+    evening: bool = False  # the day is an evening habit's: a deadline before 06:00 is after midnight
 
 
 # An evening "done by" habit (a time from noon on) ends in the small hours: a log
@@ -539,16 +540,23 @@ def done_minutes(moment: time, late: bool = False) -> int:
 
 
 def evening_habit(kind: str, spec: dict | None) -> bool:
-    """A "done by" habit whose goal, tolerance or minimum (on any rung) is an evening time."""
-    if kind != "boolean" or not spec:
+    """A yes/no habit whose goal deadline (without one, the tolerance's or the minimum's) is from noon on."""
+    if kind != "boolean" or not isinstance(spec, dict):
         return False
-    blocks = [spec.get(key) for key in ("level", "tolerance", "minimum")]
-    for rung in spec.get("levels") or []:
-        blocks += [rung.get(key) for key in ("level", "tolerance", "minimum")]
-    return any(
-        isinstance(block, dict) and block.get("done_by") and parse_hhmm(block["done_by"]) >= time(12, 0)
-        for block in blocks
-    )
+    for key in ("level", "tolerance", "minimum"):
+        block = spec.get(key)
+        if isinstance(block, dict) and block.get("done_by"):
+            try:
+                return parse_hhmm(block["done_by"]) >= time(12, 0)
+            except (ValueError, TypeError, AttributeError):
+                return False
+    return False
+
+
+def deadline_minutes(done_by: str, evening: bool) -> int:
+    """A "done by" time in minutes since the day's midnight; an evening habit's time before 06:00 is after midnight."""
+    moment = parse_hhmm(done_by)
+    return done_minutes(moment, evening and moment < EVENING_DAY_END)
 
 
 def parse_note(note: str) -> dict:
@@ -661,7 +669,7 @@ def _meets(kind: str, obs: Observation, level: dict | None, night: Night | None)
         if level.get("done_by") is None or obs.first_at is None:
             return True
         # Minute precision: "by 18:00" includes a tap at 18:00:40; after midnight is later than any evening.
-        return done_minutes(obs.first_at, obs.first_late) <= done_minutes(parse_hhmm(level["done_by"]))
+        return done_minutes(obs.first_at, obs.first_late) <= deadline_minutes(level["done_by"], obs.evening)
     return True
 
 
