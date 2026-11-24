@@ -20,6 +20,7 @@ from ..deps import get_current_user, get_db, get_period_context
 from ..security import generate_api_token, generate_webhook_secret
 from ..time_utils import PeriodContext, utcnow
 from ..version import APP_VERSION
+from .cultivation import evening_windows
 
 router = APIRouter(prefix="/developer", tags=["developer"])
 
@@ -270,7 +271,9 @@ def prometheus_metrics(
         else []
     )
 
-    summary = build_dashboard_summary(trackers, habit_logs, journal_entries, context)
+    summary = build_dashboard_summary(
+        trackers, habit_logs, journal_entries, context, day_windows=evening_windows(db, current_user)
+    )
 
     lines: list[str] = [
         "# HELP anyhabit_info Build information.",

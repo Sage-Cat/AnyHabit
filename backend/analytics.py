@@ -232,7 +232,10 @@ def _calculate_daily_progress(
     tracker: models.Tracker,
     habit_logs: list[models.HabitLog],
     context: PeriodContext = UTC_CONTEXT,
+    day_window: tuple | None = None,
 ) -> schemas.TrackerDailyProgress:
+    """Progress in the current window; ``day_window`` (start, end) replaces a one-day window,
+    e.g. an evening habit's day that runs from morning to morning."""
     if tracker.start_date is None or tracker.type not in {"build", "boolean"}:
         return schemas.TrackerDailyProgress()
 
@@ -240,6 +243,8 @@ def _calculate_daily_progress(
     interval_count = get_interval_count(tracker)
     anchor = period_start(tracker.start_date, period_to_check, context)
     window = get_window_details(utcnow(), anchor, period_to_check, interval_count, context)
+    if day_window is not None and window["end"] - window["start"] <= timedelta(hours=25):
+        window = {**window, "start": day_window[0], "end": day_window[1]}
 
     window_total = sum(
         float(log.amount or 0)
@@ -683,6 +688,7 @@ def build_tracker_analytics(
     member_logs: dict[int, list[models.HabitLog]] | None = None,
     member_journals: dict[int, list[models.JournalEntry]] | None = None,
     context: PeriodContext = UTC_CONTEXT,
+    day_window: tuple | None = None,
 ) -> schemas.TrackerAnalytics:
     active_logs = habit_logs
     active_journals = journal_entries
@@ -711,7 +717,7 @@ def build_tracker_analytics(
     return schemas.TrackerAnalytics(
         tracker_id=tracker.id,
         current_math=_calculate_current_math(tracker, active_logs, active_journals, context),
-        daily_progress=_calculate_daily_progress(tracker, active_logs, context),
+        daily_progress=_calculate_daily_progress(tracker, active_logs, context, day_window),
         historical_chart_data=_build_historical_chart_data(tracker, active_logs, active_journals, context),
         streak_stats=_calculate_streak_stats(tracker, active_logs, active_journals, context),
         build_heatmap=_build_heatmap(tracker, active_logs, active_journals, context),
@@ -741,6 +747,7 @@ def build_dashboard_summary(
     habit_logs: list[models.HabitLog],
     journal_entries: list[models.JournalEntry],
     context: PeriodContext = UTC_CONTEXT,
+    day_windows: dict[int, tuple] | None = None,
 ) -> schemas.DashboardSummary:
     logs_by_tracker_id: dict[int, list[models.HabitLog]] = {}
     for log in habit_logs:
@@ -772,7 +779,7 @@ def build_dashboard_summary(
 
         current_math = _calculate_current_math(tracker, tracker_logs, tracker_journals, context)
         streak_stats = _calculate_streak_stats(tracker, tracker_logs, tracker_journals, context)
-        daily_progress = _calculate_daily_progress(tracker, tracker_logs, context)
+        daily_progress = _calculate_daily_progress(tracker, tracker_logs, context, (day_windows or {}).get(tracker.id))
 
         if streak_stats.current > 0:
             active_streaks += 1

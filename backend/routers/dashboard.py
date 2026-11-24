@@ -10,6 +10,7 @@ from ..access import list_accessible_trackers
 from ..analytics import build_dashboard_summary
 from ..deps import get_current_user, get_db, get_period_context
 from ..time_utils import PeriodContext, utcnow
+from .cultivation import evening_windows
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -70,7 +71,9 @@ def read_dashboard_summary(
         .all()
     )
 
-    return build_dashboard_summary(trackers, habit_logs, journal_entries, context)
+    return build_dashboard_summary(
+        trackers, habit_logs, journal_entries, context, day_windows=evening_windows(db, current_user)
+    )
 
 
 @router.get("/home", response_model=schemas.DashboardStateResponse)
