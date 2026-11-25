@@ -18,6 +18,48 @@ const PERIODS = [
 const BREAKTHROUGH_GRADIENT = 'linear-gradient(90deg, #8b5cf6, #10b981)';
 const TICK = { fontSize: 10, fill: '#9ca3af' };
 const percentOf = (value) => (value == null ? null : Math.round(value * 100));
+
+// A habit's path as one climbing scale: «Нічого», then per level Формування →
+// Стабілізація → Інтегрована, the next level above the previous one. Between two
+// marks the line rises with the readiness for the next stage, so moving on never
+// looks like a fall.
+const PATH_STAGES = ['formation', 'stabilization', 'integrated'];
+const PATH_LABELS = { formation: 'Формування', stabilization: 'Стабілізація', integrated: 'Інтегрована' };
+const PATH_STEP = PATH_STAGES.length;
+
+/** Position on the path scale; null when the day has no stage. */
+function pathPosition(point) {
+  if (point.stage === 'planned') return 0;
+  const step = PATH_STAGES.indexOf(point.stage);
+  if (step < 0) return null;
+  const level = Math.max(1, Number(point.level) || 1);
+  const ready = point.stage === 'integrated' ? 0 : Math.min(1, Math.max(0, point.value ?? 0));
+  return 1 + (level - 1) * PATH_STEP + step + ready;
+}
+
+/** The marks of the path scale up to the top of ``levels``. */
+function pathTicks(levels) {
+  const ticks = [{ value: 0, label: 'Нічого' }];
+  for (let level = 1; level <= levels; level += 1) {
+    PATH_STAGES.forEach((stage, step) => {
+      ticks.push({
+        value: 1 + (level - 1) * PATH_STEP + step,
+        label: level > 1 ? `Р${level} · ${PATH_LABELS[stage]}` : PATH_LABELS[stage]
+      });
+    });
+  }
+  return ticks;
+}
+
+/** What a habit's point means: its stage, level and readiness for the next stage. */
+function pathText(point) {
+  if (!point) return '—';
+  if (point.stage === 'planned') return 'Заплановано';
+  const parts = [PATH_LABELS[point.stage] || '—'];
+  if (Number(point.level) > 1) parts.push(`рівень ${point.level}`);
+  if (point.stage !== 'integrated' && point.value != null) parts.push(`готовність ${percentOf(point.value)}%`);
+  return parts.join(' · ');
+}
 const shortDate = (time) => formatChartDate(toIso(time));
 
 function Card({ title, hint, testId, className = '', children }) {
@@ -40,14 +82,18 @@ function dayTicks(first, last) {
   return ticks;
 }
 
-/** «Прорив» per day with every habit's readiness for its next stage; rank-ups as vertical lines. */
+/** «Прорив» per day with every habit's path through stages and levels; rank-ups as vertical lines. */
 function BreakthroughHistory({ progress, colours }) {
-  const { data, rankUps, ticks } = useMemo(() => {
+  const { data, rankUps, ticks, levels } = useMemo(() => {
     const byDate = new Map(progress.days.map((day) => [day.date, { time: toTime(day.date), all: day.breakthrough }]));
+    let top = 1;
     for (const habit of progress.habits) {
       for (const point of habit.readiness) {
         const row = byDate.get(point.date);
-        if (row) row[`h${habit.id}`] = percentOf(point.value);
+        if (!row) continue;
+        row[`h${habit.id}`] = pathPosition(point);
+        row[`p${habit.id}`] = point;
+        if (point.stage && point.stage !== 'planned') top = Math.max(top, Number(point.level) || 1);
       }
     }
     const rows = [...byDate.values()];
@@ -59,22 +105,25 @@ function BreakthroughHistory({ progress, colours }) {
     return {
       data: rows,
       rankUps: ups,
-      ticks: rows.length ? dayTicks(rows[0].time, rows[rows.length - 1].time) : []
+      ticks: rows.length ? dayTicks(rows[0].time, rows[rows.length - 1].time) : [],
+      levels: top
     };
   }, [progress]);
-  const tracked = progress.habits.filter((habit) => habit.readiness.some((point) => point.value != null));
+  const tracked = progress.habits.filter((habit) => habit.readiness.some((point) => pathPosition(point) != null));
+  const marks = pathTicks(levels);
+  const markLabel = Object.fromEntries(marks.map((mark) => [mark.value, mark.label]));
 
   return (
     <Card
       title="Прорив і готовність звичок"
-      hint="Прорив — шлях до наступного рангу; лінії звичок — готовність до наступного етапу"
+      hint="Лінії звичок — етап і рівень, між позначками — готовність до наступного етапу; Прорив — шлях до наступного рангу (шкала справа)"
       testId="breakthrough-history"
       className="xl:col-span-2"
     >
       {data.length < 7 && <p className="text-xs text-amber-700">Даних поки мало: графік наповнюватиметься щодня.</p>}
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+          <LineChart data={data} margin={{ top: 8, right: 0, left: 8, bottom: 0 }}>
             <defs>
               <linearGradient id="breakthrough-stroke" gradientUnits="userSpaceOnUse" x1="0%" y1="0" x2="100%" y2="0">
                 <stop offset="0%" stopColor="#8b5cf6" />
@@ -91,14 +140,35 @@ function BreakthroughHistory({ progress, colours }) {
               tickFormatter={shortDate}
               tick={TICK}
             />
-            <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" tick={TICK} />
+            <YAxis
+              yAxisId="path"
+              domain={[0, 1 + levels * PATH_STEP - 1]}
+              ticks={marks.map((mark) => mark.value)}
+              tickFormatter={(value) => markLabel[value] ?? ''}
+              tick={TICK}
+              width={levels > 1 ? 130 : 84}
+              allowDecimals
+            />
+            <YAxis
+              yAxisId="pct"
+              orientation="right"
+              domain={[0, 100]}
+              ticks={[0, 50, 100]}
+              unit="%"
+              tick={TICK}
+              width={40}
+            />
             <Tooltip
               labelFormatter={shortDate}
-              formatter={(value, name) => [value == null ? '—' : `${value}%`, name]}
+              formatter={(value, name, item) => {
+                if (item.dataKey === 'all') return [value == null ? '—' : `${value}%`, name];
+                return [pathText(item.payload[String(item.dataKey).replace(/^h/, 'p')]), name];
+              }}
             />
             {rankUps.map((up) => (
               <ReferenceLine
                 key={up.time}
+                yAxisId="path"
                 x={up.time}
                 stroke="#f59e0b"
                 strokeDasharray="4 3"
@@ -113,6 +183,7 @@ function BreakthroughHistory({ progress, colours }) {
             {tracked.map((habit) => (
               <Line
                 key={habit.id}
+                yAxisId="path"
                 type="monotone"
                 dataKey={`h${habit.id}`}
                 name={habit.name}
@@ -124,6 +195,7 @@ function BreakthroughHistory({ progress, colours }) {
               />
             ))}
             <Line
+              yAxisId="pct"
               type="stepAfter"
               dataKey="all"
               name="Прорив"
