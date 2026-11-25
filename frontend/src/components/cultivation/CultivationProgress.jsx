@@ -19,7 +19,7 @@ const BREAKTHROUGH_GRADIENT = 'linear-gradient(90deg, #8b5cf6, #10b981)';
 const TICK = { fontSize: 10, fill: '#9ca3af' };
 const percentOf = (value) => (value == null ? null : Math.round(value * 100));
 
-// A habit's path as one climbing scale: «Нічого», then per level Формування →
+// A habit's path as one climbing scale: «Запланована», then per level Формування →
 // Стабілізація → Інтегрована, the next level above the previous one. Between two
 // marks the line rises with the readiness for the next stage, so moving on never
 // looks like a fall.
@@ -39,7 +39,7 @@ function pathPosition(point) {
 
 /** The marks of the path scale up to the top of ``levels``. */
 function pathTicks(levels) {
-  const ticks = [{ value: 0, label: 'Нічого' }];
+  const ticks = [{ value: 0, label: 'Запланована' }];
   for (let level = 1; level <= levels; level += 1) {
     PATH_STAGES.forEach((stage, step) => {
       ticks.push({
@@ -54,7 +54,7 @@ function pathTicks(levels) {
 /** What a habit's point means: its stage, level and readiness for the next stage. */
 function pathText(point) {
   if (!point) return '—';
-  if (point.stage === 'planned') return 'Заплановано';
+  if (point.stage === 'planned') return 'Запланована';
   const parts = [PATH_LABELS[point.stage] || '—'];
   if (Number(point.level) > 1) parts.push(`рівень ${point.level}`);
   if (point.stage !== 'integrated' && point.value != null) parts.push(`готовність ${percentOf(point.value)}%`);
