@@ -72,13 +72,13 @@ try {
     (await page.locator('[data-testid="habit-card"]').count()) === 0 &&
       (await page.locator('[data-testid="active-habits"]').count()) === 0
   );
-  for (const id of ['breakthrough-history', 'stage-paths', 'deviations-chart']) {
-    check(`progress chart ${id} renders`, (await page.locator(`[data-testid="${id}"]`).count()) === 1);
-  }
   check(
-    'every habit has a stage path',
-    (await page.locator('[data-testid="stage-path"]').count()) ===
-      (await page.locator('[data-testid="readiness-row"]').count())
+    'progress chart breakthrough-history renders',
+    (await page.locator('[data-testid="breakthrough-history"]').count()) === 1
+  );
+  check(
+    'the stage paths and the setbacks chart are gone',
+    (await page.locator('[data-testid="stage-paths"], [data-testid="deviations-chart"]').count()) === 0
   );
   await page.getByRole('button', { name: 'Рік', exact: true }).click();
   await page.waitForFunction(() =>
