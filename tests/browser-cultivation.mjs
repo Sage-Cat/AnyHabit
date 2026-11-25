@@ -76,6 +76,16 @@ try {
     'progress chart breakthrough-history renders',
     (await page.locator('[data-testid="breakthrough-history"]').count()) === 1
   );
+  await page.waitForSelector('[data-testid="breakthrough-history"] .recharts-yAxis', { state: 'attached' });
+  const pathAxis = await page
+    .locator('[data-testid="breakthrough-history"] svg.recharts-surface')
+    .first()
+    .textContent();
+  check(
+    'habit lines climb a scale of stages, not percent',
+    ['Нічого', 'Формування', 'Стабілізація', 'Інтегрована'].every((label) => pathAxis.includes(label)),
+    pathAxis
+  );
   check(
     'the stage paths and the setbacks chart are gone',
     (await page.locator('[data-testid="stage-paths"], [data-testid="deviations-chart"]').count()) === 0

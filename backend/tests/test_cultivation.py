@@ -260,6 +260,11 @@ def main() -> int:
         str([r["value"] for r in hist["readiness"][1]]),
     )
     check(
+        "each readiness point carries that day's stage and level",
+        all(r["stage"] == "formation" and r["level"] == 1 for r in hist["readiness"][1]),
+        str(hist["readiness"][1][:2]),
+    )
+    check(
         "the stage path is one formation segment",
         hist["segments"][1] == [{"stage": "formation", "start": D0.isoformat(), "end": today.isoformat()}],
         str(hist["segments"][1]),
