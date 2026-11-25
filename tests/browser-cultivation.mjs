@@ -281,8 +281,8 @@ try {
   await page.waitForSelector('[data-testid="home-cultivation-card"]', { timeout: 10000 });
   const homeText = await page.locator('[data-testid="home-cultivation-card"]').innerText();
   check(
-    'home card shows rank and a sleep entry button',
-    homeText.toLowerCase().includes('ранг') && homeText.includes('Внести сон')
+    "home card shows the rank and no list of today's habits",
+    homeText.toLowerCase().includes('ранг') && (await page.locator('[data-testid="home-today-card"]').count()) === 0
   );
   const rankCard = page.locator('[data-testid="home-rank-card"]');
   check('rank has its own card', (await rankCard.innerText()).toLowerCase().includes('ранг культивації'));
@@ -299,29 +299,6 @@ try {
   check(
     'home rank card counts habits per stage',
     (await rankCard.locator('[data-testid="stage-counts"]').count()) === 1
-  );
-  const todayHabit = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', { hasText: habitName });
-  check('today card lists the active habit', (await todayHabit.count()) === 1);
-
-  const boolName = `Телефон ${Date.now()}`;
-  await page.evaluate(async (name) => {
-    const response = await fetch('/cultivation/habits', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'boolean', spec: { name, stage: 'formation' }, reason: 'e2e' })
-    });
-    if (!response.ok) throw new Error(await response.text());
-  }, boolName);
-  await page.reload({ waitUntil: 'networkidle' });
-  const boolRow = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', { hasText: boolName });
-  await boolRow.waitFor({ timeout: 10000 });
-  await boolRow.getByRole('button', { name: 'Виконано' }).click();
-  await page.waitForSelector(`text=«${boolName}» — виконано`, { timeout: 10000 });
-  await boolRow.getByRole('button', { name: 'Виконано' }).waitFor({ state: 'detached', timeout: 10000 });
-  check(
-    'one tap marks a yes/no habit done for today',
-    (await boolRow.locator('[data-testid="today-status"]').innerText()).trim() === 'Успіх'
   );
 
   await page.setViewportSize({ width: 390, height: 800 });
@@ -811,13 +788,6 @@ try {
     'the first level cannot go down',
     await ladderBlock.getByRole('button', { name: 'Знизити рівень' }).isDisabled()
   );
-
-  await page.goto(BASE, { waitUntil: 'networkidle' });
-  const ladderHome = page.locator('[data-testid="home-today-card"] [data-testid="home-habit"]', {
-    hasText: ladderName
-  });
-  await ladderHome.waitFor({ timeout: 10000 });
-  check('the home card shows the level of a habit', (await ladderHome.innerText()).includes('Рівень 2'));
 
   await page.goto(`${BASE}/practice/${created.ladder.id}`, { waitUntil: 'networkidle' });
   await ladderBlock.waitFor({ timeout: 10000 });
