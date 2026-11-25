@@ -83,7 +83,7 @@ try {
     .textContent();
   check(
     'habit lines climb a scale of stages, not percent',
-    ['Нічого', 'Формування', 'Стабілізація', 'Інтегрована'].every((label) => pathAxis.includes(label)),
+    ['Запланована', 'Формування', 'Стабілізація', 'Інтегрована'].every((label) => pathAxis.includes(label)),
     pathAxis
   );
   check(
