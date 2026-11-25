@@ -1,13 +1,8 @@
-import { Check, Moon, Sprout } from 'lucide-react';
-import { useState } from 'react';
+import { Sprout } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { createBooleanLogApi } from '../../services/trackerApi';
-import { useAppState } from '../../state/appState';
 import RankEmblem from './RankEmblem';
 import { Breakthrough, StageCounts, StageTimeline } from './RankStats';
-import SleepEntryModal from './SleepEntryModal';
-import { DayStatusPill, LevelBadge, ModeBadge } from './common';
-import { BUTTON_SECONDARY, useCultivationOverview } from './helpers';
+import { useCultivationOverview } from './helpers';
 
 const CARD = 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm';
 const LABEL = 'text-[11px] font-semibold uppercase tracking-wider text-gray-400';
@@ -57,112 +52,12 @@ function HomeRankCard({ rank }) {
   );
 }
 
-/** Every active habit with today's state and the one action it needs. */
-function HomeTodayCard({ overview, onSleep, onChanged }) {
-  const { notify } = useAppState();
-  const [busyId, setBusyId] = useState(null);
-  // A paused habit does not remind about itself.
-  const activeHabits = overview.active.filter((habit) => !habit.paused);
-
-  const markDone = async (habit) => {
-    setBusyId(habit.id);
-    try {
-      await createBooleanLogApi(habit.tracker.id);
-      notify.success(`«${habit.name}» — виконано`);
-      await onChanged();
-    } catch (error) {
-      notify.error(error?.message || 'Не вдалося записати');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  return (
-    <section className={CARD} aria-label="Звички сьогодні" data-testid="home-today-card">
-      <div className="flex items-center justify-between gap-3">
-        <p className={LABEL}>Сьогодні</p>
-        <Link to="/practice" className="text-sm font-medium text-stone-600 underline hover:text-stone-900">
-          Усі звички
-        </Link>
-      </div>
-      {activeHabits.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">Активних звичок немає.</p>
-      ) : (
-        <ul className="mt-2 divide-y divide-gray-100">
-          {activeHabits.map((habit) => {
-            const day = habit.today?.day;
-            const done = day?.status === 'success';
-            const requirement = habit.today?.requirement;
-            return (
-              <li
-                key={habit.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
-                data-testid="home-habit"
-              >
-                <div className="min-w-0 flex-1 basis-48">
-                  <Link
-                    to={`/practice/${habit.id}`}
-                    className="flex flex-wrap items-center gap-2 text-sm font-medium text-stone-800 hover:underline"
-                  >
-                    {habit.name} <LevelBadge ladder={habit.ladder} />{' '}
-                    {(habit.mode || habit.today?.degraded) && <ModeBadge />}
-                  </Link>
-                  {requirement && requirement !== 'виконати' && <p className="text-xs text-gray-500">{requirement}</p>}
-                  {habit.today?.tolerance && (
-                    <p className="text-xs text-amber-700">Допуск з попередженням: {habit.today.tolerance}</p>
-                  )}
-                  {day?.warning && (
-                    <p className="text-xs text-amber-700" data-testid="home-habit-warning">
-                      {day.warning}
-                    </p>
-                  )}
-                </div>
-                <DayStatusPill day={day} />
-                {habit.kind === 'sleep' && (
-                  <button
-                    type="button"
-                    onClick={() => onSleep(habit)}
-                    className={`${BUTTON_SECONDARY} inline-flex items-center`}
-                  >
-                    <Moon size={14} className="mr-1.5" aria-hidden="true" /> Внести сон
-                  </button>
-                )}
-                {habit.kind === 'boolean' && habit.tracker && !done && (
-                  <button
-                    type="button"
-                    disabled={busyId === habit.id}
-                    onClick={() => markDone(habit)}
-                    className={`${BUTTON_SECONDARY} inline-flex items-center`}
-                  >
-                    <Check size={14} className="mr-1.5" aria-hidden="true" />
-                    {busyId === habit.id ? 'Запис…' : 'Виконано'}
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {overview.planned.length > 0 && (
-        <p className="mt-2 text-xs text-gray-400">Заплановано: {overview.planned.map((h) => h.name).join(', ')}</p>
-      )}
-    </section>
-  );
-}
-
 /**
- * Fixed block above the widget grid (not grid widgets): the rank card and
- * today's habits side by side. Stays quiet when the overview cannot be loaded,
- * so it never gets in the way of the home page.
+ * Fixed block above the widget grid (not a grid widget): the rank card. Stays
+ * quiet when the overview cannot be loaded, so it never gets in the way of the home page.
  */
-function HomeCultivationCard({ onChanged }) {
-  const { overview, isLoading, error, reload: reloadOverview } = useCultivationOverview();
-  const [sleepHabit, setSleepHabit] = useState(null);
-  // Other home widgets read the same days, so they refresh together.
-  const reload = async () => {
-    await reloadOverview();
-    onChanged?.();
-  };
+function HomeCultivationCard() {
+  const { overview, isLoading, error } = useCultivationOverview();
 
   if (isLoading || error || !overview) return null;
 
@@ -180,15 +75,8 @@ function HomeCultivationCard({ onChanged }) {
   }
 
   return (
-    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="home-cultivation-card">
+    <div className="mb-4" data-testid="home-cultivation-card">
       <HomeRankCard rank={overview.rank} />
-      <HomeTodayCard overview={overview} onSleep={setSleepHabit} onChanged={reload} />
-      <SleepEntryModal
-        habit={sleepHabit}
-        timezone={overview.timezone}
-        onClose={() => setSleepHabit(null)}
-        onSaved={reload}
-      />
     </div>
   );
 }

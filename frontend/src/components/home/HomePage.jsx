@@ -450,7 +450,7 @@ function HomePage() {
         {/* Capped so cards keep readable proportions on very wide screens; the
             grid measures this element, not the full scroll area. */}
         <div className="mx-auto w-full max-w-screen-2xl" ref={gridContainerRef} data-testid="home-content">
-          <HomeCultivationCard onChanged={needsStats ? refreshStats : undefined} />
+          <HomeCultivationCard />
           {isLoadingDashboard ? (
             <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center text-gray-500">
               Завантаження головної…
