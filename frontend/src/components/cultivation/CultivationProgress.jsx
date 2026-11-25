@@ -1,25 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  LineChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchProgressApi } from '../../services/cultivationApi';
 import { formatChartDate } from '../../utils/labels';
 import { pluralCount } from '../../utils/plural';
 import { PausedBadge } from './common';
 import { habitColorMap } from './habitColors';
 import { CARD_CLASS, formatPercent } from './helpers';
-import { DAY_MS, STAGE_COLOUR, STAGE_META, toIso, toTime } from './stageMeta';
+import { DAY_MS, toIso, toTime } from './stageMeta';
 
 const PERIODS = [
   { days: 30, label: '30 днів' },
@@ -239,103 +227,7 @@ function ReadinessNow({ habits, colours }) {
   );
 }
 
-/** Each habit's stages over the period as one coloured bar. */
-function StagePaths({ progress }) {
-  const first = toTime(progress.since);
-  const last = toTime(progress.until);
-  const span = (last - first) / DAY_MS + 1;
-  const used = new Set(progress.habits.flatMap((habit) => habit.segments.map((segment) => segment.stage)));
-
-  return (
-    <Card title="Шлях звичок за етапами" hint="Скільки днів кожна звичка провела на кожному етапі" testId="stage-paths">
-      <ul className="space-y-3">
-        {progress.habits.map((habit) => (
-          <li key={habit.id}>
-            <p className="mb-1 truncate text-xs font-medium text-stone-700">{habit.name}</p>
-            <div className="relative h-4 overflow-hidden rounded-md bg-stone-100" data-testid="stage-path">
-              {habit.segments.map((segment) => {
-                const start = (toTime(segment.start) - first) / DAY_MS;
-                const length = (toTime(segment.end) - toTime(segment.start)) / DAY_MS + 1;
-                return (
-                  <span
-                    key={segment.start}
-                    className="absolute inset-y-0"
-                    title={`${segment.stage ? STAGE_META.find((s) => s.key === segment.stage)?.label : ''}: ${shortDate(toTime(segment.start))} — ${shortDate(toTime(segment.end))}, ${pluralCount(length, ['день', 'дні', 'днів'])}`}
-                    style={{
-                      left: `${(start / span) * 100}%`,
-                      width: `${(length / span) * 100}%`,
-                      backgroundColor: STAGE_COLOUR[segment.stage] || '#d6d3d1'
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div className="flex justify-between text-[10px] text-gray-400">
-        <span>{shortDate(first)}</span>
-        <span>{shortDate(last)}</span>
-      </div>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
-        {STAGE_META.filter((stage) => used.has(stage.key)).map((stage) => (
-          <li key={stage.key} className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: stage.colour }} /> {stage.label}
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-const monthLabel = (key) =>
-  new Date(`${key}-01T00:00:00Z`).toLocaleDateString('uk-UA', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-
-/** Deviations of all habits per month and how fast the first good day came after them. */
-function Deviations({ deviations }) {
-  const firstActive = deviations.findIndex((month) => month.deviations > 0);
-  const shown = deviations.slice(firstActive < 0 ? -3 : Math.min(firstActive, deviations.length - 3));
-  const total = shown.reduce((sum, month) => sum + month.deviations, 0);
-  const data = shown.map((month) => ({ ...month, label: monthLabel(month.month) }));
-
-  return (
-    <Card
-      title="Збої та повернення"
-      hint="Збої всіх звичок за місяцями і медіана днів до першого успішного дня"
-      testId="deviations-chart"
-    >
-      {total === 0 ? (
-        <p className="py-6 text-center text-sm text-gray-500">Збоїв ще не було.</p>
-      ) : (
-        <div className="h-52">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 8, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="label" tick={TICK} />
-              <YAxis yAxisId="count" allowDecimals={false} tick={TICK} />
-              <YAxis yAxisId="days" orientation="right" allowDecimals={false} unit=" дн." tick={TICK} />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar yAxisId="count" dataKey="deviations" name="Збоїв" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-              <Line
-                yAxisId="days"
-                type="monotone"
-                dataKey="first_ok_median"
-                name="Днів до першого успіху (медіана)"
-                stroke="#0ea5e9"
-                strokeWidth={2}
-                connectNulls
-                isAnimationActive={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/** Charts that follow cultivation itself: «Прорив», stage readiness, stage paths and recovery. */
+/** Charts that follow cultivation itself: «Прорив» and stage readiness. */
 function CultivationProgress({ refreshKey }) {
   const [days, setDays] = useState(90);
   const [progress, setProgress] = useState(null);
@@ -390,10 +282,6 @@ function CultivationProgress({ refreshKey }) {
         <div className="grid items-start gap-4 xl:grid-cols-2">
           <BreakthroughHistory progress={progress} colours={colours} />
           <ReadinessNow habits={progress.habits} colours={colours} />
-          <div className="grid min-w-0 gap-4">
-            <StagePaths progress={progress} />
-            <Deviations deviations={progress.deviations} />
-          </div>
         </div>
       )}
     </section>
