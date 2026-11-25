@@ -1846,8 +1846,8 @@ def progress_history(habits: list[dict], since: date, today: date, ranks: list[d
     optionally ``attempts`` (day → :class:`AttemptDay`) to clip each day's readiness to its attempt.
     Each day is judged as it was then: the passport in force, the days and
     deviations up to that day, the stages of that day.  Returns «Прорив» with
-    the rank per day, every habit's readiness for its next stage, and its stages
-    as segments.
+    the rank per day, every habit's readiness for its next stage (with that day's
+    stage and level), and its stages as segments.
     """
     ranks = ranks or DEFAULT_RANKS
     daily = {h["id"]: simulate_stages(h["id"], h["versions"], today) for h in habits}
@@ -1869,8 +1869,15 @@ def progress_history(habits: list[dict], since: date, today: date, ranks: list[d
             attempt = (habit.get("attempts") or {}).get(current)
             cut, seen = clip_attempt(cut, habit["versions"], attempt.start if attempt else None)
             readiness[hid] = stage_readiness(spec, cut, seen, current, bool(attempt and attempt.failed_on))
-            readiness_series[hid].append({"date": current.isoformat(), "value": readiness[hid]})
             stage = daily[hid][current].stage if current in daily[hid] else None
+            readiness_series[hid].append(
+                {
+                    "date": current.isoformat(),
+                    "value": readiness[hid],
+                    "stage": stage,
+                    "level": current_level_number(spec),
+                }
+            )
             run = segments[hid]
             if run and run[-1]["stage"] == stage:
                 run[-1]["end"] = current.isoformat()
