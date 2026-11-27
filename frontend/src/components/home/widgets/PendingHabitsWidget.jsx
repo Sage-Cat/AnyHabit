@@ -22,11 +22,16 @@ export function PendingHabitsWidget() {
   }
 
   return (
-    <ul className="divide-y divide-gray-100" data-testid="pending-habits">
+    // Borders, not divide-*: the dark theme repaints border-gray-100 only.
+    <ul data-testid="pending-habits">
       {pending.map((habit) => {
         const { requirement, pending_for: awaited, date } = habit.today;
         return (
-          <li key={habit.id} className="flex items-start justify-between gap-3 py-2" data-testid="pending-habit">
+          <li
+            key={habit.id}
+            className="flex items-start justify-between gap-3 border-b border-gray-100 py-2 last:border-b-0"
+            data-testid="pending-habit"
+          >
             <div className="min-w-0">
               <p className="text-sm font-medium text-stone-800">{habit.name}</p>
               {requirement && requirement !== 'виконати' && <p className="text-xs text-gray-500">{requirement}</p>}
