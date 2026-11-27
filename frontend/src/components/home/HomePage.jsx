@@ -10,6 +10,7 @@ import {
 } from '../../services/dashboardApi';
 import { fetchStatsApi } from '../../services/cultivationApi';
 import { HabitsChartWidget, HabitsHeatmapWidget, OverallStatsWidget } from './widgets/CultivationStatsWidgets';
+import { PendingHabitsWidget } from './widgets/PendingHabitsWidget';
 import { ApiExplorerWidget, EmbedWidget } from './widgets/DeveloperWidgets';
 import { ActivityFeedWidget, JournalFeedWidget, MoodTrendWidget, NotesWidget } from './widgets/FeedWidgets';
 import {
@@ -572,6 +573,8 @@ function HomePage() {
                         {widget.type === 'cultivationChart' && (
                           <HabitsChartWidget stats={stats} isLoading={isLoadingStats} config={widget.config || {}} />
                         )}
+
+                        {widget.type === 'cultivationPending' && <PendingHabitsWidget />}
 
                         {widget.type === 'cultivationHeatmap' && (
                           <HabitsHeatmapWidget stats={stats} isLoading={isLoadingStats} />

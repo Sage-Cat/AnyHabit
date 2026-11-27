@@ -9,6 +9,7 @@ import {
   Grid3x3,
   Layers,
   LineChart,
+  ListTodo,
   MonitorPlay,
   NotebookPen,
   Smile,
@@ -32,6 +33,13 @@ export const WIDGET_DEFINITIONS = {
     description: 'Кожна звичка своїм кольором і всі разом: частка успішних днів.',
     defaultSize: { w: 7, h: 10, minW: 4, minH: 7 },
     defaultConfig: { days: 30 }
+  },
+  cultivationPending: {
+    label: 'Ще без запису',
+    icon: ListTodo,
+    description: 'Звички, які сьогодні ще чекають на запис. Лише статус, без кнопок.',
+    defaultSize: { w: 4, h: 6, minW: 3, minH: 4 },
+    defaultConfig: {}
   },
   cultivationHeatmap: {
     label: 'Загальна теплова карта',
