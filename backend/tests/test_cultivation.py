@@ -2128,6 +2128,73 @@ def main() -> int:
             and detail["today"]["tolerance"] == "виконати до 19:00",
             str(detail["today"])[:300],
         )
+        # A record awaited: active, expected that day, nothing recorded; an evening habit waits until 06:00.
+        a_saturday = date(2026, 1, 3)
+        check(
+            "weekdays count from Monday as 1",
+            a_saturday.isoweekday() == 6
+            and cv.scheduled_on({"weekdays": [6]}, a_saturday)
+            and not cv.scheduled_on({"weekdays": [6]}, a_saturday - timedelta(days=1))
+            and cv.scheduled_on({}, a_saturday - timedelta(days=1)),
+        )
+        bad_weekdays = []
+        for value in ([], [0], [8], [6, 6], ["6"], [True], 6):
+            try:
+                cv.validate_spec("boolean", {"name": "x", "stage": "formation", "weekdays": value})
+                bad_weekdays.append(value)
+            except cv.PassportError:
+                pass
+        check("a broken weekday list is refused", bad_weekdays == [], str(bad_weekdays))
+        evening_versions = [{"effective_from": a_saturday - timedelta(days=5), "spec": {"level": {"done_by": "18:00"}}}]
+        morning_versions = [{"effective_from": a_saturday - timedelta(days=5), "spec": {"level": {"done_by": "09:00"}}}]
+        check(
+            "before 06:00 an evening habit still waits for the evening before",
+            cv.current_day("boolean", evening_versions, a_saturday, time(2, 0)) == a_saturday - timedelta(days=1)
+            and cv.current_day("boolean", evening_versions, a_saturday, time(6, 0)) == a_saturday
+            and cv.current_day("boolean", morning_versions, a_saturday, time(2, 0)) == a_saturday,
+        )
+        empty_day = cv.Day(a_saturday, "no_data")
+        active = {"stage": "formation"}
+        check(
+            "only an active, expected habit without a record is awaited",
+            cv.pending_on("boolean", active, empty_day, a_saturday)
+            and cv.pending_on("boolean", active, None, a_saturday)
+            and not cv.pending_on("boolean", active, cv.Day(a_saturday, "fail"), a_saturday)
+            and not cv.pending_on("quit", active, empty_day, a_saturday)
+            and not cv.pending_on("boolean", {"stage": "planned"}, empty_day, a_saturday)
+            and not cv.pending_on("boolean", {**active, cv.PAUSED: True}, empty_day, a_saturday)
+            and not cv.pending_on("boolean", {**active, "weekdays": [5]}, empty_day, a_saturday),
+        )
+        if datetime.now(TZ).time() >= time(6, 0):  # before 06:00 a fresh evening habit has no evening before
+            weekday = local_today.isoweekday()
+            due, off = (
+                client.post(
+                    "/cultivation/habits",
+                    json={
+                        "kind": "boolean",
+                        "spec": {"name": name, "stage": "formation", "level": {}, "weekdays": days},
+                        "reason": "schedule",
+                    },
+                ).json()
+                for name, days in (("Due today", [weekday]), ("Due tomorrow", [weekday % 7 + 1]))
+            )
+            awaited = {
+                h["id"]: h["today"]
+                for group in ("active", "integrated")
+                for h in client.get("/cultivation/overview").json()[group]
+            }
+            check(
+                "today lists a habit expected today and skips one expected on another day",
+                awaited[due["id"]]["pending"] is True
+                and awaited[due["id"]]["pending_for"] == local_today.isoformat()
+                and awaited[off["id"]]["pending"] is False,
+                str([awaited.get(due["id"]), awaited.get(off["id"])]),
+            )
+            client.post(f"/trackers/{due['tracker']['id']}/logs/", json={"amount": 1})
+            check(
+                "a record ends the wait",
+                client.get(f"/cultivation/habits/{due['id']}").json()["today"]["pending"] is False,
+            )
         stats = client.get("/cultivation/stats", params={"days": 14})
         body = stats.json()
         check("combined statistics served", stats.status_code == 200 and len(body["daily"]) == 14, stats.text[:200])

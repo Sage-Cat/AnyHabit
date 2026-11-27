@@ -475,6 +475,7 @@ try {
       { id: 'e2e-stats', type: 'cultivationStats', title: 'Загальна статистика', config: {} },
       { id: 'e2e-chart', type: 'cultivationChart', title: 'Графік усіх звичок', config: { days: 30 } },
       { id: 'e2e-heat', type: 'cultivationHeatmap', title: 'Загальна теплова карта', config: {} },
+      { id: 'e2e-pending', type: 'cultivationPending', title: 'Ще без запису', config: {} },
       { id: 'e2e-habit-heat', type: 'heatmap', title: 'Теплова карта звички', config: { trackerId } }
     ];
     const saved = await fetch('/dashboard/home', {
@@ -509,6 +510,23 @@ try {
   const habitWidgetFail = page.locator(`[data-testid="widget-heatmap"] [data-date="${work.failDay}"]`);
   await habitWidgetFail.waitFor({ timeout: 10000 });
   check("a habit's heatmap widget shows its failed day", (await habitWidgetFail.getAttribute('data-state')) === 'fail');
+  await page.locator('[data-testid="pending-habits"], [data-testid="pending-habits-empty"]').first().waitFor();
+  const awaitedNames = await page.evaluate(async () => {
+    const overview = await (await fetch('/cultivation/overview', { credentials: 'include' })).json();
+    return [...overview.active, ...overview.integrated].filter((habit) => habit.today?.pending).map((h) => h.name);
+  });
+  const shownNames = await page.locator('[data-testid="pending-habit"] p:first-child').allInnerTexts();
+  check(
+    'the pending widget lists exactly the habits still awaiting a record',
+    JSON.stringify(shownNames) === JSON.stringify(awaitedNames),
+    `${JSON.stringify(shownNames)} vs ${JSON.stringify(awaitedNames)}`
+  );
+  check(
+    'the pending widget shows the status only, with nothing to tap',
+    (await page
+      .locator('[data-testid="pending-habits"] button, [data-testid="pending-habits-empty"] button')
+      .count()) === 0
+  );
   const homeWidth = (await page.locator('[data-testid="home-content"]').boundingBox()).width;
   check('home content is capped on a wide screen', homeWidth <= 1536, String(homeWidth));
 
