@@ -580,7 +580,11 @@ def get_cultivation_overview() -> dict[str, Any]:
 
 @mcp.tool()
 def list_cultivated_habits(include_archived: bool = False) -> list[dict[str, Any]]:
-    """List cultivated habits with their stage, today's state and a 14-day history."""
+    """List cultivated habits with their stage, today's state and a 14-day history.
+
+    `today.pending` is true while a record is still awaited for `today.pending_for`
+    (before 06:00 an evening habit still waits for the evening before).
+    """
     return api.get("/cultivation/habits", params={"include_archived": include_archived})
 
 
@@ -720,7 +724,9 @@ def create_cultivated_habit(
 
     spec keys: name, description, why, trait, priority, stage, goal, level,
     minimum, subgoals, levels, current_level, rules, stabilization, integration,
-    maintenance — see get_cultivation_vocabulary for defaults. levels is an
+    maintenance, weekdays — see get_cultivation_vocabulary for defaults. weekdays
+    (1 is Monday, 7 is Sunday) are the days a record is expected; it changes no
+    judgement. levels is an
     optional ladder: a list of {name?, level, tolerance?, minimum?} (a quit
     habit's rung: {name?, streak_days?}, reached by itself after that many days
     in a row without a relapse); current_level is 1-based. A sleep level may set bed_by (HH:MM, fall asleep no later than).

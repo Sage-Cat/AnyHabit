@@ -193,7 +193,11 @@ its criteria then count from that day (a failed attempt stays failed). A yes/no 
 whose goal `done_by` is from 12:00 on is done for the evening before when it is
 logged after midnight and before 06:00 (judged by that evening's passport; a deadline
 before 06:00 is after midnight): that day shows `first_next_day`, and the tracker's
-own day runs from 06:00 to 06:00. The rank system itself can only be changed in the web UI.
+own day runs from 06:00 to 06:00. A passport may set `weekdays` (1 is Monday, 7 is
+Sunday): the days a record is expected. It changes no judgement, a record on another day
+counts as usual. `today.pending` is true while an active, not paused habit (not a quit one)
+expected on `today.pending_for` has no record for it; before 06:00 an evening habit still
+waits for the evening before. The rank system itself can only be changed in the web UI.
 
 ## Destructive operations
 
