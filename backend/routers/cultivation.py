@@ -425,6 +425,10 @@ def _analyse(
     active_mode = next((m for m in modes if m["end_date"] is None), None)
     degraded_today = cv.mode_on(modes, today) is not None
     today_day = days[-1] if days and days[-1].date == today else None
+    # The day a record is awaited for: an evening habit before 06:00 still waits for the evening before.
+    now = utcnow().astimezone(resolve_timezone(user.timezone)).time()
+    awaited = cv.current_day(habit.kind, data["staged"], today, now)
+    awaited_day = next((d for d in reversed(days) if d.date == awaited), None)
     subgoals = spec.get("subgoals") or []
     integration = cv.integration_check(spec, seen_days, episodes, today) if spec else None
     stage = spec.get("stage")
@@ -470,6 +474,8 @@ def _analyse(
             else None,
             "degraded": degraded_today,
             "day": today_day.as_dict() if today_day else None,
+            "pending": cv.pending_on(habit.kind, cv.spec_for(data["staged"], awaited), awaited_day, awaited),
+            "pending_for": awaited.isoformat(),
         },
         "next_subgoal": None
         if not subgoals

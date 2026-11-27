@@ -216,6 +216,14 @@ def validate_spec(kind: str, spec: dict) -> None:
         raise PassportError("paused: очікується true або false")
     if spec.get("priority") is not None:
         check_number("priority", spec["priority"])
+    weekdays = spec.get("weekdays")
+    if weekdays is not None:
+        if not isinstance(weekdays, list) or not weekdays:
+            raise PassportError("weekdays: очікується непорожній список днів тижня (1 — понеділок, 7 — неділя)")
+        for value in weekdays:
+            check_number("weekdays", value, integer=True, low=1, high=7)
+        if len(set(weekdays)) != len(weekdays):
+            raise PassportError("weekdays: дні тижня не повинні повторюватися")
     _check_level("level", spec.get("level"))
     _check_level("minimum", spec.get("minimum"))
     _check_level("tolerance", spec.get("tolerance"))
@@ -557,6 +565,39 @@ def deadline_minutes(done_by: str, evening: bool) -> int:
     """A "done by" time in minutes since the day's midnight; an evening habit's time up to 06:00 is after midnight."""
     moment = parse_hhmm(done_by)
     return done_minutes(moment, evening and moment <= EVENING_DAY_END)
+
+
+def scheduled_on(spec: dict | None, day: date) -> bool:
+    """Whether the habit is expected on ``day``: ``weekdays`` (1 is Monday) or every day.
+
+    The schedule only says when a record is awaited; a record on another day is judged as usual.
+    """
+    weekdays = (spec or {}).get("weekdays")
+    return not weekdays or day.isoweekday() in weekdays
+
+
+def current_day(kind: str, versions: list[dict], today: date, now: time) -> date:
+    """The day a habit is on right now: before 06:00 an evening habit is still on the evening before."""
+    before = today - timedelta(days=1)
+    if (
+        now < EVENING_DAY_END
+        and evening_habit(kind, spec_for(versions, before))
+        and evening_habit(kind, spec_for(versions, today))
+    ):
+        return before
+    return today
+
+
+def pending_on(kind: str, spec: dict | None, day: Day | None, on: date) -> bool:
+    """A record is still awaited on ``on``: an active habit, expected that day, with nothing recorded yet.
+
+    A quit habit is never awaited — abstinence needs no record.
+    """
+    if kind == "quit" or not spec or spec.get(PAUSED) or spec.get("stage") not in ACTIVE_STAGES:
+        return False
+    if not scheduled_on(spec, on):
+        return False
+    return day is None or day.status == "no_data"
 
 
 def parse_note(note: str) -> dict:
